@@ -19,6 +19,7 @@ class TaskListSection extends ConsumerWidget {
     required this.tasks,
     required this.onChanged,
     this.title,
+    this.description,
     this.emptyText = '还没有任务，点击「添加任务」开始安排',
     this.defaultSubjectId,
     this.showAddButton = true,
@@ -29,6 +30,9 @@ class TaskListSection extends ConsumerWidget {
   final List<Task> tasks;
   final VoidCallback onChanged;
   final String? title;
+
+  /// 标题下方的常驻说明（如未分类任务区的用途引导）。
+  final String? description;
   final String emptyText;
   final int? defaultSubjectId;
   final bool showAddButton;
@@ -68,6 +72,15 @@ class TaskListSection extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 8),
+        ],
+        if (description != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            description!,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+          ),
         ],
         if (tasks.isEmpty)
           Padding(
