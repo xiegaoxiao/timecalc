@@ -96,6 +96,10 @@ class _GoalFormDialogState extends ConsumerState<GoalFormDialog> {
         );
       }
       ref.invalidate(goalListProvider);
+      // 详情页独立缓存，编辑保存后必须同时刷新，标题/截止日期才能即时更新。
+      if (_isEdit) {
+        ref.invalidate(goalDetailProvider(widget.goal!.id));
+      }
       if (mounted) Navigator.of(context).pop();
     } finally {
       if (mounted) setState(() => _saving = false);

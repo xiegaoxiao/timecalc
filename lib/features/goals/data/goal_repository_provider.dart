@@ -13,3 +13,11 @@ final goalRepositoryProvider = Provider<GoalRepository>((ref) {
 final goalListProvider = FutureProvider<List<Goal>>((ref) {
   return ref.watch(goalRepositoryProvider).watchAll();
 });
+
+/// 单个目标详情异步状态。
+///
+/// 与 goalListProvider 相互独立缓存；编辑目标保存后必须同时
+/// invalidate 本 Provider，详情页才能反映最新数据。
+final goalDetailProvider = FutureProvider.family<Goal?, int>((ref, id) {
+  return ref.watch(goalRepositoryProvider).byId(id);
+});

@@ -161,7 +161,8 @@ class _GoalCard extends ConsumerWidget {
             const PopupMenuItem(value: 'delete', child: Text('删除')),
           ],
         ),
-        onTap: () => context.go('/goals/${goal.id}'),
+        // push 压入导航栈，详情页 AppBar 自动出现返回箭头。
+        onTap: () => context.push('/goals/${goal.id}'),
       ),
     );
   }
