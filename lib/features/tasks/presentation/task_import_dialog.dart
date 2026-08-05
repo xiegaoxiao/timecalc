@@ -59,6 +59,9 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
   TaskImportResult? _result;
   bool _importing = false;
 
+  /// 导入模式：true 替换（旧任务归档保留，可恢复）；false 合并（追加，保留现有）。
+  bool _replaceMode = true;
+
   /// 自动校验防抖计时器：内容连续变化时只在校验最后一次。
   Timer? _debounce;
 
@@ -113,9 +116,8 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
     final plan = result.plan;
     if (plan == null) return;
 
-    // 替换确认：导入会替换当前任务的计划，旧任务保留为历史记录。
-    final replacing = widget.currentTasks.isNotEmpty;
-    if (replacing) {
+    // 替换模式确认：导入会替换当前任务的计划，旧任务保留为历史记录。
+    if (_replaceMode && widget.currentTasks.isNotEmpty) {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -145,7 +147,7 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
       final stats = await repo.importPlan(
         goalId: widget.goalId,
         items: plan.items,
-        replaceExisting: true,
+        replaceExisting: _replaceMode,
       );
       // 跨页刷新（FR-3 验收）：目标详情、今日页、日历同步。
       ref.invalidate(taskListProvider(widget.goalId));
@@ -157,7 +159,7 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '导入 ${stats.createdTasks} 个任务'
+              '${_replaceMode ? '替换' : '合并'}导入 ${stats.createdTasks} 个任务'
               '${stats.createdSubjects > 0 ? '，新建 ${stats.createdSubjects} 个科目' : ''}'
               '${stats.replacedTasks > 0 ? '；${stats.replacedTasks} 个旧任务已归档到历史任务' : ''}',
             ),
@@ -189,7 +191,35 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
               '点「导入」会自动校验，校验不通过不会写入任何任务。',
               style: Theme.of(context).textTheme.bodySmall,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
+            // 导入模式：替换（归档旧任务）或合并（追加保留现有）。
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(
+                  value: true,
+                  label: Text('替换'),
+                  icon: Icon(Icons.swap_horiz),
+                ),
+                ButtonSegment(
+                  value: false,
+                  label: Text('合并'),
+                  icon: Icon(Icons.merge_type),
+                ),
+              ],
+              selected: {_replaceMode},
+              onSelectionChanged: (selection) =>
+                  setState(() => _replaceMode = selection.first),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _replaceMode
+                  ? '替换：导入后当前任务将归档到「历史任务」（可恢复），计划以 JSON 为准'
+                  : '合并：JSON 任务追加到现有计划，不改变当前任务',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+            ),
+            const SizedBox(height: 12),
             Container(
               height: 200,
               decoration: BoxDecoration(
@@ -251,7 +281,7 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
               ),
             if (result != null && result.isValid)
               _ImportPreview(plan: result.plan!, existingSubjects: widget.subjects),
-            if (widget.currentTasks.isNotEmpty) ...[
+            if (widget.currentTasks.isNotEmpty && _replaceMode) ...[
               const Divider(height: 24),
               Text(
                 '当前任务（将被替换并保留为历史）',
