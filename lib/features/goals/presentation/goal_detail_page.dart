@@ -5,13 +5,16 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../services/countdown_service.dart';
+import '../../tasks/data/task_repository_provider.dart';
 import '../../tasks/presentation/task_list_section.dart';
 import '../data/goal_repository_provider.dart';
 import '../data/subject_repository_provider.dart';
 import 'goal_form_dialog.dart';
 import 'subject_manager.dart';
 
-/// 目标详情页：目标概览 → 科目 → 任务（PRD §7 层级）。
+/// 目标详情页：目标概览 → 科目列表 → 未分类任务（PRD §7 层级）。
+///
+/// 点击科目进入该科目的任务列表页；未归属科目的任务在本页「未分类」区管理。
 class GoalDetailPage extends ConsumerWidget {
   const GoalDetailPage({super.key, required this.goalId});
 
@@ -29,25 +32,52 @@ class GoalDetailPage extends ConsumerWidget {
           if (goal == null) {
             return const Center(child: Text('目标不存在'));
           }
-          final subjectsAsync = ref.watch(subjectListProvider(goal.id));
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              _GoalHeader(goal: goal),
-              const Divider(height: 32),
-              SubjectManager(goalId: goal.id),
-              const SizedBox(height: 24),
-              subjectsAsync.maybeWhen(
-                data: (subjects) => TaskListSection(
-                  goalId: goal.id,
-                  subjects: subjects,
-                ),
-                orElse: () => const SizedBox.shrink(),
-              ),
-            ],
-          );
+          return GoalDetailBody(goal: goal);
         },
       ),
+    );
+  }
+}
+
+class GoalDetailBody extends ConsumerWidget {
+  const GoalDetailBody({super.key, required this.goal});
+
+  final Goal goal;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final subjectsAsync = ref.watch(subjectListProvider(goal.id));
+    final tasksAsync = ref.watch(taskListProvider(goal.id));
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _GoalHeader(goal: goal),
+        const Divider(height: 32),
+        SubjectManager(goalId: goal.id),
+        const Divider(height: 32),
+        // 未归属科目的任务在详情页直接管理（无科目页可进）。
+        subjectsAsync.when(
+          loading: () => const SizedBox.shrink(),
+          error: (_, _) => const SizedBox.shrink(),
+          data: (subjects) => tasksAsync.when(
+            loading: () => const SizedBox.shrink(),
+            error: (_, _) => const SizedBox.shrink(),
+            data: (tasks) {
+              final unassigned =
+                  tasks.where((t) => t.subjectId == null).toList();
+              return TaskListSection(
+                goalId: goal.id,
+                subjects: subjects,
+                tasks: unassigned,
+                title: '未分类任务',
+                emptyText: '没有未分类任务。点击科目进入对应任务列表，或点「添加任务」创建',
+                onChanged: () => ref.invalidate(taskListProvider(goal.id)),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }

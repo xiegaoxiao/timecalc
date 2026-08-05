@@ -109,12 +109,12 @@ void main() {
     await tester.tap(find.text('创建').last);
     await tester.pumpAndSettle();
 
-    // 自动进入详情页，四个科目 chips 均已创建。
+    // 自动进入详情页，四个科目以卡片列表展示（点击可进入科目任务页）。
     expect(find.text('目标详情'), findsOneWidget);
-    expect(find.widgetWithText(InputChip, '政治'), findsOneWidget);
-    expect(find.widgetWithText(InputChip, '英语'), findsOneWidget);
-    expect(find.widgetWithText(InputChip, '数学'), findsOneWidget);
-    expect(find.widgetWithText(InputChip, '408'), findsOneWidget);
+    expect(find.widgetWithText(Card, '政治'), findsOneWidget);
+    expect(find.widgetWithText(Card, '英语'), findsOneWidget);
+    expect(find.widgetWithText(Card, '数学'), findsOneWidget);
+    expect(find.widgetWithText(Card, '408'), findsOneWidget);
   });
 
   testWidgets('创建目标后，今天页展示目标卡片与倒计时（FR-1 验收）', (tester) async {

@@ -10,18 +10,27 @@ import '../domain/duration_validator.dart';
 /// 创建/编辑任务对话框（FR-3.1：标题、计划日期、预估分钟、状态、可选备注与科目）。
 ///
 /// [task] 为空表示创建，非空表示编辑。
+/// [defaultSubjectId] 仅在创建模式生效：科目任务页创建任务时默认归属该科目。
 class TaskFormDialog extends ConsumerStatefulWidget {
-  const TaskFormDialog({super.key, required this.goalId, this.task, this.subjects = const []});
+  const TaskFormDialog({
+    super.key,
+    required this.goalId,
+    this.task,
+    this.subjects = const [],
+    this.defaultSubjectId,
+  });
 
   final int goalId;
   final Task? task;
   final List<Subject> subjects;
+  final int? defaultSubjectId;
 
   static Future<void> show(
     BuildContext context, {
     required int goalId,
     Task? task,
     List<Subject> subjects = const [],
+    int? defaultSubjectId,
   }) {
     return showDialog<void>(
       context: context,
@@ -29,6 +38,7 @@ class TaskFormDialog extends ConsumerStatefulWidget {
         goalId: goalId,
         task: task,
         subjects: subjects,
+        defaultSubjectId: defaultSubjectId,
       ),
     );
   }
@@ -58,7 +68,8 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
     );
     _noteController.text = task?.note ?? '';
     _plannedDate = task == null ? DateTime.now() : _parseDate(task.plannedDate);
-    _subjectId = task?.subjectId;
+    // 编辑模式沿用任务原科目；创建模式默认归属 defaultSubjectId（科目页入口）。
+    _subjectId = task?.subjectId ?? widget.defaultSubjectId;
   }
 
   @override

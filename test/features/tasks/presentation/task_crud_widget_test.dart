@@ -167,15 +167,16 @@ void main() {
     expect(find.textContaining('数学'), findsWidgets);
   });
 
-  testWidgets('点击科目 chip 可重命名（回归：科目重命名）', (tester) async {
+  testWidgets('科目卡片上的编辑按钮可重命名（回归：科目重命名）', (tester) async {
     final subject = await subjects.create(goalId: goalId, name: '数学', color: '#3F6C51');
     await pumpApp(tester);
     await openGoalDetail(tester);
 
-    expect(find.text('数学'), findsOneWidget);
+    // 科目以卡片展示，含重命名编辑按钮。
+    expect(find.widgetWithText(Card, '数学'), findsOneWidget);
 
-    // 点击科目 chip 打开重命名对话框。
-    await tester.tap(find.widgetWithText(InputChip, '数学'));
+    // 点击编辑按钮打开重命名对话框。
+    await tester.tap(find.byTooltip('重命名科目「数学」'));
     await tester.pumpAndSettle();
     expect(find.textContaining('重命名科目「数学」'), findsOneWidget);
 
@@ -184,11 +185,41 @@ void main() {
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 
-    expect(find.text('高等数学'), findsOneWidget);
+    expect(find.widgetWithText(Card, '高等数学'), findsOneWidget);
     expect(find.text('数学'), findsNothing);
 
     // 数据库同步更新。
     final renamed = await subjects.byId(subject.id);
     expect(renamed?.name, '高等数学');
+  });
+
+  testWidgets('点击科目进入科目任务页，仅显示该科目任务，创建任务默认归属（回归：科目任务页）', (tester) async {
+    final subject = await subjects.create(goalId: goalId, name: '数学', color: '#3F6C51');
+    await tasks.create(goalId: goalId, subjectId: subject.id, title: '第一章习题', plannedDate: '2026-08-05');
+    await tasks.create(goalId: goalId, title: '未分类任务', plannedDate: '2026-08-05');
+
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    // 点击科目卡片进入科目任务页。
+    await tester.tap(find.widgetWithText(Card, '数学'));
+    await tester.pumpAndSettle();
+
+    // AppBar 显示科目名，只展示该科目的任务。
+    expect(find.text('数学'), findsWidgets);
+    expect(find.text('第一章习题'), findsOneWidget);
+    expect(find.text('未分类任务'), findsNothing);
+
+    // 科目页创建任务默认归属该科目。
+    await tester.tap(find.text('添加任务'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).first, '第二章习题');
+    await tester.tap(find.text('创建').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('第二章习题'), findsOneWidget);
+    final created = (await tasks.byGoal(goalId))
+        .firstWhere((t) => t.title == '第二章习题');
+    expect(created.subjectId, subject.id);
   });
 }

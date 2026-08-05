@@ -6,71 +6,92 @@ import '../../../core/database/database.dart';
 import '../data/task_repository_provider.dart';
 import 'task_form_dialog.dart';
 
-/// 任务列表区域（FR-3.1/FR-3.2）：目标详情页内创建、编辑、删除、完成任务。
+/// 任务列表区域（FR-3.1/FR-3.2）：创建、编辑、删除、完成任务。
+///
+/// 父级负责按上下文过滤 [tasks]（如科目任务页只传该科目任务，
+/// 目标详情页只传未分类任务），并处理 [onChanged] 触发数据刷新。
 class TaskListSection extends ConsumerWidget {
-  const TaskListSection({super.key, required this.goalId, required this.subjects});
+  const TaskListSection({
+    super.key,
+    required this.goalId,
+    required this.subjects,
+    required this.tasks,
+    required this.onChanged,
+    this.title,
+    this.emptyText = '还没有任务，点击「添加任务」开始安排',
+    this.defaultSubjectId,
+    this.showAddButton = true,
+  });
 
   final int goalId;
   final List<Subject> subjects;
+  final List<Task> tasks;
+  final VoidCallback onChanged;
+  final String? title;
+  final String emptyText;
+  final int? defaultSubjectId;
+  final bool showAddButton;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tasksAsync = ref.watch(taskListProvider(goalId));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Text('任务', style: Theme.of(context).textTheme.titleMedium),
-            const Spacer(),
-            TextButton.icon(
-              onPressed: () => TaskFormDialog.show(
-                context,
-                goalId: goalId,
-                subjects: subjects,
-              ),
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('添加任务'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        tasksAsync.when(
-          loading: () => const Padding(
-            padding: EdgeInsets.all(16),
-            child: Center(child: CircularProgressIndicator()),
-          ),
-          error: (error, _) => Text('任务加载失败：$error'),
-          data: (tasks) {
-            if (tasks.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Text('还没有任务，点击「添加任务」开始安排'),
-              );
-            }
-            return Column(
-              children: [
-                for (final task in tasks)
-                  _TaskTile(
+        if (title != null) ...[
+          Row(
+            children: [
+              Text(title!, style: Theme.of(context).textTheme.titleMedium),
+              if (showAddButton) ...[
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: () => TaskFormDialog.show(
+                    context,
                     goalId: goalId,
-                    task: task,
                     subjects: subjects,
+                    defaultSubjectId: defaultSubjectId,
                   ),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('添加任务'),
+                ),
               ],
-            );
-          },
-        ),
+            ],
+          ),
+          const SizedBox(height: 8),
+        ],
+        if (tasks.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Text(emptyText),
+          )
+        else
+          Column(
+            children: [
+              for (final task in tasks)
+                _TaskTile(
+                  goalId: goalId,
+                  task: task,
+                  subjects: subjects,
+                  onChanged: onChanged,
+                ),
+            ],
+          ),
       ],
     );
   }
 }
 
 class _TaskTile extends ConsumerWidget {
-  const _TaskTile({required this.goalId, required this.task, required this.subjects});
+  const _TaskTile({
+    required this.goalId,
+    required this.task,
+    required this.subjects,
+    required this.onChanged,
+  });
 
   final int goalId;
   final Task task;
   final List<Subject> subjects;
+  final VoidCallback onChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -90,7 +111,7 @@ class _TaskTile extends ConsumerWidget {
           onChanged: (value) async {
             final repo = ref.read(taskRepositoryProvider);
             await repo.setDone(task.id, value ?? false);
-            ref.invalidate(taskListProvider(goalId));
+            onChanged();
           },
         ),
         title: Text(
@@ -143,6 +164,7 @@ class _TaskTile extends ConsumerWidget {
           task: task,
           subjects: subjects,
         );
+        onChanged();
       case 'delete':
         final confirmed = await showDialog<bool>(
           context: context,
@@ -163,7 +185,7 @@ class _TaskTile extends ConsumerWidget {
         );
         if (confirmed == true) {
           await repo.delete(task.id);
-          ref.invalidate(taskListProvider(goalId));
+          onChanged();
         }
     }
   }
