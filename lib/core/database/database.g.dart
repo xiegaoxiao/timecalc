@@ -964,6 +964,774 @@ class SubjectsCompanion extends UpdateCompanion<Subject> {
   }
 }
 
+class $RecurrenceTemplatesTable extends RecurrenceTemplates
+    with TableInfo<$RecurrenceTemplatesTable, RecurrenceTemplate> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RecurrenceTemplatesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _goalIdMeta = const VerificationMeta('goalId');
+  @override
+  late final GeneratedColumn<int> goalId = GeneratedColumn<int>(
+    'goal_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES goals (id)',
+    ),
+  );
+  static const VerificationMeta _subjectIdMeta = const VerificationMeta(
+    'subjectId',
+  );
+  @override
+  late final GeneratedColumn<int> subjectId = GeneratedColumn<int>(
+    'subject_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES subjects (id)',
+    ),
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 200,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _estimatedMinutesMeta = const VerificationMeta(
+    'estimatedMinutes',
+  );
+  @override
+  late final GeneratedColumn<int> estimatedMinutes = GeneratedColumn<int>(
+    'estimated_minutes',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _ruleTypeMeta = const VerificationMeta(
+    'ruleType',
+  );
+  @override
+  late final GeneratedColumn<String> ruleType = GeneratedColumn<String>(
+    'rule_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _ruleJsonMeta = const VerificationMeta(
+    'ruleJson',
+  );
+  @override
+  late final GeneratedColumn<String> ruleJson = GeneratedColumn<String>(
+    'rule_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _startDateMeta = const VerificationMeta(
+    'startDate',
+  );
+  @override
+  late final GeneratedColumn<String> startDate = GeneratedColumn<String>(
+    'start_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _endDateMeta = const VerificationMeta(
+    'endDate',
+  );
+  @override
+  late final GeneratedColumn<String> endDate = GeneratedColumn<String>(
+    'end_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _activeMeta = const VerificationMeta('active');
+  @override
+  late final GeneratedColumn<bool> active = GeneratedColumn<bool>(
+    'active',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("active" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _generatedThroughDateMeta =
+      const VerificationMeta('generatedThroughDate');
+  @override
+  late final GeneratedColumn<String> generatedThroughDate =
+      GeneratedColumn<String>(
+        'generated_through_date',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    goalId,
+    subjectId,
+    title,
+    estimatedMinutes,
+    ruleType,
+    ruleJson,
+    startDate,
+    endDate,
+    active,
+    generatedThroughDate,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'recurrence_templates';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<RecurrenceTemplate> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('goal_id')) {
+      context.handle(
+        _goalIdMeta,
+        goalId.isAcceptableOrUnknown(data['goal_id']!, _goalIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_goalIdMeta);
+    }
+    if (data.containsKey('subject_id')) {
+      context.handle(
+        _subjectIdMeta,
+        subjectId.isAcceptableOrUnknown(data['subject_id']!, _subjectIdMeta),
+      );
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('estimated_minutes')) {
+      context.handle(
+        _estimatedMinutesMeta,
+        estimatedMinutes.isAcceptableOrUnknown(
+          data['estimated_minutes']!,
+          _estimatedMinutesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('rule_type')) {
+      context.handle(
+        _ruleTypeMeta,
+        ruleType.isAcceptableOrUnknown(data['rule_type']!, _ruleTypeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_ruleTypeMeta);
+    }
+    if (data.containsKey('rule_json')) {
+      context.handle(
+        _ruleJsonMeta,
+        ruleJson.isAcceptableOrUnknown(data['rule_json']!, _ruleJsonMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_ruleJsonMeta);
+    }
+    if (data.containsKey('start_date')) {
+      context.handle(
+        _startDateMeta,
+        startDate.isAcceptableOrUnknown(data['start_date']!, _startDateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_startDateMeta);
+    }
+    if (data.containsKey('end_date')) {
+      context.handle(
+        _endDateMeta,
+        endDate.isAcceptableOrUnknown(data['end_date']!, _endDateMeta),
+      );
+    }
+    if (data.containsKey('active')) {
+      context.handle(
+        _activeMeta,
+        active.isAcceptableOrUnknown(data['active']!, _activeMeta),
+      );
+    }
+    if (data.containsKey('generated_through_date')) {
+      context.handle(
+        _generatedThroughDateMeta,
+        generatedThroughDate.isAcceptableOrUnknown(
+          data['generated_through_date']!,
+          _generatedThroughDateMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_generatedThroughDateMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  RecurrenceTemplate map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return RecurrenceTemplate(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      goalId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}goal_id'],
+      )!,
+      subjectId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}subject_id'],
+      ),
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      estimatedMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}estimated_minutes'],
+      ),
+      ruleType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}rule_type'],
+      )!,
+      ruleJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}rule_json'],
+      )!,
+      startDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}start_date'],
+      )!,
+      endDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}end_date'],
+      ),
+      active: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}active'],
+      )!,
+      generatedThroughDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}generated_through_date'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $RecurrenceTemplatesTable createAlias(String alias) {
+    return $RecurrenceTemplatesTable(attachedDatabase, alias);
+  }
+}
+
+class RecurrenceTemplate extends DataClass
+    implements Insertable<RecurrenceTemplate> {
+  final int id;
+  final int goalId;
+  final int? subjectId;
+  final String title;
+  final int? estimatedMinutes;
+  final String ruleType;
+  final String ruleJson;
+  final String startDate;
+  final String? endDate;
+  final bool active;
+  final String generatedThroughDate;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const RecurrenceTemplate({
+    required this.id,
+    required this.goalId,
+    this.subjectId,
+    required this.title,
+    this.estimatedMinutes,
+    required this.ruleType,
+    required this.ruleJson,
+    required this.startDate,
+    this.endDate,
+    required this.active,
+    required this.generatedThroughDate,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['goal_id'] = Variable<int>(goalId);
+    if (!nullToAbsent || subjectId != null) {
+      map['subject_id'] = Variable<int>(subjectId);
+    }
+    map['title'] = Variable<String>(title);
+    if (!nullToAbsent || estimatedMinutes != null) {
+      map['estimated_minutes'] = Variable<int>(estimatedMinutes);
+    }
+    map['rule_type'] = Variable<String>(ruleType);
+    map['rule_json'] = Variable<String>(ruleJson);
+    map['start_date'] = Variable<String>(startDate);
+    if (!nullToAbsent || endDate != null) {
+      map['end_date'] = Variable<String>(endDate);
+    }
+    map['active'] = Variable<bool>(active);
+    map['generated_through_date'] = Variable<String>(generatedThroughDate);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  RecurrenceTemplatesCompanion toCompanion(bool nullToAbsent) {
+    return RecurrenceTemplatesCompanion(
+      id: Value(id),
+      goalId: Value(goalId),
+      subjectId: subjectId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(subjectId),
+      title: Value(title),
+      estimatedMinutes: estimatedMinutes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(estimatedMinutes),
+      ruleType: Value(ruleType),
+      ruleJson: Value(ruleJson),
+      startDate: Value(startDate),
+      endDate: endDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(endDate),
+      active: Value(active),
+      generatedThroughDate: Value(generatedThroughDate),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory RecurrenceTemplate.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return RecurrenceTemplate(
+      id: serializer.fromJson<int>(json['id']),
+      goalId: serializer.fromJson<int>(json['goalId']),
+      subjectId: serializer.fromJson<int?>(json['subjectId']),
+      title: serializer.fromJson<String>(json['title']),
+      estimatedMinutes: serializer.fromJson<int?>(json['estimatedMinutes']),
+      ruleType: serializer.fromJson<String>(json['ruleType']),
+      ruleJson: serializer.fromJson<String>(json['ruleJson']),
+      startDate: serializer.fromJson<String>(json['startDate']),
+      endDate: serializer.fromJson<String?>(json['endDate']),
+      active: serializer.fromJson<bool>(json['active']),
+      generatedThroughDate: serializer.fromJson<String>(
+        json['generatedThroughDate'],
+      ),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'goalId': serializer.toJson<int>(goalId),
+      'subjectId': serializer.toJson<int?>(subjectId),
+      'title': serializer.toJson<String>(title),
+      'estimatedMinutes': serializer.toJson<int?>(estimatedMinutes),
+      'ruleType': serializer.toJson<String>(ruleType),
+      'ruleJson': serializer.toJson<String>(ruleJson),
+      'startDate': serializer.toJson<String>(startDate),
+      'endDate': serializer.toJson<String?>(endDate),
+      'active': serializer.toJson<bool>(active),
+      'generatedThroughDate': serializer.toJson<String>(generatedThroughDate),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  RecurrenceTemplate copyWith({
+    int? id,
+    int? goalId,
+    Value<int?> subjectId = const Value.absent(),
+    String? title,
+    Value<int?> estimatedMinutes = const Value.absent(),
+    String? ruleType,
+    String? ruleJson,
+    String? startDate,
+    Value<String?> endDate = const Value.absent(),
+    bool? active,
+    String? generatedThroughDate,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => RecurrenceTemplate(
+    id: id ?? this.id,
+    goalId: goalId ?? this.goalId,
+    subjectId: subjectId.present ? subjectId.value : this.subjectId,
+    title: title ?? this.title,
+    estimatedMinutes: estimatedMinutes.present
+        ? estimatedMinutes.value
+        : this.estimatedMinutes,
+    ruleType: ruleType ?? this.ruleType,
+    ruleJson: ruleJson ?? this.ruleJson,
+    startDate: startDate ?? this.startDate,
+    endDate: endDate.present ? endDate.value : this.endDate,
+    active: active ?? this.active,
+    generatedThroughDate: generatedThroughDate ?? this.generatedThroughDate,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  RecurrenceTemplate copyWithCompanion(RecurrenceTemplatesCompanion data) {
+    return RecurrenceTemplate(
+      id: data.id.present ? data.id.value : this.id,
+      goalId: data.goalId.present ? data.goalId.value : this.goalId,
+      subjectId: data.subjectId.present ? data.subjectId.value : this.subjectId,
+      title: data.title.present ? data.title.value : this.title,
+      estimatedMinutes: data.estimatedMinutes.present
+          ? data.estimatedMinutes.value
+          : this.estimatedMinutes,
+      ruleType: data.ruleType.present ? data.ruleType.value : this.ruleType,
+      ruleJson: data.ruleJson.present ? data.ruleJson.value : this.ruleJson,
+      startDate: data.startDate.present ? data.startDate.value : this.startDate,
+      endDate: data.endDate.present ? data.endDate.value : this.endDate,
+      active: data.active.present ? data.active.value : this.active,
+      generatedThroughDate: data.generatedThroughDate.present
+          ? data.generatedThroughDate.value
+          : this.generatedThroughDate,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RecurrenceTemplate(')
+          ..write('id: $id, ')
+          ..write('goalId: $goalId, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('title: $title, ')
+          ..write('estimatedMinutes: $estimatedMinutes, ')
+          ..write('ruleType: $ruleType, ')
+          ..write('ruleJson: $ruleJson, ')
+          ..write('startDate: $startDate, ')
+          ..write('endDate: $endDate, ')
+          ..write('active: $active, ')
+          ..write('generatedThroughDate: $generatedThroughDate, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    goalId,
+    subjectId,
+    title,
+    estimatedMinutes,
+    ruleType,
+    ruleJson,
+    startDate,
+    endDate,
+    active,
+    generatedThroughDate,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RecurrenceTemplate &&
+          other.id == this.id &&
+          other.goalId == this.goalId &&
+          other.subjectId == this.subjectId &&
+          other.title == this.title &&
+          other.estimatedMinutes == this.estimatedMinutes &&
+          other.ruleType == this.ruleType &&
+          other.ruleJson == this.ruleJson &&
+          other.startDate == this.startDate &&
+          other.endDate == this.endDate &&
+          other.active == this.active &&
+          other.generatedThroughDate == this.generatedThroughDate &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class RecurrenceTemplatesCompanion extends UpdateCompanion<RecurrenceTemplate> {
+  final Value<int> id;
+  final Value<int> goalId;
+  final Value<int?> subjectId;
+  final Value<String> title;
+  final Value<int?> estimatedMinutes;
+  final Value<String> ruleType;
+  final Value<String> ruleJson;
+  final Value<String> startDate;
+  final Value<String?> endDate;
+  final Value<bool> active;
+  final Value<String> generatedThroughDate;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  const RecurrenceTemplatesCompanion({
+    this.id = const Value.absent(),
+    this.goalId = const Value.absent(),
+    this.subjectId = const Value.absent(),
+    this.title = const Value.absent(),
+    this.estimatedMinutes = const Value.absent(),
+    this.ruleType = const Value.absent(),
+    this.ruleJson = const Value.absent(),
+    this.startDate = const Value.absent(),
+    this.endDate = const Value.absent(),
+    this.active = const Value.absent(),
+    this.generatedThroughDate = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  RecurrenceTemplatesCompanion.insert({
+    this.id = const Value.absent(),
+    required int goalId,
+    this.subjectId = const Value.absent(),
+    required String title,
+    this.estimatedMinutes = const Value.absent(),
+    required String ruleType,
+    required String ruleJson,
+    required String startDate,
+    this.endDate = const Value.absent(),
+    this.active = const Value.absent(),
+    required String generatedThroughDate,
+    required DateTime createdAt,
+    required DateTime updatedAt,
+  }) : goalId = Value(goalId),
+       title = Value(title),
+       ruleType = Value(ruleType),
+       ruleJson = Value(ruleJson),
+       startDate = Value(startDate),
+       generatedThroughDate = Value(generatedThroughDate),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<RecurrenceTemplate> custom({
+    Expression<int>? id,
+    Expression<int>? goalId,
+    Expression<int>? subjectId,
+    Expression<String>? title,
+    Expression<int>? estimatedMinutes,
+    Expression<String>? ruleType,
+    Expression<String>? ruleJson,
+    Expression<String>? startDate,
+    Expression<String>? endDate,
+    Expression<bool>? active,
+    Expression<String>? generatedThroughDate,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (goalId != null) 'goal_id': goalId,
+      if (subjectId != null) 'subject_id': subjectId,
+      if (title != null) 'title': title,
+      if (estimatedMinutes != null) 'estimated_minutes': estimatedMinutes,
+      if (ruleType != null) 'rule_type': ruleType,
+      if (ruleJson != null) 'rule_json': ruleJson,
+      if (startDate != null) 'start_date': startDate,
+      if (endDate != null) 'end_date': endDate,
+      if (active != null) 'active': active,
+      if (generatedThroughDate != null)
+        'generated_through_date': generatedThroughDate,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  RecurrenceTemplatesCompanion copyWith({
+    Value<int>? id,
+    Value<int>? goalId,
+    Value<int?>? subjectId,
+    Value<String>? title,
+    Value<int?>? estimatedMinutes,
+    Value<String>? ruleType,
+    Value<String>? ruleJson,
+    Value<String>? startDate,
+    Value<String?>? endDate,
+    Value<bool>? active,
+    Value<String>? generatedThroughDate,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+  }) {
+    return RecurrenceTemplatesCompanion(
+      id: id ?? this.id,
+      goalId: goalId ?? this.goalId,
+      subjectId: subjectId ?? this.subjectId,
+      title: title ?? this.title,
+      estimatedMinutes: estimatedMinutes ?? this.estimatedMinutes,
+      ruleType: ruleType ?? this.ruleType,
+      ruleJson: ruleJson ?? this.ruleJson,
+      startDate: startDate ?? this.startDate,
+      endDate: endDate ?? this.endDate,
+      active: active ?? this.active,
+      generatedThroughDate: generatedThroughDate ?? this.generatedThroughDate,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (goalId.present) {
+      map['goal_id'] = Variable<int>(goalId.value);
+    }
+    if (subjectId.present) {
+      map['subject_id'] = Variable<int>(subjectId.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (estimatedMinutes.present) {
+      map['estimated_minutes'] = Variable<int>(estimatedMinutes.value);
+    }
+    if (ruleType.present) {
+      map['rule_type'] = Variable<String>(ruleType.value);
+    }
+    if (ruleJson.present) {
+      map['rule_json'] = Variable<String>(ruleJson.value);
+    }
+    if (startDate.present) {
+      map['start_date'] = Variable<String>(startDate.value);
+    }
+    if (endDate.present) {
+      map['end_date'] = Variable<String>(endDate.value);
+    }
+    if (active.present) {
+      map['active'] = Variable<bool>(active.value);
+    }
+    if (generatedThroughDate.present) {
+      map['generated_through_date'] = Variable<String>(
+        generatedThroughDate.value,
+      );
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RecurrenceTemplatesCompanion(')
+          ..write('id: $id, ')
+          ..write('goalId: $goalId, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('title: $title, ')
+          ..write('estimatedMinutes: $estimatedMinutes, ')
+          ..write('ruleType: $ruleType, ')
+          ..write('ruleJson: $ruleJson, ')
+          ..write('startDate: $startDate, ')
+          ..write('endDate: $endDate, ')
+          ..write('active: $active, ')
+          ..write('generatedThroughDate: $generatedThroughDate, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
   @override
   final GeneratedDatabase attachedDatabase;
@@ -1129,6 +1897,19 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _recurrenceTemplateIdMeta =
+      const VerificationMeta('recurrenceTemplateId');
+  @override
+  late final GeneratedColumn<int> recurrenceTemplateId = GeneratedColumn<int>(
+    'recurrence_template_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES recurrence_templates (id)',
+    ),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1145,6 +1926,7 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     updatedAt,
     originalPlannedDate,
     archivedAt,
+    recurrenceTemplateId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1261,6 +2043,15 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
         archivedAt.isAcceptableOrUnknown(data['archived_at']!, _archivedAtMeta),
       );
     }
+    if (data.containsKey('recurrence_template_id')) {
+      context.handle(
+        _recurrenceTemplateIdMeta,
+        recurrenceTemplateId.isAcceptableOrUnknown(
+          data['recurrence_template_id']!,
+          _recurrenceTemplateIdMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1326,6 +2117,10 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}archived_at'],
       ),
+      recurrenceTemplateId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}recurrence_template_id'],
+      ),
     );
   }
 
@@ -1360,6 +2155,12 @@ class Task extends DataClass implements Insertable<Task> {
   /// 非 null 表示该任务已被归档：不参与负载/日历统计与常规列表，仅出现在
   /// 目标详情的「历史任务」区，可手动恢复。未归档任务为 null。
   final DateTime? archivedAt;
+
+  /// 所属重复模板（FR-4，schema v4 引入）。
+  ///
+  /// 非 null 表示该任务是重复任务的实例：随模板规则由 generateDue 滚动生成；
+  /// 模板停止后仍保留为普通任务。普通任务为 null。
+  final int? recurrenceTemplateId;
   const Task({
     required this.id,
     required this.goalId,
@@ -1375,6 +2176,7 @@ class Task extends DataClass implements Insertable<Task> {
     required this.updatedAt,
     this.originalPlannedDate,
     this.archivedAt,
+    this.recurrenceTemplateId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1405,6 +2207,9 @@ class Task extends DataClass implements Insertable<Task> {
     if (!nullToAbsent || archivedAt != null) {
       map['archived_at'] = Variable<DateTime>(archivedAt);
     }
+    if (!nullToAbsent || recurrenceTemplateId != null) {
+      map['recurrence_template_id'] = Variable<int>(recurrenceTemplateId);
+    }
     return map;
   }
 
@@ -1434,6 +2239,9 @@ class Task extends DataClass implements Insertable<Task> {
       archivedAt: archivedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(archivedAt),
+      recurrenceTemplateId: recurrenceTemplateId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(recurrenceTemplateId),
     );
   }
 
@@ -1459,6 +2267,9 @@ class Task extends DataClass implements Insertable<Task> {
         json['originalPlannedDate'],
       ),
       archivedAt: serializer.fromJson<DateTime?>(json['archivedAt']),
+      recurrenceTemplateId: serializer.fromJson<int?>(
+        json['recurrenceTemplateId'],
+      ),
     );
   }
   @override
@@ -1479,6 +2290,7 @@ class Task extends DataClass implements Insertable<Task> {
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'originalPlannedDate': serializer.toJson<String?>(originalPlannedDate),
       'archivedAt': serializer.toJson<DateTime?>(archivedAt),
+      'recurrenceTemplateId': serializer.toJson<int?>(recurrenceTemplateId),
     };
   }
 
@@ -1497,6 +2309,7 @@ class Task extends DataClass implements Insertable<Task> {
     DateTime? updatedAt,
     Value<String?> originalPlannedDate = const Value.absent(),
     Value<DateTime?> archivedAt = const Value.absent(),
+    Value<int?> recurrenceTemplateId = const Value.absent(),
   }) => Task(
     id: id ?? this.id,
     goalId: goalId ?? this.goalId,
@@ -1516,6 +2329,9 @@ class Task extends DataClass implements Insertable<Task> {
         ? originalPlannedDate.value
         : this.originalPlannedDate,
     archivedAt: archivedAt.present ? archivedAt.value : this.archivedAt,
+    recurrenceTemplateId: recurrenceTemplateId.present
+        ? recurrenceTemplateId.value
+        : this.recurrenceTemplateId,
   );
   Task copyWithCompanion(TasksCompanion data) {
     return Task(
@@ -1543,6 +2359,9 @@ class Task extends DataClass implements Insertable<Task> {
       archivedAt: data.archivedAt.present
           ? data.archivedAt.value
           : this.archivedAt,
+      recurrenceTemplateId: data.recurrenceTemplateId.present
+          ? data.recurrenceTemplateId.value
+          : this.recurrenceTemplateId,
     );
   }
 
@@ -1562,7 +2381,8 @@ class Task extends DataClass implements Insertable<Task> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('originalPlannedDate: $originalPlannedDate, ')
-          ..write('archivedAt: $archivedAt')
+          ..write('archivedAt: $archivedAt, ')
+          ..write('recurrenceTemplateId: $recurrenceTemplateId')
           ..write(')'))
         .toString();
   }
@@ -1583,6 +2403,7 @@ class Task extends DataClass implements Insertable<Task> {
     updatedAt,
     originalPlannedDate,
     archivedAt,
+    recurrenceTemplateId,
   );
   @override
   bool operator ==(Object other) =>
@@ -1601,7 +2422,8 @@ class Task extends DataClass implements Insertable<Task> {
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.originalPlannedDate == this.originalPlannedDate &&
-          other.archivedAt == this.archivedAt);
+          other.archivedAt == this.archivedAt &&
+          other.recurrenceTemplateId == this.recurrenceTemplateId);
 }
 
 class TasksCompanion extends UpdateCompanion<Task> {
@@ -1619,6 +2441,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
   final Value<DateTime> updatedAt;
   final Value<String?> originalPlannedDate;
   final Value<DateTime?> archivedAt;
+  final Value<int?> recurrenceTemplateId;
   const TasksCompanion({
     this.id = const Value.absent(),
     this.goalId = const Value.absent(),
@@ -1634,6 +2457,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.updatedAt = const Value.absent(),
     this.originalPlannedDate = const Value.absent(),
     this.archivedAt = const Value.absent(),
+    this.recurrenceTemplateId = const Value.absent(),
   });
   TasksCompanion.insert({
     this.id = const Value.absent(),
@@ -1650,6 +2474,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     required DateTime updatedAt,
     this.originalPlannedDate = const Value.absent(),
     this.archivedAt = const Value.absent(),
+    this.recurrenceTemplateId = const Value.absent(),
   }) : goalId = Value(goalId),
        title = Value(title),
        plannedDate = Value(plannedDate),
@@ -1670,6 +2495,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Expression<DateTime>? updatedAt,
     Expression<String>? originalPlannedDate,
     Expression<DateTime>? archivedAt,
+    Expression<int>? recurrenceTemplateId,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1687,6 +2513,8 @@ class TasksCompanion extends UpdateCompanion<Task> {
       if (originalPlannedDate != null)
         'original_planned_date': originalPlannedDate,
       if (archivedAt != null) 'archived_at': archivedAt,
+      if (recurrenceTemplateId != null)
+        'recurrence_template_id': recurrenceTemplateId,
     });
   }
 
@@ -1705,6 +2533,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Value<DateTime>? updatedAt,
     Value<String?>? originalPlannedDate,
     Value<DateTime?>? archivedAt,
+    Value<int?>? recurrenceTemplateId,
   }) {
     return TasksCompanion(
       id: id ?? this.id,
@@ -1721,6 +2550,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
       updatedAt: updatedAt ?? this.updatedAt,
       originalPlannedDate: originalPlannedDate ?? this.originalPlannedDate,
       archivedAt: archivedAt ?? this.archivedAt,
+      recurrenceTemplateId: recurrenceTemplateId ?? this.recurrenceTemplateId,
     );
   }
 
@@ -1771,6 +2601,9 @@ class TasksCompanion extends UpdateCompanion<Task> {
     if (archivedAt.present) {
       map['archived_at'] = Variable<DateTime>(archivedAt.value);
     }
+    if (recurrenceTemplateId.present) {
+      map['recurrence_template_id'] = Variable<int>(recurrenceTemplateId.value);
+    }
     return map;
   }
 
@@ -1790,7 +2623,8 @@ class TasksCompanion extends UpdateCompanion<Task> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('originalPlannedDate: $originalPlannedDate, ')
-          ..write('archivedAt: $archivedAt')
+          ..write('archivedAt: $archivedAt, ')
+          ..write('recurrenceTemplateId: $recurrenceTemplateId')
           ..write(')'))
         .toString();
   }
@@ -2171,6 +3005,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $GoalsTable goals = $GoalsTable(this);
   late final $SubjectsTable subjects = $SubjectsTable(this);
+  late final $RecurrenceTemplatesTable recurrenceTemplates =
+      $RecurrenceTemplatesTable(this);
   late final $TasksTable tasks = $TasksTable(this);
   late final $SettingsTable settings = $SettingsTable(this);
   @override
@@ -2180,6 +3016,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     goals,
     subjects,
+    recurrenceTemplates,
     tasks,
     settings,
   ];
@@ -2226,6 +3063,30 @@ final class $$GoalsTableReferences
     ).filter((f) => f.goalId.id.sqlEquals($_itemColumn<int>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_subjectsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<
+    $RecurrenceTemplatesTable,
+    List<RecurrenceTemplate>
+  >
+  _recurrenceTemplatesRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.recurrenceTemplates,
+        aliasName: 'goals__id__recurrence_templates__goal_id',
+      );
+
+  $$RecurrenceTemplatesTableProcessedTableManager get recurrenceTemplatesRefs {
+    final manager = $$RecurrenceTemplatesTableTableManager(
+      $_db,
+      $_db.recurrenceTemplates,
+    ).filter((f) => f.goalId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _recurrenceTemplatesRefsTable($_db),
+    );
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -2315,6 +3176,31 @@ class $$GoalsTableFilterComposer extends Composer<_$AppDatabase, $GoalsTable> {
           }) => $$SubjectsTableFilterComposer(
             $db: $db,
             $table: $db.subjects,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> recurrenceTemplatesRefs(
+    Expression<bool> Function($$RecurrenceTemplatesTableFilterComposer f) f,
+  ) {
+    final $$RecurrenceTemplatesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.recurrenceTemplates,
+      getReferencedColumn: (t) => t.goalId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RecurrenceTemplatesTableFilterComposer(
+            $db: $db,
+            $table: $db.recurrenceTemplates,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -2464,6 +3350,32 @@ class $$GoalsTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> recurrenceTemplatesRefs<T extends Object>(
+    Expression<T> Function($$RecurrenceTemplatesTableAnnotationComposer a) f,
+  ) {
+    final $$RecurrenceTemplatesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.recurrenceTemplates,
+          getReferencedColumn: (t) => t.goalId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$RecurrenceTemplatesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.recurrenceTemplates,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
   Expression<T> tasksRefs<T extends Object>(
     Expression<T> Function($$TasksTableAnnotationComposer a) f,
   ) {
@@ -2503,7 +3415,11 @@ class $$GoalsTableTableManager
           $$GoalsTableUpdateCompanionBuilder,
           (Goal, $$GoalsTableReferences),
           Goal,
-          PrefetchHooks Function({bool subjectsRefs, bool tasksRefs})
+          PrefetchHooks Function({
+            bool subjectsRefs,
+            bool recurrenceTemplatesRefs,
+            bool tasksRefs,
+          })
         > {
   $$GoalsTableTableManager(_$AppDatabase db, $GoalsTable table)
     : super(
@@ -2562,43 +3478,77 @@ class $$GoalsTableTableManager
                     (e.readTable(table), $$GoalsTableReferences(db, table, e)),
               )
               .toList(),
-          prefetchHooksCallback: ({subjectsRefs = false, tasksRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [
-                if (subjectsRefs) db.subjects,
-                if (tasksRefs) db.tasks,
-              ],
-              addJoins: null,
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (subjectsRefs)
-                    await $_getPrefetchedData<Goal, $GoalsTable, Subject>(
-                      currentTable: table,
-                      referencedTable: $$GoalsTableReferences
-                          ._subjectsRefsTable(db),
-                      managerFromTypedResult: (p0) =>
-                          $$GoalsTableReferences(db, table, p0).subjectsRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.goalId == item.id),
-                      typedResults: items,
-                    ),
-                  if (tasksRefs)
-                    await $_getPrefetchedData<Goal, $GoalsTable, Task>(
-                      currentTable: table,
-                      referencedTable: $$GoalsTableReferences._tasksRefsTable(
-                        db,
-                      ),
-                      managerFromTypedResult: (p0) =>
-                          $$GoalsTableReferences(db, table, p0).tasksRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.goalId == item.id),
-                      typedResults: items,
-                    ),
-                ];
+          prefetchHooksCallback:
+              ({
+                subjectsRefs = false,
+                recurrenceTemplatesRefs = false,
+                tasksRefs = false,
+              }) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (subjectsRefs) db.subjects,
+                    if (recurrenceTemplatesRefs) db.recurrenceTemplates,
+                    if (tasksRefs) db.tasks,
+                  ],
+                  addJoins: null,
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (subjectsRefs)
+                        await $_getPrefetchedData<Goal, $GoalsTable, Subject>(
+                          currentTable: table,
+                          referencedTable: $$GoalsTableReferences
+                              ._subjectsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$GoalsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).subjectsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.goalId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (recurrenceTemplatesRefs)
+                        await $_getPrefetchedData<
+                          Goal,
+                          $GoalsTable,
+                          RecurrenceTemplate
+                        >(
+                          currentTable: table,
+                          referencedTable: $$GoalsTableReferences
+                              ._recurrenceTemplatesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$GoalsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).recurrenceTemplatesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.goalId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (tasksRefs)
+                        await $_getPrefetchedData<Goal, $GoalsTable, Task>(
+                          currentTable: table,
+                          referencedTable: $$GoalsTableReferences
+                              ._tasksRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$GoalsTableReferences(db, table, p0).tasksRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.goalId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -2615,7 +3565,11 @@ typedef $$GoalsTableProcessedTableManager =
       $$GoalsTableUpdateCompanionBuilder,
       (Goal, $$GoalsTableReferences),
       Goal,
-      PrefetchHooks Function({bool subjectsRefs, bool tasksRefs})
+      PrefetchHooks Function({
+        bool subjectsRefs,
+        bool recurrenceTemplatesRefs,
+        bool tasksRefs,
+      })
     >;
 typedef $$SubjectsTableCreateCompanionBuilder =
     SubjectsCompanion Function({
@@ -2656,6 +3610,30 @@ final class $$SubjectsTableReferences
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static MultiTypedResultKey<
+    $RecurrenceTemplatesTable,
+    List<RecurrenceTemplate>
+  >
+  _recurrenceTemplatesRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.recurrenceTemplates,
+        aliasName: 'subjects__id__recurrence_templates__subject_id',
+      );
+
+  $$RecurrenceTemplatesTableProcessedTableManager get recurrenceTemplatesRefs {
+    final manager = $$RecurrenceTemplatesTableTableManager(
+      $_db,
+      $_db.recurrenceTemplates,
+    ).filter((f) => f.subjectId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _recurrenceTemplatesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
     );
   }
 
@@ -2739,6 +3717,31 @@ class $$SubjectsTableFilterComposer
           ),
     );
     return composer;
+  }
+
+  Expression<bool> recurrenceTemplatesRefs(
+    Expression<bool> Function($$RecurrenceTemplatesTableFilterComposer f) f,
+  ) {
+    final $$RecurrenceTemplatesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.recurrenceTemplates,
+      getReferencedColumn: (t) => t.subjectId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RecurrenceTemplatesTableFilterComposer(
+            $db: $db,
+            $table: $db.recurrenceTemplates,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
   }
 
   Expression<bool> tasksRefs(
@@ -2880,6 +3883,32 @@ class $$SubjectsTableAnnotationComposer
     return composer;
   }
 
+  Expression<T> recurrenceTemplatesRefs<T extends Object>(
+    Expression<T> Function($$RecurrenceTemplatesTableAnnotationComposer a) f,
+  ) {
+    final $$RecurrenceTemplatesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.recurrenceTemplates,
+          getReferencedColumn: (t) => t.subjectId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$RecurrenceTemplatesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.recurrenceTemplates,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
   Expression<T> tasksRefs<T extends Object>(
     Expression<T> Function($$TasksTableAnnotationComposer a) f,
   ) {
@@ -2919,7 +3948,11 @@ class $$SubjectsTableTableManager
           $$SubjectsTableUpdateCompanionBuilder,
           (Subject, $$SubjectsTableReferences),
           Subject,
-          PrefetchHooks Function({bool goalId, bool tasksRefs})
+          PrefetchHooks Function({
+            bool goalId,
+            bool recurrenceTemplatesRefs,
+            bool tasksRefs,
+          })
         > {
   $$SubjectsTableTableManager(_$AppDatabase db, $SubjectsTable table)
     : super(
@@ -2976,59 +4009,98 @@ class $$SubjectsTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({goalId = false, tasksRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [if (tasksRefs) db.tasks],
-              addJoins:
-                  <
-                    T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (goalId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.goalId,
-                                referencedTable: $$SubjectsTableReferences
-                                    ._goalIdTable(db),
-                                referencedColumn: $$SubjectsTableReferences
-                                    ._goalIdTable(db)
-                                    .id,
-                              )
-                              as T;
-                    }
+          prefetchHooksCallback:
+              ({
+                goalId = false,
+                recurrenceTemplatesRefs = false,
+                tasksRefs = false,
+              }) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (recurrenceTemplatesRefs) db.recurrenceTemplates,
+                    if (tasksRefs) db.tasks,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (goalId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.goalId,
+                                    referencedTable: $$SubjectsTableReferences
+                                        ._goalIdTable(db),
+                                    referencedColumn: $$SubjectsTableReferences
+                                        ._goalIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
 
-                    return state;
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (recurrenceTemplatesRefs)
+                        await $_getPrefetchedData<
+                          Subject,
+                          $SubjectsTable,
+                          RecurrenceTemplate
+                        >(
+                          currentTable: table,
+                          referencedTable: $$SubjectsTableReferences
+                              ._recurrenceTemplatesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$SubjectsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).recurrenceTemplatesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.subjectId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (tasksRefs)
+                        await $_getPrefetchedData<
+                          Subject,
+                          $SubjectsTable,
+                          Task
+                        >(
+                          currentTable: table,
+                          referencedTable: $$SubjectsTableReferences
+                              ._tasksRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$SubjectsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).tasksRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.subjectId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
                   },
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (tasksRefs)
-                    await $_getPrefetchedData<Subject, $SubjectsTable, Task>(
-                      currentTable: table,
-                      referencedTable: $$SubjectsTableReferences
-                          ._tasksRefsTable(db),
-                      managerFromTypedResult: (p0) =>
-                          $$SubjectsTableReferences(db, table, p0).tasksRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.subjectId == item.id),
-                      typedResults: items,
-                    ),
-                ];
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -3045,7 +4117,676 @@ typedef $$SubjectsTableProcessedTableManager =
       $$SubjectsTableUpdateCompanionBuilder,
       (Subject, $$SubjectsTableReferences),
       Subject,
-      PrefetchHooks Function({bool goalId, bool tasksRefs})
+      PrefetchHooks Function({
+        bool goalId,
+        bool recurrenceTemplatesRefs,
+        bool tasksRefs,
+      })
+    >;
+typedef $$RecurrenceTemplatesTableCreateCompanionBuilder =
+    RecurrenceTemplatesCompanion Function({
+      Value<int> id,
+      required int goalId,
+      Value<int?> subjectId,
+      required String title,
+      Value<int?> estimatedMinutes,
+      required String ruleType,
+      required String ruleJson,
+      required String startDate,
+      Value<String?> endDate,
+      Value<bool> active,
+      required String generatedThroughDate,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+    });
+typedef $$RecurrenceTemplatesTableUpdateCompanionBuilder =
+    RecurrenceTemplatesCompanion Function({
+      Value<int> id,
+      Value<int> goalId,
+      Value<int?> subjectId,
+      Value<String> title,
+      Value<int?> estimatedMinutes,
+      Value<String> ruleType,
+      Value<String> ruleJson,
+      Value<String> startDate,
+      Value<String?> endDate,
+      Value<bool> active,
+      Value<String> generatedThroughDate,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+
+final class $$RecurrenceTemplatesTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $RecurrenceTemplatesTable,
+          RecurrenceTemplate
+        > {
+  $$RecurrenceTemplatesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $GoalsTable _goalIdTable(_$AppDatabase db) =>
+      db.goals.createAlias('recurrence_templates__goal_id__goals__id');
+
+  $$GoalsTableProcessedTableManager get goalId {
+    final $_column = $_itemColumn<int>('goal_id')!;
+
+    final manager = $$GoalsTableTableManager(
+      $_db,
+      $_db.goals,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_goalIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $SubjectsTable _subjectIdTable(_$AppDatabase db) =>
+      db.subjects.createAlias('recurrence_templates__subject_id__subjects__id');
+
+  $$SubjectsTableProcessedTableManager? get subjectId {
+    final $_column = $_itemColumn<int>('subject_id');
+    if ($_column == null) return null;
+    final manager = $$SubjectsTableTableManager(
+      $_db,
+      $_db.subjects,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_subjectIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static MultiTypedResultKey<$TasksTable, List<Task>> _tasksRefsTable(
+    _$AppDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.tasks,
+    aliasName: 'recurrence_templates__id__tasks__recurrence_template_id',
+  );
+
+  $$TasksTableProcessedTableManager get tasksRefs {
+    final manager = $$TasksTableTableManager($_db, $_db.tasks).filter(
+      (f) => f.recurrenceTemplateId.id.sqlEquals($_itemColumn<int>('id')!),
+    );
+
+    final cache = $_typedResult.readTableOrNull(_tasksRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$RecurrenceTemplatesTableFilterComposer
+    extends Composer<_$AppDatabase, $RecurrenceTemplatesTable> {
+  $$RecurrenceTemplatesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get estimatedMinutes => $composableBuilder(
+    column: $table.estimatedMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ruleType => $composableBuilder(
+    column: $table.ruleType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ruleJson => $composableBuilder(
+    column: $table.ruleJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get startDate => $composableBuilder(
+    column: $table.startDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get endDate => $composableBuilder(
+    column: $table.endDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get active => $composableBuilder(
+    column: $table.active,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get generatedThroughDate => $composableBuilder(
+    column: $table.generatedThroughDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$GoalsTableFilterComposer get goalId {
+    final $$GoalsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.goalId,
+      referencedTable: $db.goals,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$GoalsTableFilterComposer(
+            $db: $db,
+            $table: $db.goals,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$SubjectsTableFilterComposer get subjectId {
+    final $$SubjectsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.subjectId,
+      referencedTable: $db.subjects,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SubjectsTableFilterComposer(
+            $db: $db,
+            $table: $db.subjects,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<bool> tasksRefs(
+    Expression<bool> Function($$TasksTableFilterComposer f) f,
+  ) {
+    final $$TasksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.tasks,
+      getReferencedColumn: (t) => t.recurrenceTemplateId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TasksTableFilterComposer(
+            $db: $db,
+            $table: $db.tasks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$RecurrenceTemplatesTableOrderingComposer
+    extends Composer<_$AppDatabase, $RecurrenceTemplatesTable> {
+  $$RecurrenceTemplatesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get estimatedMinutes => $composableBuilder(
+    column: $table.estimatedMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ruleType => $composableBuilder(
+    column: $table.ruleType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ruleJson => $composableBuilder(
+    column: $table.ruleJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get startDate => $composableBuilder(
+    column: $table.startDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get endDate => $composableBuilder(
+    column: $table.endDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get active => $composableBuilder(
+    column: $table.active,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get generatedThroughDate => $composableBuilder(
+    column: $table.generatedThroughDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$GoalsTableOrderingComposer get goalId {
+    final $$GoalsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.goalId,
+      referencedTable: $db.goals,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$GoalsTableOrderingComposer(
+            $db: $db,
+            $table: $db.goals,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$SubjectsTableOrderingComposer get subjectId {
+    final $$SubjectsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.subjectId,
+      referencedTable: $db.subjects,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SubjectsTableOrderingComposer(
+            $db: $db,
+            $table: $db.subjects,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$RecurrenceTemplatesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $RecurrenceTemplatesTable> {
+  $$RecurrenceTemplatesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<int> get estimatedMinutes => $composableBuilder(
+    column: $table.estimatedMinutes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get ruleType =>
+      $composableBuilder(column: $table.ruleType, builder: (column) => column);
+
+  GeneratedColumn<String> get ruleJson =>
+      $composableBuilder(column: $table.ruleJson, builder: (column) => column);
+
+  GeneratedColumn<String> get startDate =>
+      $composableBuilder(column: $table.startDate, builder: (column) => column);
+
+  GeneratedColumn<String> get endDate =>
+      $composableBuilder(column: $table.endDate, builder: (column) => column);
+
+  GeneratedColumn<bool> get active =>
+      $composableBuilder(column: $table.active, builder: (column) => column);
+
+  GeneratedColumn<String> get generatedThroughDate => $composableBuilder(
+    column: $table.generatedThroughDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$GoalsTableAnnotationComposer get goalId {
+    final $$GoalsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.goalId,
+      referencedTable: $db.goals,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$GoalsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.goals,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$SubjectsTableAnnotationComposer get subjectId {
+    final $$SubjectsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.subjectId,
+      referencedTable: $db.subjects,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SubjectsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.subjects,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<T> tasksRefs<T extends Object>(
+    Expression<T> Function($$TasksTableAnnotationComposer a) f,
+  ) {
+    final $$TasksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.tasks,
+      getReferencedColumn: (t) => t.recurrenceTemplateId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TasksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.tasks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$RecurrenceTemplatesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $RecurrenceTemplatesTable,
+          RecurrenceTemplate,
+          $$RecurrenceTemplatesTableFilterComposer,
+          $$RecurrenceTemplatesTableOrderingComposer,
+          $$RecurrenceTemplatesTableAnnotationComposer,
+          $$RecurrenceTemplatesTableCreateCompanionBuilder,
+          $$RecurrenceTemplatesTableUpdateCompanionBuilder,
+          (RecurrenceTemplate, $$RecurrenceTemplatesTableReferences),
+          RecurrenceTemplate,
+          PrefetchHooks Function({bool goalId, bool subjectId, bool tasksRefs})
+        > {
+  $$RecurrenceTemplatesTableTableManager(
+    _$AppDatabase db,
+    $RecurrenceTemplatesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RecurrenceTemplatesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$RecurrenceTemplatesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$RecurrenceTemplatesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> goalId = const Value.absent(),
+                Value<int?> subjectId = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<int?> estimatedMinutes = const Value.absent(),
+                Value<String> ruleType = const Value.absent(),
+                Value<String> ruleJson = const Value.absent(),
+                Value<String> startDate = const Value.absent(),
+                Value<String?> endDate = const Value.absent(),
+                Value<bool> active = const Value.absent(),
+                Value<String> generatedThroughDate = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => RecurrenceTemplatesCompanion(
+                id: id,
+                goalId: goalId,
+                subjectId: subjectId,
+                title: title,
+                estimatedMinutes: estimatedMinutes,
+                ruleType: ruleType,
+                ruleJson: ruleJson,
+                startDate: startDate,
+                endDate: endDate,
+                active: active,
+                generatedThroughDate: generatedThroughDate,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int goalId,
+                Value<int?> subjectId = const Value.absent(),
+                required String title,
+                Value<int?> estimatedMinutes = const Value.absent(),
+                required String ruleType,
+                required String ruleJson,
+                required String startDate,
+                Value<String?> endDate = const Value.absent(),
+                Value<bool> active = const Value.absent(),
+                required String generatedThroughDate,
+                required DateTime createdAt,
+                required DateTime updatedAt,
+              }) => RecurrenceTemplatesCompanion.insert(
+                id: id,
+                goalId: goalId,
+                subjectId: subjectId,
+                title: title,
+                estimatedMinutes: estimatedMinutes,
+                ruleType: ruleType,
+                ruleJson: ruleJson,
+                startDate: startDate,
+                endDate: endDate,
+                active: active,
+                generatedThroughDate: generatedThroughDate,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$RecurrenceTemplatesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback:
+              ({goalId = false, subjectId = false, tasksRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [if (tasksRefs) db.tasks],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (goalId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.goalId,
+                                    referencedTable:
+                                        $$RecurrenceTemplatesTableReferences
+                                            ._goalIdTable(db),
+                                    referencedColumn:
+                                        $$RecurrenceTemplatesTableReferences
+                                            ._goalIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
+                        if (subjectId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.subjectId,
+                                    referencedTable:
+                                        $$RecurrenceTemplatesTableReferences
+                                            ._subjectIdTable(db),
+                                    referencedColumn:
+                                        $$RecurrenceTemplatesTableReferences
+                                            ._subjectIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (tasksRefs)
+                        await $_getPrefetchedData<
+                          RecurrenceTemplate,
+                          $RecurrenceTemplatesTable,
+                          Task
+                        >(
+                          currentTable: table,
+                          referencedTable: $$RecurrenceTemplatesTableReferences
+                              ._tasksRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$RecurrenceTemplatesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).tasksRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.recurrenceTemplateId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$RecurrenceTemplatesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $RecurrenceTemplatesTable,
+      RecurrenceTemplate,
+      $$RecurrenceTemplatesTableFilterComposer,
+      $$RecurrenceTemplatesTableOrderingComposer,
+      $$RecurrenceTemplatesTableAnnotationComposer,
+      $$RecurrenceTemplatesTableCreateCompanionBuilder,
+      $$RecurrenceTemplatesTableUpdateCompanionBuilder,
+      (RecurrenceTemplate, $$RecurrenceTemplatesTableReferences),
+      RecurrenceTemplate,
+      PrefetchHooks Function({bool goalId, bool subjectId, bool tasksRefs})
     >;
 typedef $$TasksTableCreateCompanionBuilder =
     TasksCompanion Function({
@@ -3063,6 +4804,7 @@ typedef $$TasksTableCreateCompanionBuilder =
       required DateTime updatedAt,
       Value<String?> originalPlannedDate,
       Value<DateTime?> archivedAt,
+      Value<int?> recurrenceTemplateId,
     });
 typedef $$TasksTableUpdateCompanionBuilder =
     TasksCompanion Function({
@@ -3080,6 +4822,7 @@ typedef $$TasksTableUpdateCompanionBuilder =
       Value<DateTime> updatedAt,
       Value<String?> originalPlannedDate,
       Value<DateTime?> archivedAt,
+      Value<int?> recurrenceTemplateId,
     });
 
 final class $$TasksTableReferences
@@ -3114,6 +4857,28 @@ final class $$TasksTableReferences
       $_db.subjects,
     ).filter((f) => f.id.sqlEquals($_column));
     final item = $_typedResult.readTableOrNull(_subjectIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $RecurrenceTemplatesTable _recurrenceTemplateIdTable(
+    _$AppDatabase db,
+  ) => db.recurrenceTemplates.createAlias(
+    'tasks__recurrence_template_id__recurrence_templates__id',
+  );
+
+  $$RecurrenceTemplatesTableProcessedTableManager? get recurrenceTemplateId {
+    final $_column = $_itemColumn<int>('recurrence_template_id');
+    if ($_column == null) return null;
+    final manager = $$RecurrenceTemplatesTableTableManager(
+      $_db,
+      $_db.recurrenceTemplates,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(
+      _recurrenceTemplateIdTable($_db),
+    );
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
@@ -3226,6 +4991,29 @@ class $$TasksTableFilterComposer extends Composer<_$AppDatabase, $TasksTable> {
           }) => $$SubjectsTableFilterComposer(
             $db: $db,
             $table: $db.subjects,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$RecurrenceTemplatesTableFilterComposer get recurrenceTemplateId {
+    final $$RecurrenceTemplatesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.recurrenceTemplateId,
+      referencedTable: $db.recurrenceTemplates,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RecurrenceTemplatesTableFilterComposer(
+            $db: $db,
+            $table: $db.recurrenceTemplates,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -3350,6 +5138,30 @@ class $$TasksTableOrderingComposer
     );
     return composer;
   }
+
+  $$RecurrenceTemplatesTableOrderingComposer get recurrenceTemplateId {
+    final $$RecurrenceTemplatesTableOrderingComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.recurrenceTemplateId,
+          referencedTable: $db.recurrenceTemplates,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$RecurrenceTemplatesTableOrderingComposer(
+                $db: $db,
+                $table: $db.recurrenceTemplates,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
 }
 
 class $$TasksTableAnnotationComposer
@@ -3452,6 +5264,30 @@ class $$TasksTableAnnotationComposer
     );
     return composer;
   }
+
+  $$RecurrenceTemplatesTableAnnotationComposer get recurrenceTemplateId {
+    final $$RecurrenceTemplatesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.recurrenceTemplateId,
+          referencedTable: $db.recurrenceTemplates,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$RecurrenceTemplatesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.recurrenceTemplates,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
 }
 
 class $$TasksTableTableManager
@@ -3467,7 +5303,11 @@ class $$TasksTableTableManager
           $$TasksTableUpdateCompanionBuilder,
           (Task, $$TasksTableReferences),
           Task,
-          PrefetchHooks Function({bool goalId, bool subjectId})
+          PrefetchHooks Function({
+            bool goalId,
+            bool subjectId,
+            bool recurrenceTemplateId,
+          })
         > {
   $$TasksTableTableManager(_$AppDatabase db, $TasksTable table)
     : super(
@@ -3496,6 +5336,7 @@ class $$TasksTableTableManager
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<String?> originalPlannedDate = const Value.absent(),
                 Value<DateTime?> archivedAt = const Value.absent(),
+                Value<int?> recurrenceTemplateId = const Value.absent(),
               }) => TasksCompanion(
                 id: id,
                 goalId: goalId,
@@ -3511,6 +5352,7 @@ class $$TasksTableTableManager
                 updatedAt: updatedAt,
                 originalPlannedDate: originalPlannedDate,
                 archivedAt: archivedAt,
+                recurrenceTemplateId: recurrenceTemplateId,
               ),
           createCompanionCallback:
               ({
@@ -3528,6 +5370,7 @@ class $$TasksTableTableManager
                 required DateTime updatedAt,
                 Value<String?> originalPlannedDate = const Value.absent(),
                 Value<DateTime?> archivedAt = const Value.absent(),
+                Value<int?> recurrenceTemplateId = const Value.absent(),
               }) => TasksCompanion.insert(
                 id: id,
                 goalId: goalId,
@@ -3543,6 +5386,7 @@ class $$TasksTableTableManager
                 updatedAt: updatedAt,
                 originalPlannedDate: originalPlannedDate,
                 archivedAt: archivedAt,
+                recurrenceTemplateId: recurrenceTemplateId,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -3550,60 +5394,78 @@ class $$TasksTableTableManager
                     (e.readTable(table), $$TasksTableReferences(db, table, e)),
               )
               .toList(),
-          prefetchHooksCallback: ({goalId = false, subjectId = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [],
-              addJoins:
-                  <
-                    T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (goalId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.goalId,
-                                referencedTable: $$TasksTableReferences
-                                    ._goalIdTable(db),
-                                referencedColumn: $$TasksTableReferences
-                                    ._goalIdTable(db)
-                                    .id,
-                              )
-                              as T;
-                    }
-                    if (subjectId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.subjectId,
-                                referencedTable: $$TasksTableReferences
-                                    ._subjectIdTable(db),
-                                referencedColumn: $$TasksTableReferences
-                                    ._subjectIdTable(db)
-                                    .id,
-                              )
-                              as T;
-                    }
+          prefetchHooksCallback:
+              ({
+                goalId = false,
+                subjectId = false,
+                recurrenceTemplateId = false,
+              }) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (goalId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.goalId,
+                                    referencedTable: $$TasksTableReferences
+                                        ._goalIdTable(db),
+                                    referencedColumn: $$TasksTableReferences
+                                        ._goalIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
+                        if (subjectId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.subjectId,
+                                    referencedTable: $$TasksTableReferences
+                                        ._subjectIdTable(db),
+                                    referencedColumn: $$TasksTableReferences
+                                        ._subjectIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
+                        if (recurrenceTemplateId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.recurrenceTemplateId,
+                                    referencedTable: $$TasksTableReferences
+                                        ._recurrenceTemplateIdTable(db),
+                                    referencedColumn: $$TasksTableReferences
+                                        ._recurrenceTemplateIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
 
-                    return state;
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [];
                   },
-              getPrefetchedDataCallback: (items) async {
-                return [];
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -3620,7 +5482,11 @@ typedef $$TasksTableProcessedTableManager =
       $$TasksTableUpdateCompanionBuilder,
       (Task, $$TasksTableReferences),
       Task,
-      PrefetchHooks Function({bool goalId, bool subjectId})
+      PrefetchHooks Function({
+        bool goalId,
+        bool subjectId,
+        bool recurrenceTemplateId,
+      })
     >;
 typedef $$SettingsTableCreateCompanionBuilder =
     SettingsCompanion Function({
@@ -3822,6 +5688,8 @@ class $AppDatabaseManager {
       $$GoalsTableTableManager(_db, _db.goals);
   $$SubjectsTableTableManager get subjects =>
       $$SubjectsTableTableManager(_db, _db.subjects);
+  $$RecurrenceTemplatesTableTableManager get recurrenceTemplates =>
+      $$RecurrenceTemplatesTableTableManager(_db, _db.recurrenceTemplates);
   $$TasksTableTableManager get tasks =>
       $$TasksTableTableManager(_db, _db.tasks);
   $$SettingsTableTableManager get settings =>

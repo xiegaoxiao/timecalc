@@ -5,13 +5,14 @@ import 'tables.dart';
 
 part 'database.g.dart';
 
-/// TimeCalc 本地数据库（schema v3）。
+/// TimeCalc 本地数据库（schema v4）。
 ///
 /// v1：目标/科目/任务三张表。
 /// v2：Tasks 增加 original_planned_date；新增 Settings 计划偏好表（M2）。
 /// v3：Tasks 增加 archived_at（JSON 导入替换时归档保留的历史记录）。
+/// v4：Tasks 增加 recurrence_template_id；新增 RecurrenceTemplates 表（FR-4）。
 /// 后续 schema 变更必须提供 migration 与 migration 测试（SOP S3、NFR-2）。
-@DriftDatabase(tables: [Goals, Subjects, Tasks, Settings])
+@DriftDatabase(tables: [Goals, Subjects, Tasks, Settings, RecurrenceTemplates])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
@@ -20,7 +21,7 @@ class AppDatabase extends _$AppDatabase {
       AppDatabase(driftDatabase(name: 'timecalc'));
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -35,6 +36,11 @@ class AppDatabase extends _$AppDatabase {
           if (from < 3) {
             // v2 -> v3：任务增加归档标记（JSON 导入替换保留历史）。
             await m.addColumn(tasks, tasks.archivedAt);
+          }
+          if (from < 4) {
+            // v3 -> v4：任务关联重复模板；新增重复模板表（FR-4）。
+            await m.addColumn(tasks, tasks.recurrenceTemplateId);
+            await m.createTable(recurrenceTemplates);
           }
         },
       );

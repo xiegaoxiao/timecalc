@@ -76,6 +76,35 @@ class Tasks extends Table {
   /// 非 null 表示该任务已被归档：不参与负载/日历统计与常规列表，仅出现在
   /// 目标详情的「历史任务」区，可手动恢复。未归档任务为 null。
   DateTimeColumn get archivedAt => dateTime().nullable()();
+
+  /// 所属重复模板（FR-4，schema v4 引入）。
+  ///
+  /// 非 null 表示该任务是重复任务的实例：随模板规则由 generateDue 滚动生成；
+  /// 模板停止后仍保留为普通任务。普通任务为 null。
+  IntColumn get recurrenceTemplateId =>
+      integer().references(RecurrenceTemplates, #id).nullable()();
+}
+
+/// 重复任务模板（FR-4，schema v4 引入）。
+///
+/// 「模板 + 实例」模型：模板保存重复规则，实例为具体日期上的任务
+/// （Tasks.recurrenceTemplateId 指向本表）。规则以 ruleType(文本) +
+/// ruleJson(文本) 存储，由 RecurrenceRuleRegistry 中的 handler 解释，
+/// 新增规则类型无需 schema 变更。
+class RecurrenceTemplates extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get goalId => integer().references(Goals, #id)();
+  IntColumn get subjectId => integer().references(Subjects, #id).nullable()();
+  TextColumn get title => text().withLength(min: 1, max: 200)();
+  IntColumn get estimatedMinutes => integer().nullable()();
+  TextColumn get ruleType => text()();
+  TextColumn get ruleJson => text()();
+  TextColumn get startDate => text()();
+  TextColumn get endDate => text().nullable()();
+  BoolColumn get active => boolean().withDefault(const Constant(true))();
+  TextColumn get generatedThroughDate => text()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
 }
 
 /// 计划偏好（单行表，PRD §9 Settings 的 M2 子集）。
