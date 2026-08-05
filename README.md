@@ -51,6 +51,7 @@ TimeCalc 是一款本地优先的个人目标与截止日期管理工具，帮�
 - [开源项目借鉴清单](docs/open-source-references.md)
 - [开发全流程 SOP](docs/development-sop.md)
 - [开发检查清单](docs/checklists.md)
+- [更新日志](CHANGELOG.md)
 - [贡献指南](CONTRIBUTING.md)
 - [行为准则](CODE_OF_CONDUCT.md)
 
