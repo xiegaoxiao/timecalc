@@ -52,6 +52,7 @@ class GoalDetailBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final subjectsAsync = ref.watch(subjectListProvider(goal.id));
     final tasksAsync = ref.watch(taskListProvider(goal.id));
+    final archivedAsync = ref.watch(archivedTaskListProvider(goal.id));
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -81,6 +82,9 @@ class GoalDetailBody extends ConsumerWidget {
                 goalId: goal.id,
                 subjects: subjects,
                 tasks: unassigned,
+                // JSON 导入为「替换」语义：替换整个目标的任务计划，
+                // 因此传入目标全部未归档任务供对话框展示将被替换的清单。
+                currentTasks: tasks,
                 title: '未分类任务',
                 description: '不归属特定科目的安排，如科目复习/复盘、考研报名等',
                 emptyText: '还没有此类任务。可点「添加任务」或「批量添加」创建',
@@ -88,6 +92,19 @@ class GoalDetailBody extends ConsumerWidget {
               );
             },
           ),
+        ),
+        const Divider(height: 32),
+        // 历史任务区：JSON 导入替换时归档保留的旧任务，可手动恢复。
+        archivedAsync.when(
+          loading: () => const SizedBox.shrink(),
+          error: (_, _) => const SizedBox.shrink(),
+          data: (archived) {
+            if (archived.isEmpty) return const SizedBox.shrink();
+            return _ArchivedSection(
+              goalId: goal.id,
+              archived: archived,
+            );
+          },
         ),
       ],
     );
@@ -176,6 +193,60 @@ class _LoadSection extends ConsumerWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// 历史任务区（JSON 导入替换时归档保留的旧任务）。
+///
+/// 展示已归档任务清单并提供「恢复」操作：恢复后重新进入当前计划，
+/// 参与负载/日历统计与常规列表。
+class _ArchivedSection extends ConsumerWidget {
+  const _ArchivedSection({required this.goalId, required this.archived});
+
+  final int goalId;
+  final List<Task> archived;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('历史任务（${archived.length}）', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 4),
+        Text(
+          'JSON 导入替换时归档保留，可手动恢复回当前计划',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.outline,
+              ),
+        ),
+        const SizedBox(height: 8),
+        for (final task in archived)
+          Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              dense: true,
+              title: Text(task.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text(
+                [
+                  task.plannedDate,
+                  if (task.estimatedMinutes != null)
+                    DurationFormat.minutes(task.estimatedMinutes!),
+                ].join(' · '),
+              ),
+              trailing: TextButton.icon(
+                onPressed: () async {
+                  final repo = ref.read(taskRepositoryProvider);
+                  await repo.restoreArchived(task.id);
+                  ref.invalidate(archivedTaskListProvider(goalId));
+                  ref.invalidate(taskListProvider(goalId));
+                },
+                icon: const Icon(Icons.restore, size: 16),
+                label: const Text('恢复'),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

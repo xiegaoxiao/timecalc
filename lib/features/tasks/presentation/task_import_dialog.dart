@@ -18,21 +18,34 @@ import '../domain/task_import_parser.dart';
 /// 目标下不存在的科目自动创建；整个导入在单事务内完成（NFR-2）。
 
 class TaskImportDialog extends ConsumerStatefulWidget {
-  const TaskImportDialog({super.key, required this.goalId, this.subjects = const []});
+  const TaskImportDialog({
+    super.key,
+    required this.goalId,
+    this.subjects = const [],
+    this.currentTasks = const [],
+  });
 
   final int goalId;
 
   /// 目标下已有科目（预览时标记「将新建」）。
   final List<Subject> subjects;
 
+  /// 目标下当前未归档任务（导入将替换它们，保留为历史记录）。
+  final List<Task> currentTasks;
+
   static Future<void> show(
     BuildContext context, {
     required int goalId,
     List<Subject> subjects = const [],
+    List<Task> currentTasks = const [],
   }) {
     return showDialog<void>(
       context: context,
-      builder: (_) => TaskImportDialog(goalId: goalId, subjects: subjects),
+      builder: (_) => TaskImportDialog(
+        goalId: goalId,
+        subjects: subjects,
+        currentTasks: currentTasks,
+      ),
     );
   }
 
@@ -100,12 +113,43 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
     final plan = result.plan;
     if (plan == null) return;
 
+    // 替换确认：导入会替换当前任务的计划，旧任务保留为历史记录。
+    final replacing = widget.currentTasks.isNotEmpty;
+    if (replacing) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('替换当前任务计划？'),
+          content: Text(
+            '导入后，当前目标的 ${widget.currentTasks.length} 个任务将从计划中移除，'
+            '并保留在「历史任务」中（可手动恢复）。确定继续导入？',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('导入并替换'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+
     setState(() => _importing = true);
     try {
       final repo = ref.read(taskRepositoryProvider);
-      final stats = await repo.importPlan(goalId: widget.goalId, items: plan.items);
+      final stats = await repo.importPlan(
+        goalId: widget.goalId,
+        items: plan.items,
+        replaceExisting: true,
+      );
       // 跨页刷新（FR-3 验收）：目标详情、今日页、日历同步。
       ref.invalidate(taskListProvider(widget.goalId));
+      ref.invalidate(archivedTaskListProvider(widget.goalId));
       ref.invalidate(tasksByDateProvider);
       ref.invalidate(tasksByMonthProvider);
       ref.invalidate(unfinishedBeforeProvider);
@@ -113,9 +157,9 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              stats.createdSubjects > 0
-                  ? '已创建 ${stats.createdSubjects} 个科目，导入 ${stats.createdTasks} 个任务'
-                  : '已导入 ${stats.createdTasks} 个任务',
+              '导入 ${stats.createdTasks} 个任务'
+              '${stats.createdSubjects > 0 ? '，新建 ${stats.createdSubjects} 个科目' : ''}'
+              '${stats.replacedTasks > 0 ? '；${stats.replacedTasks} 个旧任务已归档到历史任务' : ''}',
             ),
           ),
         );
@@ -207,6 +251,33 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
               ),
             if (result != null && result.isValid)
               _ImportPreview(plan: result.plan!, existingSubjects: widget.subjects),
+            if (widget.currentTasks.isNotEmpty) ...[
+              const Divider(height: 24),
+              Text(
+                '当前任务（将被替换并保留为历史）',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 4),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 120),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (final task in widget.currentTasks)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8, bottom: 2),
+                          child: Text(
+                            '• ${task.title} · ${task.plannedDate}'
+                            '${task.estimatedMinutes != null ? ' · ${DurationFormat.minutes(task.estimatedMinutes!)}' : ''}',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

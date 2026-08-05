@@ -31,10 +31,17 @@ class TaskImportPlan {
 
 /// 导入统计结果。
 class ImportStats {
-  const ImportStats({required this.createdSubjects, required this.createdTasks});
+  const ImportStats({
+    required this.createdSubjects,
+    required this.createdTasks,
+    this.replacedTasks = 0,
+  });
 
   final int createdSubjects;
   final int createdTasks;
+
+  /// 替换模式下被归档的原有任务数（保留历史记录）。
+  final int replacedTasks;
 }
 
 /// 单个校验问题。

@@ -70,6 +70,12 @@ class Tasks extends Table {
   /// schema v2 引入，仅记录首次延期/改期前的日期，不随后续延期刷新，
   /// 用于审计与后续恢复/统计。未延期过的任务为 null。
   TextColumn get originalPlannedDate => text().nullable()();
+
+  /// 归档时间（JSON 导入替换时保留的历史记录，schema v3 引入）。
+  ///
+  /// 非 null 表示该任务已被归档：不参与负载/日历统计与常规列表，仅出现在
+  /// 目标详情的「历史任务」区，可手动恢复。未归档任务为 null。
+  DateTimeColumn get archivedAt => dateTime().nullable()();
 }
 
 /// 计划偏好（单行表，PRD §9 Settings 的 M2 子集）。

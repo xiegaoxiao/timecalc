@@ -1118,6 +1118,17 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
         type: DriftSqlType.string,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _archivedAtMeta = const VerificationMeta(
+    'archivedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> archivedAt = GeneratedColumn<DateTime>(
+    'archived_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1133,6 +1144,7 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     createdAt,
     updatedAt,
     originalPlannedDate,
+    archivedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1243,6 +1255,12 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
         ),
       );
     }
+    if (data.containsKey('archived_at')) {
+      context.handle(
+        _archivedAtMeta,
+        archivedAt.isAcceptableOrUnknown(data['archived_at']!, _archivedAtMeta),
+      );
+    }
     return context;
   }
 
@@ -1304,6 +1322,10 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
         DriftSqlType.string,
         data['${effectivePrefix}original_planned_date'],
       ),
+      archivedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}archived_at'],
+      ),
     );
   }
 
@@ -1332,6 +1354,12 @@ class Task extends DataClass implements Insertable<Task> {
   /// schema v2 引入，仅记录首次延期/改期前的日期，不随后续延期刷新，
   /// 用于审计与后续恢复/统计。未延期过的任务为 null。
   final String? originalPlannedDate;
+
+  /// 归档时间（JSON 导入替换时保留的历史记录，schema v3 引入）。
+  ///
+  /// 非 null 表示该任务已被归档：不参与负载/日历统计与常规列表，仅出现在
+  /// 目标详情的「历史任务」区，可手动恢复。未归档任务为 null。
+  final DateTime? archivedAt;
   const Task({
     required this.id,
     required this.goalId,
@@ -1346,6 +1374,7 @@ class Task extends DataClass implements Insertable<Task> {
     required this.createdAt,
     required this.updatedAt,
     this.originalPlannedDate,
+    this.archivedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1373,6 +1402,9 @@ class Task extends DataClass implements Insertable<Task> {
     if (!nullToAbsent || originalPlannedDate != null) {
       map['original_planned_date'] = Variable<String>(originalPlannedDate);
     }
+    if (!nullToAbsent || archivedAt != null) {
+      map['archived_at'] = Variable<DateTime>(archivedAt);
+    }
     return map;
   }
 
@@ -1399,6 +1431,9 @@ class Task extends DataClass implements Insertable<Task> {
       originalPlannedDate: originalPlannedDate == null && nullToAbsent
           ? const Value.absent()
           : Value(originalPlannedDate),
+      archivedAt: archivedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(archivedAt),
     );
   }
 
@@ -1423,6 +1458,7 @@ class Task extends DataClass implements Insertable<Task> {
       originalPlannedDate: serializer.fromJson<String?>(
         json['originalPlannedDate'],
       ),
+      archivedAt: serializer.fromJson<DateTime?>(json['archivedAt']),
     );
   }
   @override
@@ -1442,6 +1478,7 @@ class Task extends DataClass implements Insertable<Task> {
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'originalPlannedDate': serializer.toJson<String?>(originalPlannedDate),
+      'archivedAt': serializer.toJson<DateTime?>(archivedAt),
     };
   }
 
@@ -1459,6 +1496,7 @@ class Task extends DataClass implements Insertable<Task> {
     DateTime? createdAt,
     DateTime? updatedAt,
     Value<String?> originalPlannedDate = const Value.absent(),
+    Value<DateTime?> archivedAt = const Value.absent(),
   }) => Task(
     id: id ?? this.id,
     goalId: goalId ?? this.goalId,
@@ -1477,6 +1515,7 @@ class Task extends DataClass implements Insertable<Task> {
     originalPlannedDate: originalPlannedDate.present
         ? originalPlannedDate.value
         : this.originalPlannedDate,
+    archivedAt: archivedAt.present ? archivedAt.value : this.archivedAt,
   );
   Task copyWithCompanion(TasksCompanion data) {
     return Task(
@@ -1501,6 +1540,9 @@ class Task extends DataClass implements Insertable<Task> {
       originalPlannedDate: data.originalPlannedDate.present
           ? data.originalPlannedDate.value
           : this.originalPlannedDate,
+      archivedAt: data.archivedAt.present
+          ? data.archivedAt.value
+          : this.archivedAt,
     );
   }
 
@@ -1519,7 +1561,8 @@ class Task extends DataClass implements Insertable<Task> {
           ..write('sortOrder: $sortOrder, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('originalPlannedDate: $originalPlannedDate')
+          ..write('originalPlannedDate: $originalPlannedDate, ')
+          ..write('archivedAt: $archivedAt')
           ..write(')'))
         .toString();
   }
@@ -1539,6 +1582,7 @@ class Task extends DataClass implements Insertable<Task> {
     createdAt,
     updatedAt,
     originalPlannedDate,
+    archivedAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -1556,7 +1600,8 @@ class Task extends DataClass implements Insertable<Task> {
           other.sortOrder == this.sortOrder &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
-          other.originalPlannedDate == this.originalPlannedDate);
+          other.originalPlannedDate == this.originalPlannedDate &&
+          other.archivedAt == this.archivedAt);
 }
 
 class TasksCompanion extends UpdateCompanion<Task> {
@@ -1573,6 +1618,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<String?> originalPlannedDate;
+  final Value<DateTime?> archivedAt;
   const TasksCompanion({
     this.id = const Value.absent(),
     this.goalId = const Value.absent(),
@@ -1587,6 +1633,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.originalPlannedDate = const Value.absent(),
+    this.archivedAt = const Value.absent(),
   });
   TasksCompanion.insert({
     this.id = const Value.absent(),
@@ -1602,6 +1649,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     required DateTime createdAt,
     required DateTime updatedAt,
     this.originalPlannedDate = const Value.absent(),
+    this.archivedAt = const Value.absent(),
   }) : goalId = Value(goalId),
        title = Value(title),
        plannedDate = Value(plannedDate),
@@ -1621,6 +1669,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<String>? originalPlannedDate,
+    Expression<DateTime>? archivedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1637,6 +1686,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
       if (updatedAt != null) 'updated_at': updatedAt,
       if (originalPlannedDate != null)
         'original_planned_date': originalPlannedDate,
+      if (archivedAt != null) 'archived_at': archivedAt,
     });
   }
 
@@ -1654,6 +1704,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<String?>? originalPlannedDate,
+    Value<DateTime?>? archivedAt,
   }) {
     return TasksCompanion(
       id: id ?? this.id,
@@ -1669,6 +1720,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       originalPlannedDate: originalPlannedDate ?? this.originalPlannedDate,
+      archivedAt: archivedAt ?? this.archivedAt,
     );
   }
 
@@ -1716,6 +1768,9 @@ class TasksCompanion extends UpdateCompanion<Task> {
         originalPlannedDate.value,
       );
     }
+    if (archivedAt.present) {
+      map['archived_at'] = Variable<DateTime>(archivedAt.value);
+    }
     return map;
   }
 
@@ -1734,7 +1789,8 @@ class TasksCompanion extends UpdateCompanion<Task> {
           ..write('sortOrder: $sortOrder, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('originalPlannedDate: $originalPlannedDate')
+          ..write('originalPlannedDate: $originalPlannedDate, ')
+          ..write('archivedAt: $archivedAt')
           ..write(')'))
         .toString();
   }
@@ -3006,6 +3062,7 @@ typedef $$TasksTableCreateCompanionBuilder =
       required DateTime createdAt,
       required DateTime updatedAt,
       Value<String?> originalPlannedDate,
+      Value<DateTime?> archivedAt,
     });
 typedef $$TasksTableUpdateCompanionBuilder =
     TasksCompanion Function({
@@ -3022,6 +3079,7 @@ typedef $$TasksTableUpdateCompanionBuilder =
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<String?> originalPlannedDate,
+      Value<DateTime?> archivedAt,
     });
 
 final class $$TasksTableReferences
@@ -3123,6 +3181,11 @@ class $$TasksTableFilterComposer extends Composer<_$AppDatabase, $TasksTable> {
 
   ColumnFilters<String> get originalPlannedDate => $composableBuilder(
     column: $table.originalPlannedDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3237,6 +3300,11 @@ class $$TasksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$GoalsTableOrderingComposer get goalId {
     final $$GoalsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -3334,6 +3402,11 @@ class $$TasksTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<DateTime> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
+    builder: (column) => column,
+  );
+
   $$GoalsTableAnnotationComposer get goalId {
     final $$GoalsTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -3422,6 +3495,7 @@ class $$TasksTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<String?> originalPlannedDate = const Value.absent(),
+                Value<DateTime?> archivedAt = const Value.absent(),
               }) => TasksCompanion(
                 id: id,
                 goalId: goalId,
@@ -3436,6 +3510,7 @@ class $$TasksTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 originalPlannedDate: originalPlannedDate,
+                archivedAt: archivedAt,
               ),
           createCompanionCallback:
               ({
@@ -3452,6 +3527,7 @@ class $$TasksTableTableManager
                 required DateTime createdAt,
                 required DateTime updatedAt,
                 Value<String?> originalPlannedDate = const Value.absent(),
+                Value<DateTime?> archivedAt = const Value.absent(),
               }) => TasksCompanion.insert(
                 id: id,
                 goalId: goalId,
@@ -3466,6 +3542,7 @@ class $$TasksTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 originalPlannedDate: originalPlannedDate,
+                archivedAt: archivedAt,
               ),
           withReferenceMapper: (p0) => p0
               .map(

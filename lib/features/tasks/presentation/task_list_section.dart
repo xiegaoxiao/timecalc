@@ -25,6 +25,7 @@ class TaskListSection extends ConsumerWidget {
     this.emptyText = '还没有任务，点击「添加任务」开始安排',
     this.defaultSubjectId,
     this.showAddButton = true,
+    this.currentTasks,
   });
 
   final int goalId;
@@ -38,6 +39,10 @@ class TaskListSection extends ConsumerWidget {
   final String emptyText;
   final int? defaultSubjectId;
   final bool showAddButton;
+
+  /// JSON 导入将替换的目标当前任务清单（替换针对整个目标，父级可传入
+  /// 全部任务；默认取本区域的 [tasks]）。
+  final List<Task>? currentTasks;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -75,6 +80,9 @@ class TaskListSection extends ConsumerWidget {
                     context,
                     goalId: goalId,
                     subjects: subjects,
+                    // JSON 导入为「替换」语义：传入将被替换并保留为历史的
+                    // 目标当前任务清单。
+                    currentTasks: currentTasks ?? tasks,
                   ),
                   icon: const Icon(Icons.upload_file, size: 18),
                   label: const Text('JSON 导入'),
