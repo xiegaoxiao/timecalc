@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../services/countdown_service.dart';
+import '../../../services/duration_format.dart';
 import '../../../services/load_service.dart';
 import '../../settings/data/settings_repository.dart';
 import '../../settings/data/settings_repository_provider.dart';
@@ -153,9 +154,11 @@ class _LoadSection extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text('剩余任务时长：$remaining 分钟'),
+                Text('剩余任务时长：${DurationFormat.minutes(remaining)}'),
                 Text('剩余可用天数：$remainingDays 天'),
-                Text('建议日均时长：$suggested 分钟 · 可用 ${settings.dailyAvailableMinutes} 分钟/天'),
+                Text(
+                  '建议日均时长：${DurationFormat.minutes(suggested)} · 可用 ${DurationFormat.minutes(settings.dailyAvailableMinutes)}/天',
+                ),
                 if (risk) ...[
                   const SizedBox(height: 8),
                   Text(

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../services/defer_service.dart';
+import '../../../services/duration_format.dart';
 import '../../goals/data/subject_repository_provider.dart';
 import '../../settings/data/settings_repository.dart';
 import '../../settings/data/settings_repository_provider.dart';
@@ -62,7 +63,7 @@ class TaskTile extends ConsumerWidget {
               [
                 ?goalTitle,
                 if (task.estimatedMinutes != null)
-                  '${task.estimatedMinutes} 分钟',
+                  DurationFormat.minutes(task.estimatedMinutes!),
               ].join(' · '),
             ),
             if (task.note?.isNotEmpty ?? false)

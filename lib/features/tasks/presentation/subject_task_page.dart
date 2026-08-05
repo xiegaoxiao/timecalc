@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/database.dart';
+import '../../../services/duration_format.dart';
 import '../../goals/data/subject_repository_provider.dart';
 import '../data/task_repository_provider.dart';
 import 'task_list_section.dart';
@@ -97,7 +98,7 @@ class _SubjectSummary extends StatelessWidget {
         if (tasks.isNotEmpty) ...[
           const SizedBox(height: 4),
           Text(
-            '已完成 $doneMinutes / 共 $totalMinutes 分钟',
+            '已完成 ${DurationFormat.minutes(doneMinutes)} / 共 ${DurationFormat.minutes(totalMinutes)}',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.outline,
                 ),

@@ -67,8 +67,8 @@ void main() {
 
     // 08-05 单元格：完成 1/总数 3、未完成负载 150 分、超出可用 120 分钟 30 分钟。
     expect(find.text('1/3'), findsOneWidget);
-    expect(find.text('150分'), findsOneWidget);
-    expect(find.text('超出30'), findsOneWidget);
+    expect(find.text('2h30m'), findsOneWidget);
+    expect(find.text('超出30m'), findsOneWidget);
   });
 
   testWidgets('无任务日期保持中性（不显示 0/0 或过载）', (tester) async {
@@ -79,7 +79,7 @@ void main() {
     await openCalendar(tester);
 
     // 08-05 有任务；08-06 无任务格不渲染任何任务文本。
-    expect(find.text('90分'), findsOneWidget);
+    expect(find.text('1h30m'), findsOneWidget);
     expect(find.text('0/0'), findsNothing);
   });
 
@@ -167,18 +167,18 @@ void main() {
 
     await pumpApp(tester);
     await openCalendar(tester);
-    expect(find.text('超出30'), findsOneWidget);
+    expect(find.text('超出30m'), findsOneWidget);
 
     // 在日历选日面板完成任务。
     await tester.ensureVisible(find.byType(Checkbox));
     await tester.pumpAndSettle();
     await tester.tap(find.byType(Checkbox));
     await tester.pumpAndSettle();
-    expect(find.text('超出30'), findsNothing);
+    expect(find.text('超出30m'), findsNothing);
 
     // 回到今天页：负载归零，无「超出」提示。
     await tester.tap(find.text('今天'));
     await tester.pumpAndSettle();
-    expect(find.text('今日 0 分钟 · 可用 120 分钟'), findsOneWidget);
+    expect(find.text('今日 0 分 · 可用 2 小时'), findsOneWidget);
   });
 }

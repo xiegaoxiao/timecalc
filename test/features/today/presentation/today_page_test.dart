@@ -59,13 +59,13 @@ void main() {
     await pumpApp(tester);
 
     expect(find.text('背单词'), findsOneWidget);
-    expect(find.text('今日 90 分钟 · 可用 120 分钟'), findsOneWidget);
+    expect(find.text('今日 1 小时 30 分 · 可用 2 小时'), findsOneWidget);
 
     // 完成任务：列表保留（划线），负载归零。
     await tester.tap(find.byType(Checkbox));
     await tester.pumpAndSettle();
 
-    expect(find.text('今日 0 分钟 · 可用 120 分钟'), findsOneWidget);
+    expect(find.text('今日 0 分 · 可用 2 小时'), findsOneWidget);
     expect((await tasks.byId(created.id))?.status, 'done');
   });
 
@@ -76,8 +76,8 @@ void main() {
 
     await pumpApp(tester);
 
-    expect(find.text('今日 150 分钟 · 可用 120 分钟'), findsOneWidget);
-    expect(find.text('超出 30 分钟，请调整任务或可用时间'), findsOneWidget);
+    expect(find.text('今日 2 小时 30 分 · 可用 2 小时'), findsOneWidget);
+    expect(find.text('超出 30 分，请调整任务或可用时间'), findsOneWidget);
   });
 
   testWidgets('任务可快捷延期至下一可用日（FR-3.3）', (tester) async {
@@ -177,8 +177,8 @@ void main() {
     expect(find.text('背单词'), findsOneWidget);
     expect(find.text('写引言'), findsOneWidget);
     // 副标题标注目标名（考研卡片标题外，任务条目中也出现）。
-    expect(find.textContaining('考研 · 90 分钟'), findsOneWidget);
-    expect(find.textContaining('论文 · 60 分钟'), findsOneWidget);
+    expect(find.textContaining('考研 · 1 小时 30 分'), findsOneWidget);
+    expect(find.textContaining('论文 · 1 小时'), findsOneWidget);
   });
 
   testWidgets('没有任务的日期不显示过载（空态中性）', (tester) async {

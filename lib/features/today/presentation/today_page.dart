@@ -7,6 +7,7 @@ import '../../../core/database/database.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../services/countdown_service.dart';
 import '../../../services/defer_service.dart';
+import '../../../services/duration_format.dart';
 import '../../../services/load_service.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../../goals/presentation/goal_form_dialog.dart';
@@ -232,10 +233,12 @@ class _LoadOverviewCard extends StatelessWidget {
     return Card(
       child: ListTile(
         leading: Icon(over > 0 ? Icons.warning_amber_rounded : Icons.balance),
-        title: Text('今日 $load 分钟 · 可用 $available 分钟'),
+        title: Text(
+          '今日 ${DurationFormat.minutes(load)} · 可用 ${DurationFormat.minutes(available)}',
+        ),
         subtitle: over > 0
             ? Text(
-                '超出 $over 分钟，请调整任务或可用时间',
+                '超出 ${DurationFormat.minutes(over)}，请调整任务或可用时间',
                 style: TextStyle(color: scheme.error),
               )
             : null,

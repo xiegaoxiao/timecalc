@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/database.dart';
+import '../../../services/duration_format.dart';
 import '../data/settings_repository.dart';
 import '../data/settings_repository_provider.dart';
 
@@ -47,7 +50,7 @@ class SettingsPage extends ConsumerWidget {
   }
 }
 
-/// 计划偏好：每日可用时长 + 每周可用日（FR-5.3 负载计算的数据来源）。
+/// 计划偏好：每日可用时长（小时/分钟步进）+ 每周可用日（FR-5.3 负载计算数据来源）。
 class _PlanPreferenceSection extends ConsumerStatefulWidget {
   const _PlanPreferenceSection({required this.settings});
 
@@ -59,38 +62,45 @@ class _PlanPreferenceSection extends ConsumerStatefulWidget {
 }
 
 class _PlanPreferenceSectionState extends ConsumerState<_PlanPreferenceSection> {
-  final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _minutesController;
+  late int _hours;
+  late int _minutes;
   late Set<int> _weekdays;
+  bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    _minutesController = TextEditingController(
-      text: widget.settings.dailyAvailableMinutes.toString(),
-    );
+    final total = widget.settings.dailyAvailableMinutes;
+    _hours = total ~/ 60;
+    _minutes = total % 60;
     _weekdays = SettingsRepository.decodeWeekdays(
       widget.settings.availableWeekdays,
     );
   }
 
-  @override
-  void dispose() {
-    _minutesController.dispose();
-    super.dispose();
-  }
-
   Future<void> _save() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
-    final repo = ref.read(settingsRepositoryProvider);
-    final minutes = int.parse(_minutesController.text.trim());
-    await repo.updateDailyAvailableMinutes(minutes);
-    await repo.updateAvailableWeekdays(_weekdays);
-    ref.invalidate(settingsProvider);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('计划偏好已保存')),
-      );
+    final total = _hours * 60 + _minutes;
+    if (total < 1) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('每日可用时长至少 1 分钟')),
+        );
+      }
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      final repo = ref.read(settingsRepositoryProvider);
+      await repo.updateDailyAvailableMinutes(total);
+      await repo.updateAvailableWeekdays(_weekdays);
+      ref.invalidate(settingsProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('计划偏好已保存')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -102,74 +112,87 @@ class _PlanPreferenceSectionState extends ConsumerState<_PlanPreferenceSection> 
         Text('计划偏好', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
         Text(
-          '用于计算每日负载与「超出 X 分钟」提示；默认每天 2 小时、每周 7 天（PRD §5.1）。',
+          '用于计算每日负载与「超出」提示；默认每天 2 小时、每周 7 天（PRD §5.1）。',
           style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: 16),
-        Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextFormField(
-                controller: _minutesController,
-                decoration: const InputDecoration(
-                  labelText: '每日可用时长（分钟）',
-                  hintText: '1～1440',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return '请输入每日可用时长';
-                  }
-                  final minutes = int.tryParse(value.trim());
-                  if (minutes == null || minutes < 1 || minutes > 1440) {
-                    return '请输入 1～1440 的整数分钟';
-                  }
-                  return null;
+        Text(
+          '每日可用时长',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _StepField(
+                label: '小时',
+                value: _hours,
+                min: 0,
+                max: 24,
+                onDecrement: () => setState(() => _hours = _clamp(_hours - 1, 0, 24)),
+                onIncrement: () => setState(() => _hours = _clamp(_hours + 1, 0, 24)),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _StepField(
+                label: '分钟',
+                value: _minutes,
+                min: 0,
+                max: 59,
+                onDecrement: () => setState(() => _minutes = _clamp(_minutes - 5, 0, 59)),
+                onIncrement: () => setState(() => _minutes = _clamp(_minutes + 5, 0, 59)),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '当前共 ${DurationFormat.minutes(_hours * 60 + _minutes)}（1～1440 分钟）',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.outline,
+              ),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          '每周可用日',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+        const SizedBox(height: 4),
+        Wrap(
+          spacing: 8,
+          children: [
+            for (final day in const [1, 2, 3, 4, 5, 6, 7])
+              FilterChip(
+                label: Text(_weekdayLabel(day)),
+                selected: _weekdays.contains(day),
+                onSelected: (selected) {
+                  setState(() {
+                    if (selected) {
+                      _weekdays.add(day);
+                    } else {
+                      _weekdays.remove(day);
+                    }
+                  });
                 },
               ),
-              const SizedBox(height: 16),
-              Text(
-                '每周可用日',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 4),
-              Wrap(
-                spacing: 8,
-                children: [
-                  for (final day in const [1, 2, 3, 4, 5, 6, 7])
-                    FilterChip(
-                      label: Text(_weekdayLabel(day)),
-                      selected: _weekdays.contains(day),
-                      onSelected: (selected) {
-                        setState(() {
-                          if (selected) {
-                            _weekdays.add(day);
-                          } else {
-                            _weekdays.remove(day);
-                          }
-                        });
-                      },
-                    ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.icon(
-                  onPressed: _save,
-                  icon: const Icon(Icons.save_outlined, size: 18),
-                  label: const Text('保存'),
-                ),
-              ),
-            ],
+          ],
+        ),
+        const SizedBox(height: 16),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.icon(
+            onPressed: _saving ? null : _save,
+            icon: const Icon(Icons.save_outlined, size: 18),
+            label: const Text('保存'),
           ),
         ),
       ],
     );
   }
+
+  static int _clamp(int value, int min, int max) =>
+      value < min ? min : (value > max ? max : value);
 
   static String _weekdayLabel(int iso) {
     return switch (iso) {
@@ -182,6 +205,131 @@ class _PlanPreferenceSectionState extends ConsumerState<_PlanPreferenceSection> 
       7 => '周日',
       _ => '未知',
     };
+  }
+}
+
+/// 小时/分钟步进输入：数值 + 上/下按钮（长按连续调整）。
+class _StepField extends StatelessWidget {
+  const _StepField({
+    required this.label,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.onDecrement,
+    required this.onIncrement,
+  });
+
+  final String label;
+  final int value;
+  final int min;
+  final int max;
+  final VoidCallback onDecrement;
+  final VoidCallback onIncrement;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final canDecrement = value > min;
+    final canIncrement = value < max;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 4),
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: scheme.outlineVariant),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              _StepButton(
+                tooltip: '$label减',
+                icon: Icons.remove,
+                onPressed: canDecrement ? onDecrement : null,
+              ),
+              Expanded(
+                child: Text(
+                  '$value',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              _StepButton(
+                tooltip: '$label加',
+                icon: Icons.add,
+                onPressed: canIncrement ? onIncrement : null,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 步进按钮：普通点击 + 长按连续触发（长按 400ms 后每 100ms 一次）。
+class _StepButton extends StatefulWidget {
+  const _StepButton({
+    required this.tooltip,
+    required this.icon,
+    this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  @override
+  State<_StepButton> createState() => _StepButtonState();
+}
+
+class _StepButtonState extends State<_StepButton> {
+  Timer? _timer;
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _start() {
+    widget.onPressed?.call();
+    // 长按 400ms 后进入连续步进（每 100ms 一次）。
+    _timer = Timer(const Duration(milliseconds: 400), () {
+      if (widget.onPressed == null) return;
+      _timer = Timer.periodic(const Duration(milliseconds: 100), (_) {
+        if (mounted) widget.onPressed?.call();
+      });
+    });
+  }
+
+  void _stop() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onLongPressStart: widget.onPressed == null ? null : (_) => _start(),
+      onLongPressEnd: widget.onPressed == null ? null : (_) => _stop(),
+      onLongPressCancel: widget.onPressed == null ? null : _stop,
+      child: IconButton(
+        tooltip: widget.tooltip,
+        icon: Icon(widget.icon),
+        onPressed: widget.onPressed == null
+            ? null
+            : () {
+                _start();
+                _stop();
+              },
+      ),
+    );
   }
 }
 

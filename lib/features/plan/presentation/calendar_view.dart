@@ -237,6 +237,15 @@ class _MonthGrid extends StatelessWidget {
 
   static const _weekdayLabels = ['一', '二', '三', '四', '五', '六', '日'];
 
+  /// 紧凑时长（日历格空间有限）：120 → '2h'，90 → '1h30'，30 → '30m'。
+  static String _compactDuration(int minutes) {
+    final hours = minutes ~/ 60;
+    final rest = minutes % 60;
+    if (hours == 0) return '${rest}m';
+    if (rest == 0) return '${hours}h';
+    return '${hours}h${rest}m';
+  }
+
   @override
   Widget build(BuildContext context) {
     final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
@@ -325,14 +334,14 @@ class _MonthGrid extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
               Text(
-                '${agg.loadMinutes}分',
+                _compactDuration(agg.loadMinutes),
                 style: TextStyle(fontSize: 11, color: textColor),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
               if (agg.overMinutes > 0)
                 Text(
-                  '超出${agg.overMinutes}',
+                  '超出${_compactDuration(agg.overMinutes)}',
                   style: TextStyle(
                     fontSize: 11,
                     color: scheme.error,

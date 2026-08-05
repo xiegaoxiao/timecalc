@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
+import '../../../services/duration_format.dart';
 import '../data/task_repository_provider.dart';
 import 'batch_task_form_dialog.dart';
 import 'task_form_dialog.dart';
@@ -151,7 +152,7 @@ class _TaskTile extends ConsumerWidget {
               [
                 DateFormat('yyyy-MM-dd').format(_parseDate(task.plannedDate)),
                 if (task.estimatedMinutes != null)
-                  '${task.estimatedMinutes} 分钟',
+                  DurationFormat.minutes(task.estimatedMinutes!),
                 ?subjectName,
               ].join(' · '),
             ),
