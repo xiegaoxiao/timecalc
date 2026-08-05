@@ -222,4 +222,82 @@ void main() {
         .firstWhere((t) => t.title == '第二章习题');
     expect(created.subjectId, subject.id);
   });
+
+  testWidgets('批量添加：多行同一天创建（回归：批量录入）', (tester) async {
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    await tester.tap(find.text('批量添加'));
+    await tester.pumpAndSettle();
+
+    // 输入三行标题。
+    await tester.enterText(
+      find.byType(TextFormField).first,
+      '严选题 第1章\n严选题 第2章\n严选题 第3章',
+    );
+    await tester.pumpAndSettle();
+
+    // 预览显示将创建 3 个任务。
+    expect(find.textContaining('将创建 3 个任务'), findsOneWidget);
+
+    await tester.tap(find.text('创建'));
+    await tester.pumpAndSettle();
+
+    final all = await tasks.byGoal(goalId);
+    expect(all, hasLength(3));
+    // 日期默认取注入时钟的今天（2026-08-05）。
+    expect(all.every((t) => t.plannedDate == '2026-08-05'), isTrue);
+  });
+
+  testWidgets('批量添加：每 N 天一个日期递推（套卷场景）', (tester) async {
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    await tester.tap(find.text('批量添加'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byType(TextFormField).first,
+      '真题 2013\n真题 2014\n真题 2015',
+    );
+    await tester.pumpAndSettle();
+
+    // 选择「每 N 天一个」。
+    await tester.tap(find.text('每 N 天一个（按顺序排列）'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('创建'));
+    await tester.pumpAndSettle();
+
+    final all = await tasks.byGoal(goalId);
+    expect(all, hasLength(3));
+    // 起始日期为注入时钟的今天（2026-08-05），每天递增。
+    expect(all.map((t) => t.plannedDate).toList(), [
+      '2026-08-05',
+      '2026-08-06',
+      '2026-08-07',
+    ]);
+  });
+
+  testWidgets('批量添加：科目页入口默认归属该科目', (tester) async {
+    final subject = await subjects.create(goalId: goalId, name: '数学', color: '#3F6C51');
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    await tester.tap(find.widgetWithText(Card, '数学'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('批量添加'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).first, '660 第1天\n660 第2天');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('创建'));
+    await tester.pumpAndSettle();
+
+    final all = (await tasks.byGoal(goalId))
+        .where((t) => t.title.startsWith('660'))
+        .toList();
+    expect(all, hasLength(2));
+    expect(all.every((t) => t.subjectId == subject.id), isTrue);
+  });
 }

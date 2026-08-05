@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../data/task_repository_provider.dart';
+import 'batch_task_form_dialog.dart';
 import 'task_form_dialog.dart';
 
 /// 任务列表区域（FR-3.1/FR-3.2）：创建、编辑、删除、完成任务。
@@ -52,6 +53,16 @@ class TaskListSection extends ConsumerWidget {
                   ),
                   icon: const Icon(Icons.add, size: 18),
                   label: const Text('添加任务'),
+                ),
+                TextButton.icon(
+                  onPressed: () => BatchTaskFormDialog.show(
+                    context,
+                    goalId: goalId,
+                    subjects: subjects,
+                    defaultSubjectId: defaultSubjectId,
+                  ),
+                  icon: const Icon(Icons.playlist_add, size: 18),
+                  label: const Text('批量添加'),
                 ),
               ],
             ],
