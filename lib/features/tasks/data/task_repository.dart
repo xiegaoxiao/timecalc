@@ -55,6 +55,58 @@ class TaskRepository {
     });
   }
 
+  /// 批量创建任务（NFR-2：单事务，任一条失败整体回滚，无半写入）。
+  ///
+  /// 每条 [titles] 生成一个任务；计划日期从 [startDate]（yyyy-MM-dd）起，
+  /// 按 [dateIntervalDays] 递增：0 表示全部同一天，1 表示每天一个（如
+  /// 真题套卷），7 表示每周一个。[estimatedMinutes] 为统一预估时长。
+  /// 空标题条自动跳过。
+  Future<int> batchCreate({
+    required int goalId,
+    int? subjectId,
+    required List<String> titles,
+    required String startDate,
+    int dateIntervalDays = 0,
+    int? estimatedMinutes,
+  }) {
+    if (dateIntervalDays < 0) {
+      throw ArgumentError.value(dateIntervalDays, 'dateIntervalDays', '不能为负数');
+    }
+    final now = DateTime.now().toUtc();
+    final start = _parseLocalDate(startDate);
+    final cleanTitles = titles.map((t) => t.trim()).where((t) => t.isNotEmpty).toList();
+    if (cleanTitles.isEmpty) return Future.value(0);
+
+    return _db.transaction(() async {
+      var count = 0;
+      for (var i = 0; i < cleanTitles.length; i++) {
+        final date = start.add(Duration(days: dateIntervalDays * i));
+        await _db.into(_db.tasks).insert(TasksCompanion.insert(
+              goalId: goalId,
+              subjectId: Value(subjectId),
+              title: cleanTitles[i],
+              plannedDate: _formatLocalDate(date),
+              estimatedMinutes: Value(estimatedMinutes),
+              createdAt: now,
+              updatedAt: now,
+            ));
+        count++;
+      }
+      return count;
+    });
+  }
+
+  static DateTime _parseLocalDate(String yyyyMMdd) {
+    final parts = yyyyMMdd.split('-');
+    return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+  }
+
+  static String _formatLocalDate(DateTime date) {
+    final mm = date.month.toString().padLeft(2, '0');
+    final dd = date.day.toString().padLeft(2, '0');
+    return '${date.year}-$mm-$dd';
+  }
+
   /// 完成任务状态切换（todo <-> done）。事务封装（NFR-2）。
   Future<void> setDone(int id, bool done) {
     return _db.transaction(() async {
