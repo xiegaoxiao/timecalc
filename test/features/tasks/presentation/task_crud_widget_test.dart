@@ -64,10 +64,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('请输入任务标题'), findsOneWidget);
 
-    // 填写标题与预估时长。
+    // 填写标题。
     await tester.enterText(find.byType(TextFormField).first, '完成第一章');
-    await tester.enterText(find.byType(TextFormField).at(1), '120');
+
+    // 用步进器设置预估时长 120 分钟（2 小时）：点「小时加」两次。
+    await tester.tap(find.byTooltip('小时加'));
     await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('小时加'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前共 2 小时'), findsOneWidget);
+
     await tester.tap(find.text('创建').last);
     await tester.pumpAndSettle();
 
@@ -76,29 +82,32 @@ void main() {
     expect(find.text('2026-08-05 · 2 小时'), findsOneWidget);
   });
 
-  testWidgets('非法预估时长被阻止并提示（FR-3 验收）', (tester) async {
+  testWidgets('预估时长步进与无时长切换（FR-3 验收）', (tester) async {
     await pumpApp(tester);
     await openGoalDetail(tester);
 
     await tester.tap(find.text('添加任务'));
     await tester.pumpAndSettle();
-
     await tester.enterText(find.byType(TextFormField).first, '任务');
-    // 非法值：0。
-    await tester.enterText(find.byType(TextFormField).at(1), '0');
+
+    // 默认未设置时长（0 分起步，可直接步进）。
+    expect(find.text('当前共 0 分'), findsOneWidget);
+
+    // 分钟步进：一次 +5 分钟。
+    await tester.tap(find.byTooltip('分钟加'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前共 5 分'), findsOneWidget);
+
+    // 切到「无时长」再保存：任务预估时长为 null。
+    await tester.tap(find.text('无时长'));
+    await tester.pumpAndSettle();
+    expect(find.text('未设置时长'), findsOneWidget);
+
     await tester.tap(find.text('创建').last);
     await tester.pumpAndSettle();
-    expect(find.text('请输入 1～1440 之间的整数'), findsOneWidget);
-
-    // 非法值：1441。
-    await tester.enterText(find.byType(TextFormField).at(1), '1441');
-    await tester.tap(find.text('创建').last);
-    await tester.pumpAndSettle();
-    expect(find.text('请输入 1～1440 之间的整数'), findsOneWidget);
-
-    // 对话框未关闭，数据库未创建任务。
-    expect(find.text('创建任务'), findsOneWidget);
-    expect(await tasks.byGoal(goalId), isEmpty);
+    final created = (await tasks.byGoal(goalId)).single;
+    expect(created.title, '任务');
+    expect(created.estimatedMinutes, isNull);
   });
 
   testWidgets('完成任务后列表状态同步更新（FR-3 验收）', (tester) async {

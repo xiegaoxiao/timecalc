@@ -4,10 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
+import '../../../shared/widgets/duration_step_input.dart';
 import '../data/task_repository_provider.dart';
-import '../domain/duration_validator.dart';
 
-/// 创建/编辑任务对话框（FR-3.1：标题、计划日期、预估分钟、状态、可选备注与科目）。
+/// 创建/编辑任务对话框（FR-3.1：标题、计划日期、预估时长、状态、可选备注与科目）。
 ///
 /// [task] 为空表示创建，非空表示编辑。
 /// [defaultSubjectId] 仅在创建模式生效：科目任务页创建任务时默认归属该科目。
@@ -50,10 +50,10 @@ class TaskFormDialog extends ConsumerStatefulWidget {
 class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _titleController;
-  late final TextEditingController _minutesController;
   final _noteController = TextEditingController();
   DateTime? _plannedDate;
   int? _subjectId;
+  int? _estimatedMinutes;
   bool _saving = false;
 
   bool get _isEdit => widget.task != null;
@@ -63,19 +63,16 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
     super.initState();
     final task = widget.task;
     _titleController = TextEditingController(text: task?.title ?? '');
-    _minutesController = TextEditingController(
-      text: task?.estimatedMinutes?.toString() ?? '',
-    );
     _noteController.text = task?.note ?? '';
     _plannedDate = task == null ? DateTime.now() : _parseDate(task.plannedDate);
     // 编辑模式沿用任务原科目；创建模式默认归属 defaultSubjectId（科目页入口）。
     _subjectId = task?.subjectId ?? widget.defaultSubjectId;
+    _estimatedMinutes = task?.estimatedMinutes;
   }
 
   @override
   void dispose() {
     _titleController.dispose();
-    _minutesController.dispose();
     _noteController.dispose();
     super.dispose();
   }
@@ -103,9 +100,8 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final title = _titleController.text.trim();
-    final minutesText = _minutesController.text.trim();
-    final estimatedMinutes =
-        minutesText.isEmpty ? null : int.parse(minutesText);
+    // 0 分钟视为未设置（预估时长合法范围为 1～1440，FR-3 验收）。
+    final minutes = _estimatedMinutes == 0 ? null : _estimatedMinutes;
 
     setState(() => _saving = true);
     try {
@@ -119,7 +115,7 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
               ? null
               : _noteController.text.trim(),
           plannedDate: dateText,
-          estimatedMinutes: Value(estimatedMinutes),
+          estimatedMinutes: Value(minutes),
           subjectId: Value(_subjectId),
         );
       } else {
@@ -131,7 +127,7 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
               ? null
               : _noteController.text.trim(),
           plannedDate: dateText,
-          estimatedMinutes: estimatedMinutes,
+          estimatedMinutes: minutes,
         );
       }
       ref.invalidate(taskListProvider(widget.goalId));
@@ -183,21 +179,16 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _minutesController,
-                decoration: const InputDecoration(
-                  labelText: '预估时长（分钟）',
-                  hintText: '1～1440',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) return null;
-                  return DurationValidator.validate(value);
-                },
+              const SizedBox(height: 16),
+              DurationStepInput(
+                label: '预估时长',
+                value: _estimatedMinutes,
+                allowEmpty: true,
+                onChanged: (minutes) => setState(() => _estimatedMinutes = minutes),
+                hourFieldKey: const Key('taskHourField'),
+                minuteFieldKey: const Key('taskMinuteField'),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               if (widget.subjects.isNotEmpty)
                 DropdownButtonFormField<int?>(
                   initialValue: _subjectId,

@@ -115,7 +115,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('小时加'));
     await tester.pumpAndSettle();
-    expect(find.text('当前共 3 小时（1～1440 分钟）'), findsOneWidget);
+    expect(find.text('当前共 3 小时'), findsOneWidget);
 
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
@@ -157,17 +157,17 @@ void main() {
     await tester.pumpAndSettle();
 
     // 默认 2 小时 / 0 分。
-    expect(find.text('当前共 2 小时（1～1440 分钟）'), findsOneWidget);
+    expect(find.text('当前共 2 小时'), findsOneWidget);
 
     // 小时步进：向下到 0 后不可再减。
     await tester.tap(find.byTooltip('小时减'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('小时减'));
     await tester.pumpAndSettle();
-    expect(find.text('当前共 0 分（1～1440 分钟）'), findsOneWidget);
+    expect(find.text('当前共 0 分'), findsOneWidget);
     await tester.tap(find.byTooltip('小时减'));
     await tester.pumpAndSettle();
-    expect(find.text('当前共 0 分（1～1440 分钟）'), findsOneWidget);
+    expect(find.text('当前共 0 分'), findsOneWidget);
 
     // 每日可用时长为 0 时保存被阻止。
     await tester.tap(find.text('保存'));
@@ -178,20 +178,20 @@ void main() {
     // 分钟步进：向上到 5，向下回 0。
     await tester.tap(find.byTooltip('分钟加'));
     await tester.pumpAndSettle();
-    expect(find.text('当前共 5 分（1～1440 分钟）'), findsOneWidget);
+    expect(find.text('当前共 5 分'), findsOneWidget);
     await tester.tap(find.byTooltip('分钟减'));
     await tester.pumpAndSettle();
-    expect(find.text('当前共 0 分（1～1440 分钟）'), findsOneWidget);
+    expect(find.text('当前共 0 分'), findsOneWidget);
 
     // 小时向上到 24 后不可再增。
     for (var i = 0; i < 25; i++) {
       await tester.tap(find.byTooltip('小时加'));
     }
     await tester.pumpAndSettle();
-    expect(find.text('当前共 24 小时（1～1440 分钟）'), findsOneWidget);
+    expect(find.text('当前共 24 小时'), findsOneWidget);
     await tester.tap(find.byTooltip('小时加'));
     await tester.pumpAndSettle();
-    expect(find.text('当前共 24 小时（1～1440 分钟）'), findsOneWidget);
+    expect(find.text('当前共 24 小时'), findsOneWidget);
   });
 
   testWidgets('点击小时中间数字区域可直接输入编辑并生效', (tester) async {
@@ -221,7 +221,7 @@ void main() {
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
 
-    expect(find.text('当前共 5 小时（1～1440 分钟）'), findsOneWidget);
+    expect(find.text('当前共 5 小时'), findsOneWidget);
 
     // 保存后今天页可用时长变为 5 小时。
     await tester.tap(find.text('保存'));
@@ -249,6 +249,6 @@ void main() {
     await tester.pumpAndSettle();
 
     // 30 小时超出上限，夹取到 24 小时。
-    expect(find.text('当前共 24 小时（1～1440 分钟）'), findsOneWidget);
+    expect(find.text('当前共 24 小时'), findsOneWidget);
   });
 }

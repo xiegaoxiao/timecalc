@@ -1,11 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/database.dart';
-import '../../../services/duration_format.dart';
+import '../../../shared/widgets/duration_step_input.dart';
 import '../data/settings_repository.dart';
 import '../data/settings_repository_provider.dart';
 
@@ -63,24 +60,21 @@ class _PlanPreferenceSection extends ConsumerStatefulWidget {
 }
 
 class _PlanPreferenceSectionState extends ConsumerState<_PlanPreferenceSection> {
-  late int _hours;
-  late int _minutes;
+  late int _dailyMinutes;
   late Set<int> _weekdays;
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    final total = widget.settings.dailyAvailableMinutes;
-    _hours = total ~/ 60;
-    _minutes = total % 60;
+    _dailyMinutes = widget.settings.dailyAvailableMinutes;
     _weekdays = SettingsRepository.decodeWeekdays(
       widget.settings.availableWeekdays,
     );
   }
 
   Future<void> _save() async {
-    final total = _hours * 60 + _minutes;
+    final total = _dailyMinutes;
     if (total < 1) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -122,39 +116,16 @@ class _PlanPreferenceSectionState extends ConsumerState<_PlanPreferenceSection> 
           style: Theme.of(context).textTheme.bodyMedium,
         ),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _StepField(
-                key: const Key('hourStepField'),
-                label: '小时',
-                value: _hours,
-                min: 0,
-                max: 24,
-                step: 1,
-                onChanged: (v) => setState(() => _hours = v),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _StepField(
-                key: const Key('minuteStepField'),
-                label: '分钟',
-                value: _minutes,
-                min: 0,
-                max: 59,
-                step: 5,
-                onChanged: (v) => setState(() => _minutes = v),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text(
-          '当前共 ${DurationFormat.minutes(_hours * 60 + _minutes)}（1～1440 分钟）',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.outline,
-              ),
+        DurationStepInput(
+          label: '每日可用时长',
+          value: _dailyMinutes,
+          onChanged: (minutes) {
+            if (minutes != null) {
+              setState(() => _dailyMinutes = minutes);
+            }
+          },
+          hourFieldKey: const Key('hourStepField'),
+          minuteFieldKey: const Key('minuteStepField'),
         ),
         const SizedBox(height: 16),
         Text(
@@ -205,252 +176,6 @@ class _PlanPreferenceSectionState extends ConsumerState<_PlanPreferenceSection> 
       7 => '周日',
       _ => '未知',
     };
-  }
-}
-
-/// 小时/分钟步进输入：+/- 按钮步进，点击中间数字区域可直接输入编辑。
-class _StepField extends StatefulWidget {
-  const _StepField({
-    super.key,
-    required this.label,
-    required this.value,
-    required this.min,
-    required this.max,
-    required this.step,
-    required this.onChanged,
-  });
-
-  final String label;
-  final int value;
-  final int min;
-  final int max;
-
-  /// 点按 +/- 时单次增减的步长（编辑输入不受步长限制，按 [min]~[max] 收口）。
-  final int step;
-  final ValueChanged<int> onChanged;
-
-  @override
-  State<_StepField> createState() => _StepFieldState();
-}
-
-class _StepFieldState extends State<_StepField> {
-  final _controller = TextEditingController();
-  final _focusNode = FocusNode();
-  Timer? _timer;
-
-  /// 当前编辑/步进值。独立于 widget.value 维护，保证连续点击与长按连调
-  /// 不依赖帧重建时机。
-  late int _value;
-
-  @override
-  void initState() {
-    super.initState();
-    _value = widget.value;
-    _controller.text = '$_value';
-    // 获得焦点进入编辑态：点击中间数字区域即可输入。
-    _focusNode.addListener(_handleFocus);
-  }
-
-  @override
-  void didUpdateWidget(_StepField oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // 非编辑态时跟随外部值（如恢复/刷新）；编辑态不打断输入。
-    if (!_focusNode.hasFocus && widget.value != _value) {
-      _value = widget.value;
-      _controller.text = '$_value';
-    }
-  }
-
-  @override
-  void dispose() {
-    _focusNode.removeListener(_handleFocus);
-    _focusNode.dispose();
-    _controller.dispose();
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  void _handleFocus() {
-    if (!_focusNode.hasFocus) {
-      _commit();
-    }
-  }
-
-  /// 提交输入：空值保持原值；解析并夹取到 [min]~[max]，非法字符忽略。
-  void _commit() {
-    final text = _controller.text.trim();
-    if (text.isEmpty) {
-      _controller.text = '$_value';
-      return;
-    }
-    final parsed = int.tryParse(text);
-    if (parsed == null) {
-      _controller.text = '$_value';
-      return;
-    }
-    _apply(parsed);
-  }
-
-  void _stepBy(int delta) {
-    // 编辑中按 +/-：先提交当前输入，再基于其结果步进。
-    if (_focusNode.hasFocus) {
-      _commit();
-    }
-    _apply(_value + delta);
-  }
-
-  void _apply(int raw) {
-    final clamped = _clamp(raw, widget.min, widget.max);
-    _value = clamped;
-    _controller.text = '$clamped';
-    if (clamped != widget.value) {
-      widget.onChanged(clamped);
-    }
-  }
-
-  void _startAutoStep() {
-    _stepBy(widget.step);
-    // 长按 400ms 后进入连续步进（每 100ms 一次）。
-    _timer = Timer(const Duration(milliseconds: 400), () {
-      _timer = Timer.periodic(const Duration(milliseconds: 100), (_) {
-        if (mounted) _stepBy(widget.step);
-      });
-    });
-  }
-
-  void _stopAutoStep() {
-    _timer?.cancel();
-    _timer = null;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final canDecrement = _value > widget.min;
-    final canIncrement = _value < widget.max;
-    final editing = _focusNode.hasFocus;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          widget.label,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        const SizedBox(height: 4),
-        Container(
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: editing ? scheme.primary : scheme.outlineVariant,
-              width: editing ? 2 : 1,
-            ),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: [
-              _StepButton(
-                tooltip: '${widget.label}减',
-                icon: Icons.remove,
-                onPressed: canDecrement
-                    ? () {
-                        _stepBy(-widget.step);
-                        _stopAutoStep();
-                      }
-                    : null,
-                onLongPressStart: canDecrement
-                    ? (_) {
-                        _stepBy(-widget.step);
-                        _startAutoStep();
-                      }
-                    : null,
-                onLongPressEnd: (_) => _stopAutoStep(),
-                onLongPressCancel: _stopAutoStep,
-              ),
-              // 点击中间数字区域进入编辑：获得焦点即可直接输入。
-              Expanded(
-                child: InkWell(
-                  onTap: () => _focusNode.requestFocus(),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: TextField(
-                      controller: _controller,
-                      focusNode: _focusNode,
-                      textAlign: TextAlign.center,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                      ],
-                      style: Theme.of(context).textTheme.titleMedium,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        border: InputBorder.none,
-                        hintText: '0',
-                      ),
-                      // 回车确认并失焦。
-                      onSubmitted: (_) => _focusNode.unfocus(),
-                    ),
-                  ),
-                ),
-              ),
-              _StepButton(
-                tooltip: '${widget.label}加',
-                icon: Icons.add,
-                onPressed: canIncrement
-                    ? () {
-                        _stepBy(widget.step);
-                        _stopAutoStep();
-                      }
-                    : null,
-                onLongPressStart: canIncrement
-                    ? (_) {
-                        _stepBy(widget.step);
-                        _startAutoStep();
-                      }
-                    : null,
-                onLongPressEnd: (_) => _stopAutoStep(),
-                onLongPressCancel: _stopAutoStep,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  static int _clamp(int value, int min, int max) =>
-      value < min ? min : (value > max ? max : value);
-}
-
-/// 步进按钮：普通点击 + 长按连续触发（长按 400ms 后每 100ms 一次）。
-class _StepButton extends StatelessWidget {
-  const _StepButton({
-    required this.tooltip,
-    required this.icon,
-    this.onPressed,
-    this.onLongPressStart,
-    this.onLongPressEnd,
-    this.onLongPressCancel,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback? onPressed;
-  final GestureLongPressStartCallback? onLongPressStart;
-  final GestureLongPressEndCallback? onLongPressEnd;
-  final VoidCallback? onLongPressCancel;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onLongPressStart: onLongPressStart,
-      onLongPressEnd: onLongPressEnd,
-      onLongPressCancel: onLongPressCancel,
-      child: IconButton(
-        tooltip: tooltip,
-        icon: Icon(icon),
-        onPressed: onPressed,
-      ),
-    );
   }
 }
 
