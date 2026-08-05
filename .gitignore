@@ -58,3 +58,6 @@ logs/
 *.bak
 *.swp
 *~
+
+# Local tooling state
+.zcode/
