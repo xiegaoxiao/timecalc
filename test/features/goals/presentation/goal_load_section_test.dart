@@ -1,0 +1,168 @@
+import 'package:drift/native.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:timecalc/app.dart';
+import 'package:timecalc/core/database/database.dart';
+import 'package:timecalc/core/database/database_provider.dart';
+import 'package:timecalc/core/providers/clock_provider.dart';
+import 'package:timecalc/features/goals/data/goal_repository.dart';
+import 'package:timecalc/features/settings/data/settings_repository.dart';
+import 'package:timecalc/features/tasks/data/task_repository.dart';
+
+/// 目标详情负载区 + 设置计划偏好 Widget 测试（FR-5.3/FR-5.4/PRD §5.1）。
+///
+/// 固定时钟 2026-08-05（周三）。默认偏好：120 分钟/天、每周 7 天。
+void main() {
+  late AppDatabase db;
+  late GoalRepository goals;
+  late TaskRepository tasks;
+  late SettingsRepository settings;
+  late DateTime fixedNow;
+
+  Future<void> pumpApp(WidgetTester tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          clockProvider.overrideWithValue(() => fixedNow),
+        ],
+        child: const TimeCalcApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  setUp(() {
+    db = AppDatabase(NativeDatabase.memory());
+    goals = GoalRepository(db);
+    tasks = TaskRepository(db);
+    settings = SettingsRepository(db);
+    fixedNow = DateTime(2026, 8, 5, 12);
+  });
+
+  tearDown(() async {
+    await db.close();
+  });
+
+  /// 进入指定目标的目标详情页。
+  Future<void> openGoalDetail(WidgetTester tester, String title) async {
+    await tester.tap(find.text('计划'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(title));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('目标详情展示剩余任务时长、剩余可用天数和建议日均时长（FR-5.3）', (tester) async {
+    // 截止 08-08（周五），距 08-05 还有 4 天全可用；任务共 360 分钟。
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-08-08');
+    await tasks.create(goalId: goal.id, title: '任务A', plannedDate: '2026-08-05', estimatedMinutes: 120);
+    await tasks.create(goalId: goal.id, title: '任务B', plannedDate: '2026-08-06', estimatedMinutes: 240);
+
+    await pumpApp(tester);
+    await openGoalDetail(tester, '考研');
+
+    expect(find.text('剩余任务时长：360 分钟'), findsOneWidget);
+    expect(find.text('剩余可用天数：4 天'), findsOneWidget);
+    expect(find.text('建议日均时长：90 分钟 · 可用 120 分钟/天'), findsOneWidget);
+    // 建议日均未超可用时长，不显示计划风险。
+    expect(find.textContaining('计划风险'), findsNothing);
+  });
+
+  testWidgets('建议日均超过每日可用时长时显示计划风险（FR-5.4）', (tester) async {
+    // 任务量远超剩余可用天数可承载范围。
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-08-07');
+    await tasks.create(goalId: goal.id, title: '任务A', plannedDate: '2026-08-05', estimatedMinutes: 300);
+    await tasks.create(goalId: goal.id, title: '任务B', plannedDate: '2026-08-06', estimatedMinutes: 300);
+
+    await pumpApp(tester);
+    await openGoalDetail(tester, '考研');
+
+    // 剩余 3 天（08-05/06/07）共 600 分钟 -> 建议日均 200 > 120。
+    expect(find.text('剩余任务时长：600 分钟'), findsOneWidget);
+    expect(find.text('建议日均时长：200 分钟 · 可用 120 分钟/天'), findsOneWidget);
+    expect(find.textContaining('计划风险'), findsOneWidget);
+    // 系统只建议，不自动改计划（FR-5.5）。
+    expect(find.textContaining('不会自动修改你的计划'), findsOneWidget);
+  });
+
+  testWidgets('每周可用日影响剩余可用天数（仅工作日时周末不计）', (tester) async {
+    // 截止 08-11（下周二）。仅工作日可用：08-05~07、10、11 共 5 天。
+    await settings.updateAvailableWeekdays({1, 2, 3, 4, 5});
+    final goal = await goals.create(title: '论文', deadlineDate: '2026-08-11');
+    await tasks.create(goalId: goal.id, title: '任务A', plannedDate: '2026-08-05', estimatedMinutes: 500);
+
+    await pumpApp(tester);
+    await openGoalDetail(tester, '论文');
+
+    expect(find.text('剩余可用天数：5 天'), findsOneWidget);
+    // 500 / 5 = 100 分钟/天，未超可用时长，无风险。
+    expect(find.text('建议日均时长：100 分钟 · 可用 120 分钟/天'), findsOneWidget);
+    expect(find.textContaining('计划风险'), findsNothing);
+  });
+
+  testWidgets('设置计划偏好：修改每日可用时长后今天页负载提示随之变化', (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    await tasks.create(goalId: goal.id, title: '背单词', plannedDate: '2026-08-05', estimatedMinutes: 150);
+
+    await pumpApp(tester);
+    // 默认 120 分钟：今日负载 150 超 30。
+    expect(find.text('超出 30 分钟，请调整任务或可用时间'), findsOneWidget);
+
+    // 设置页改为 180 分钟/天。
+    await tester.tap(find.text('设置'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, '每日可用时长（分钟）'),
+      '180',
+    );
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(find.text('计划偏好已保存'), findsOneWidget);
+
+    // 回到今天页：150 分钟不再超出。
+    await tester.tap(find.text('今天'));
+    await tester.pumpAndSettle();
+    expect(find.text('今日 150 分钟 · 可用 180 分钟'), findsOneWidget);
+    expect(find.textContaining('超出'), findsNothing);
+  });
+
+  testWidgets('设置计划偏好：修改每周可用日后快捷延期跳到下个可用日', (tester) async {
+    // 仅周日可用：今天（周三）的任务延期应跳到周日（08-09）。
+    await settings.updateAvailableWeekdays({7});
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    final created = await tasks.create(
+      goalId: goal.id,
+      title: '背单词',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 90,
+    );
+
+    await pumpApp(tester);
+    await tester.tap(find.byTooltip('任务操作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('延期至下一可用日'));
+    await tester.pumpAndSettle();
+
+    final fetched = await tasks.byId(created.id);
+    expect(fetched?.plannedDate, '2026-08-09');
+    expect(fetched?.originalPlannedDate, '2026-08-05');
+  });
+
+  testWidgets('设置页校验非法每日可用时长', (tester) async {
+    await pumpApp(tester);
+    await tester.tap(find.text('设置'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, '每日可用时长（分钟）'),
+      '0',
+    );
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('请输入 1～1440 的整数分钟'), findsOneWidget);
+    expect(find.text('计划偏好已保存'), findsNothing);
+  });
+}

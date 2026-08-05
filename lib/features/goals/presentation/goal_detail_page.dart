@@ -5,6 +5,9 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../services/countdown_service.dart';
+import '../../../services/load_service.dart';
+import '../../settings/data/settings_repository.dart';
+import '../../settings/data/settings_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
 import '../../tasks/presentation/task_list_section.dart';
 import '../data/goal_repository_provider.dart';
@@ -54,6 +57,13 @@ class GoalDetailBody extends ConsumerWidget {
       children: [
         _GoalHeader(goal: goal),
         const Divider(height: 32),
+        // 负载区（FR-5.3）：剩余任务时长、剩余可用天数、建议日均与计划风险。
+        tasksAsync.when(
+          loading: () => const SizedBox.shrink(),
+          error: (_, _) => const SizedBox.shrink(),
+          data: (tasks) => _LoadSection(goal: goal, tasks: tasks),
+        ),
+        const Divider(height: 32),
         SubjectManager(goalId: goal.id),
         const Divider(height: 32),
         // 未归属科目的任务在详情页直接管理（无科目页可进）。
@@ -79,6 +89,90 @@ class GoalDetailBody extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 目标负载区（FR-5.3 / FR-5.4）。
+///
+/// 展示剩余任务时长、剩余可用天数与建议日均时长；建议日均超过每日
+/// 可用时长时显示计划风险与建议（延长截止日/减少任务/增加可用时间）。
+/// 系统只提出建议，不自动删除任务或修改截止日期（FR-5.5）。
+class _LoadSection extends ConsumerWidget {
+  const _LoadSection({required this.goal, required this.tasks});
+
+  final Goal goal;
+  final List<Task> tasks;
+
+  static const _load = LoadService();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settingsAsync = ref.watch(settingsProvider);
+    return settingsAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
+      data: (settings) {
+        final today = ref.watch(clockProvider)();
+        final weekdays = SettingsRepository.decodeWeekdays(
+          settings.availableWeekdays,
+        );
+        final remaining = _load.remainingMinutes(tasks);
+        final remainingDays = _load.remainingAvailableDays(
+          deadlineDate: goal.deadlineDate,
+          today: today,
+          availableWeekdays: weekdays,
+        );
+        final suggested = _load.suggestedDailyMinutes(
+          remainingMinutes: remaining,
+          remainingDays: remainingDays,
+        );
+        final risk = _load.hasPlanRisk(
+          suggestedDailyMinutes: suggested,
+          dailyAvailableMinutes: settings.dailyAvailableMinutes,
+        );
+
+        final scheme = Theme.of(context).colorScheme;
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      risk ? Icons.warning_amber_rounded : Icons.speed,
+                      color: risk ? scheme.error : scheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '负载',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text('剩余任务时长：$remaining 分钟'),
+                Text('剩余可用天数：$remainingDays 天'),
+                Text('建议日均时长：$suggested 分钟 · 可用 ${settings.dailyAvailableMinutes} 分钟/天'),
+                if (risk) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '计划风险：按当前节奏无法在截止日前完成。'
+                    '建议延长截止日、减少任务量或增加每日可用时间。',
+                    style: TextStyle(color: scheme.error),
+                  ),
+                  Text(
+                    '系统仅提供建议，不会自动修改你的计划。',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

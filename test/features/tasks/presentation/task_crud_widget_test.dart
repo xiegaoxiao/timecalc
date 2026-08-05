@@ -71,9 +71,9 @@ void main() {
     await tester.tap(find.text('创建').last);
     await tester.pumpAndSettle();
 
-    // 任务出现在目标详情。
+    // 任务出现在目标详情（任务条目标注预估时长）。
     expect(find.text('完成第一章'), findsOneWidget);
-    expect(find.textContaining('120 分钟'), findsOneWidget);
+    expect(find.text('2026-08-05 · 120 分钟'), findsOneWidget);
   });
 
   testWidgets('非法预估时长被阻止并提示（FR-3 验收）', (tester) async {
