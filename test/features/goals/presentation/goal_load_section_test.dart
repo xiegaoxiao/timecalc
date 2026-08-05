@@ -124,7 +124,8 @@ void main() {
     // 回到今天页：150 分钟不再超出。
     await tester.tap(find.text('今天'));
     await tester.pumpAndSettle();
-    expect(find.text('今日 2 小时 30 分 · 可用 3 小时'), findsOneWidget);
+    expect(find.text('今日任务总计 2 小时 30 分'), findsOneWidget);
+    expect(find.text('可用 3 小时'), findsOneWidget);
     expect(find.textContaining('超出'), findsNothing);
   });
 
@@ -227,7 +228,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('今天'));
     await tester.pumpAndSettle();
-    expect(find.text('今日 1 小时 · 可用 5 小时'), findsOneWidget);
+    expect(find.text('今日任务总计 1 小时'), findsOneWidget);
+    expect(find.text('可用 5 小时'), findsOneWidget);
   });
 
   testWidgets('编辑输入超出范围时夹取到边界（小时 30 → 24）', (tester) async {

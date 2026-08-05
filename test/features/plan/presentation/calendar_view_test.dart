@@ -179,6 +179,7 @@ void main() {
     // 回到今天页：负载归零，无「超出」提示。
     await tester.tap(find.text('今天'));
     await tester.pumpAndSettle();
-    expect(find.text('今日 0 分 · 可用 2 小时'), findsOneWidget);
+    expect(find.text('今日任务总计 0 分'), findsOneWidget);
+    expect(find.text('可用 2 小时'), findsOneWidget);
   });
 }

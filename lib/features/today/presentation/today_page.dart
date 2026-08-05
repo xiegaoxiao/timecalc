@@ -214,8 +214,9 @@ class _TodayPageState extends ConsumerState<TodayPage> {
 
 /// 今日负载概览（FR-3.5）。
 ///
-/// 展示当日未完成任务预估时长与可用时长；超出时显示「超出 X 分钟」
-/// 文案与警告图标（状态不只依赖颜色表达）。
+/// 标题展示「今日任务总计 X 小时 Y 分」（当日未完成任务预估时长之和）；
+/// 副标题展示可用时长，超出时追加「超出 X 分」文案与警告图标
+/// （状态不只依赖颜色表达）。
 class _LoadOverviewCard extends StatelessWidget {
   const _LoadOverviewCard({
     required this.load,
@@ -233,15 +234,19 @@ class _LoadOverviewCard extends StatelessWidget {
     return Card(
       child: ListTile(
         leading: Icon(over > 0 ? Icons.warning_amber_rounded : Icons.balance),
-        title: Text(
-          '今日 ${DurationFormat.minutes(load)} · 可用 ${DurationFormat.minutes(available)}',
-        ),
-        subtitle: over > 0
-            ? Text(
+        title: Text('今日任务总计 ${DurationFormat.minutes(load)}'),
+        subtitle: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('可用 ${DurationFormat.minutes(available)}'),
+            if (over > 0)
+              Text(
                 '超出 ${DurationFormat.minutes(over)}，请调整任务或可用时间',
                 style: TextStyle(color: scheme.error),
-              )
-            : null,
+              ),
+          ],
+        ),
         trailing: over > 0
             ? Icon(Icons.error_outline, color: scheme.error)
             : null,

@@ -59,13 +59,15 @@ void main() {
     await pumpApp(tester);
 
     expect(find.text('背单词'), findsOneWidget);
-    expect(find.text('今日 1 小时 30 分 · 可用 2 小时'), findsOneWidget);
+    expect(find.text('今日任务总计 1 小时 30 分'), findsOneWidget);
+    expect(find.text('可用 2 小时'), findsOneWidget);
 
     // 完成任务：列表保留（划线），负载归零。
     await tester.tap(find.byType(Checkbox));
     await tester.pumpAndSettle();
 
-    expect(find.text('今日 0 分 · 可用 2 小时'), findsOneWidget);
+    expect(find.text('今日任务总计 0 分'), findsOneWidget);
+    expect(find.text('可用 2 小时'), findsOneWidget);
     expect((await tasks.byId(created.id))?.status, 'done');
   });
 
@@ -76,7 +78,8 @@ void main() {
 
     await pumpApp(tester);
 
-    expect(find.text('今日 2 小时 30 分 · 可用 2 小时'), findsOneWidget);
+    expect(find.text('今日任务总计 2 小时 30 分'), findsOneWidget);
+    expect(find.text('可用 2 小时'), findsOneWidget);
     expect(find.text('超出 30 分，请调整任务或可用时间'), findsOneWidget);
   });
 
