@@ -1,0 +1,60 @@
+# Dart / Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+doc/api/
+
+# Generated platform files
+**/generated_plugin_registrant.dart
+
+# IDEs and editors
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Visual Studio / Windows
+.vs/
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+x64/
+x86/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Local databases, backups, and logs
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+backups/
+logs/
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
