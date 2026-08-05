@@ -182,4 +182,31 @@ void main() {
     expect(find.text('今日任务总计 0 分'), findsOneWidget);
     expect(find.text('可用 2 小时'), findsOneWidget);
   });
+
+  testWidgets('今天页完成任务后日历格负载与超出同步更新（跨页一致）', (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    await tasks.create(
+      goalId: goal.id,
+      title: '共享任务',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 150,
+    );
+
+    await pumpApp(tester);
+    // 今天页：150 分超可用 120 分。
+    expect(find.text('超出 30 分，请调整任务或可用时间'), findsOneWidget);
+
+    // 在今天页完成任务。
+    await tester.tap(find.byType(Checkbox));
+    await tester.pumpAndSettle();
+    expect(find.text('今日任务总计 0 分'), findsOneWidget);
+
+    // 切到日历：该日格应同步为已完成状态，不再显示「超出」。
+    await tester.tap(find.text('计划'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('日历'));
+    await tester.pumpAndSettle();
+    expect(find.text('1/1'), findsOneWidget);
+    expect(find.text('超出30m'), findsNothing);
+  });
 }

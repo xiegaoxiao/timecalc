@@ -84,7 +84,6 @@ class _TodayPageState extends ConsumerState<TodayPage> {
     required List<Task> todayTasks,
     required List<Task> unfinished,
   }) {
-    final todayStr = DateFormat('yyyy-MM-dd').format(today);
     final activeGoals = goals
         .where((g) =>
             g.status != 'completed' &&
@@ -92,10 +91,13 @@ class _TodayPageState extends ConsumerState<TodayPage> {
             g.status != 'archived')
         .toList();
 
-    // 数据变更后的统一刷新（今日列表、未完成任务横幅、倒计时卡）。
+    // 数据变更后的统一刷新（FR-3 验收：今日列表、日历、目标详情在同一
+    // 操作周期内同步更新）。family 级 invalidate 覆盖所有日期/月份实例。
     void onChanged() {
-      ref.invalidate(tasksByDateProvider(todayStr));
-      ref.invalidate(unfinishedBeforeProvider(todayStr));
+      ref.invalidate(tasksByDateProvider);
+      ref.invalidate(tasksByMonthProvider);
+      ref.invalidate(taskListProvider);
+      ref.invalidate(unfinishedBeforeProvider);
       ref.invalidate(goalListProvider);
     }
 

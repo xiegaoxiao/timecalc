@@ -64,11 +64,14 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
             error: (error, _) => Center(child: Text('加载失败：$error')),
             data: (selectedTasks) {
               void onChanged() {
-                // 日历月视图、选日列表与今日页相关数据统一刷新，保证跨页一致。
-                ref.invalidate(tasksByMonthProvider(monthKey));
-                ref.invalidate(tasksByDateProvider(_selectedDate));
-                ref.invalidate(tasksByDateProvider(todayStr));
-                ref.invalidate(unfinishedBeforeProvider(todayStr));
+                // 日历月视图、选日列表、今日页与目标详情统一刷新，保证
+                // 跨页数据一致（FR-3 验收）。family 级 invalidate 覆盖
+                // 所有日期/月份实例。
+                ref.invalidate(tasksByMonthProvider);
+                ref.invalidate(tasksByDateProvider);
+                ref.invalidate(taskListProvider);
+                ref.invalidate(unfinishedBeforeProvider);
+                ref.invalidate(goalListProvider);
               }
 
               final activeGoals = goals
