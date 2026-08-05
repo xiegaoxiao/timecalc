@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/providers/clock_provider.dart';
@@ -9,20 +12,10 @@ import '../domain/task_import_parser.dart';
 
 /// 批量添加的升级版：JSON 导入任务对话框。
 ///
-/// 支持按科目分组与未分类任务隔离导入；解析后必须先「校验」（JSON 合法性、
-/// 日期不得早于今天、不得出现非法日期），校验通过展示分组预览后「导入」。
+/// 支持按科目分组与未分类任务隔离导入。粘贴 JSON 后点「导入」会自动校验
+/// （JSON 合法性、日期不得早于今天、不得出现非法日期），校验通过即单事务
+/// 写入；校验失败展示错误列表，不写入任何任务。也可先点「校验」预览分组。
 /// 目标下不存在的科目自动创建；整个导入在单事务内完成（NFR-2）。
-const _sampleJson = '''
-{
-  "subjects": {
-    "数学": [
-      { "title": "真题 2013", "date": "2026-08-06", "minutes": 180 }
-    ]
-  },
-  "unclassified": [
-    { "title": "复盘本周错题", "date": "2026-08-06" }
-  ]
-}''';
 
 class TaskImportDialog extends ConsumerStatefulWidget {
   const TaskImportDialog({super.key, required this.goalId, this.subjects = const []});
@@ -53,16 +46,45 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
   TaskImportResult? _result;
   bool _importing = false;
 
+  /// 自动校验防抖计时器：内容连续变化时只在校验最后一次。
+  Timer? _debounce;
+
   @override
   void initState() {
     super.initState();
-    _jsonController = TextEditingController(text: _sampleJson);
+    _jsonController = TextEditingController(text: _buildSample());
+  }
+
+  /// 示例 JSON 使用「明天」的日期，保证任何时候打开都能校验通过
+  /// （导入规则：日期不得早于今天）。
+  String _buildSample() {
+    final today = ref.read(clockProvider)();
+    final tomorrow =
+        DateFormat('yyyy-MM-dd').format(today.add(const Duration(days: 1)));
+    return '''
+{
+  "subjects": {
+    "数学": [
+      { "title": "真题 2013", "date": "$tomorrow", "minutes": 180 }
+    ]
+  },
+  "unclassified": [
+    { "title": "复盘本周错题", "date": "$tomorrow" }
+  ]
+}''';
   }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _jsonController.dispose();
     super.dispose();
+  }
+
+  /// 内容变化后 400ms 自动校验（粘贴即触发）。
+  void _scheduleAutoValidate() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), _validate);
   }
 
   void _validate() {
@@ -71,8 +93,13 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
   }
 
   Future<void> _import() async {
-    final plan = _result?.plan;
+    // 点击导入时兜底校验：校验失败展示错误，不写入任何任务。
+    final today = ref.read(clockProvider)();
+    final result = _parser.parse(_jsonController.text, today: today);
+    setState(() => _result = result);
+    final plan = result.plan;
     if (plan == null) return;
+
     setState(() => _importing = true);
     try {
       final repo = ref.read(taskRepositoryProvider);
@@ -103,7 +130,6 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final result = _result;
-    final canImport = result != null && result.isValid && !_importing;
 
     return AlertDialog(
       title: const Text('JSON 导入任务'),
@@ -115,7 +141,8 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
           children: [
             Text(
               '批量添加的升级版：按科目分组与未分类任务隔离。'
-              '任务日期不得早于今天，且必须是有效日期。',
+              '任务日期不得早于今天，且必须是有效日期。'
+              '点「导入」会自动校验，校验不通过不会写入任何任务。',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 8),
@@ -130,6 +157,7 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
                 controller: _jsonController,
                 maxLines: null,
                 expands: true,
+                onChanged: (_) => _scheduleAutoValidate(),
                 style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
                 decoration: const InputDecoration(
                   border: InputBorder.none,
@@ -188,7 +216,7 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
           child: const Text('取消'),
         ),
         FilledButton(
-          onPressed: canImport ? _import : null,
+          onPressed: _importing ? null : _import,
           child: Text(_importing ? '导入中…' : '导入'),
         ),
       ],

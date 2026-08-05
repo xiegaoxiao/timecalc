@@ -149,7 +149,7 @@ void main() {
     expect(await tasks.byGoal(goalId), isEmpty);
   });
 
-  testWidgets('JSON 导入：校验失败时列出错误且不写库', (tester) async {
+  testWidgets('JSON 导入：内容变化自动校验，非法数据不写库', (tester) async {
     await pumpApp(tester);
     await openGoalDetail(tester);
 
@@ -162,20 +162,24 @@ void main() {
       find.byType(TextField).last,
       '{"subjects":{"数学":[{"title":"A","date":"2026-08-04"},{"title":"B","date":"2026-02-30"}]},"unclassified":[{"date":"2026-08-06"}]}',
     );
-    await tester.tap(find.text('校验'));
+    // 等待自动校验防抖（400ms）完成。
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pumpAndSettle();
 
-    // 三条错误 + 导入按钮不可用 + 数据库无写入。
+    // 自动校验列出三条错误。
     expect(find.text('发现 3 个问题'), findsOneWidget);
     expect(find.textContaining('不能早于今天'), findsOneWidget);
     expect(find.textContaining('不是有效日期'), findsOneWidget);
     expect(find.textContaining('title 必填'), findsOneWidget);
-    final importButton = tester.widget<FilledButton>(find.widgetWithText(FilledButton, '导入'));
-    expect(importButton.onPressed, isNull);
+
+    // 点「导入」兜底校验：仍校验失败，不写入任何任务。
+    await tester.tap(find.text('导入'));
+    await tester.pumpAndSettle();
+    expect(find.text('JSON 导入任务'), findsOneWidget);
     expect(await tasks.byGoal(goalId), isEmpty);
   });
 
-  testWidgets('JSON 导入：合法数据科目与未分类隔离写入', (tester) async {
+  testWidgets('JSON 导入：自动校验通过，科目与未分类隔离写入', (tester) async {
     await pumpApp(tester);
     await openGoalDetail(tester);
 
@@ -187,10 +191,11 @@ void main() {
       find.byType(TextField).last,
       '{"subjects":{"数学":[{"title":"真题 2013","date":"2026-08-06","minutes":180}]},"unclassified":[{"title":"复盘","date":"2026-08-06"}]}',
     );
-    await tester.tap(find.text('校验'));
+    // 等待自动校验完成。
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pumpAndSettle();
 
-    // 预览：科目（将新建）与未分类分组隔离。
+    // 自动校验通过并展示分组预览：科目（将新建）与未分类隔离。
     expect(find.text('校验通过：2 个任务'), findsOneWidget);
     expect(find.text('科目「数学」（将新建）'), findsOneWidget);
     expect(find.text('• 真题 2013 · 2026-08-06 · 3 小时'), findsOneWidget);
