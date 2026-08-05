@@ -25,13 +25,21 @@ class RecurrenceRuleRegistry {
   List<RecurrenceRuleHandler> get all => _handlers.values.toList();
 
   /// 校验规则；未知类型或参数非法时返回中文错误，合法返回 null。
+  ///
+  /// handler 内部异常（如类型不匹配的历史数据）兜底转为错误文案，不向上抛。
   String? validate({required String type, required Map<String, dynamic> json}) {
     final handler = _handlers[type];
     if (handler == null) return '未知的规则类型：$type';
-    return handler.validate(json);
+    try {
+      return handler.validate(json);
+    } catch (e) {
+      return '规则参数异常：$e';
+    }
   }
 
   /// 生成发生日；未知类型返回空列表。
+  ///
+  /// handler 内部异常兜底返回空列表，保证滚动生成不因单条脏数据中断。
   List<String> occurrences({
     required String type,
     required Map<String, dynamic> json,
@@ -41,11 +49,15 @@ class RecurrenceRuleRegistry {
   }) {
     final handler = _handlers[type];
     if (handler == null) return const [];
-    return handler.occurrences(
-      json: json,
-      startDate: startDate,
-      from: from,
-      to: to,
-    );
+    try {
+      return handler.occurrences(
+        json: json,
+        startDate: startDate,
+        from: from,
+        to: to,
+      );
+    } catch (_) {
+      return const [];
+    }
   }
 }

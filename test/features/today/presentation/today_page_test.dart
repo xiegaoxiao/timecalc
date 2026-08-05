@@ -252,4 +252,42 @@ void main() {
     expect(find.text('背单词'), findsNothing);
     expect(find.textContaining('今日任务总计'), findsNothing);
   });
+
+  testWidgets('FR-3.7 横幅不被空态遮蔽：无活跃目标+无今日任务但有逾期任务（回归）', (tester) async {
+    // 目标已放弃（不参与倒计时），仅剩昨日未完成任务。
+    await goals.create(title: '考研', deadlineDate: '2026-08-03');
+    await goals.update(id: 1, status: 'abandoned');
+    await tasks.create(
+      goalId: 1,
+      title: '昨日任务',
+      plannedDate: '2026-08-04',
+      estimatedMinutes: 30,
+    );
+
+    await pumpApp(tester);
+
+    // 修复前：空态早退导致 FR-3.7 横幅不显示，逾期任务不可见。
+    // 逾期任务以横幅形式呈现（任务本身属于昨日，不在今日列表）。
+    expect(find.text('昨日及更早有 1 个未完成任务'), findsOneWidget);
+    // 仍处于正常页面结构（今日任务区块存在），而非外层全页空态。
+    expect(find.text('今日任务'), findsOneWidget);
+  });
+
+  testWidgets('空态快捷添加后今日列表立即出现新任务（回归：await 后刷新）', (tester) async {
+    await goals.create(title: '考研', deadlineDate: '2026-12-31');
+
+    await pumpApp(tester);
+    expect(find.text('今天没有安排'), findsOneWidget);
+
+    // 空态内的「添加任务」按钮（FilledButton.icon）。
+    await tester.tap(find.widgetWithText(FilledButton, '添加任务'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField).first, '空态新增任务');
+    await tester.tap(find.text('创建'));
+    await tester.pumpAndSettle();
+
+    // 修复前：invalidate 早于数据写入，新任务不会出现在列表中。
+    expect(find.text('空态新增任务'), findsOneWidget);
+  });
 }

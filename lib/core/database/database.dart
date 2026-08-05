@@ -1,16 +1,19 @@
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
+import 'migration.dart' as migration_steps;
 import 'tables.dart';
 
 part 'database.g.dart';
 
-/// TimeCalc 本地数据库（schema v4）。
+/// TimeCalc 本地数据库（schema v5）。
 ///
 /// v1：目标/科目/任务三张表。
 /// v2：Tasks 增加 original_planned_date；新增 Settings 计划偏好表（M2）。
 /// v3：Tasks 增加 archived_at（JSON 导入替换时归档保留的历史记录）。
 /// v4：Tasks 增加 recurrence_template_id；新增 RecurrenceTemplates 表（FR-4）。
+/// v5：RecurrenceTemplates 增加 deleted_instance_dates（删除实例墓碑，
+///     滚动生成跳过已删除日期，防止被删实例复活）。
 /// 后续 schema 变更必须提供 migration 与 migration 测试（SOP S3、NFR-2）。
 @DriftDatabase(tables: [Goals, Subjects, Tasks, Settings, RecurrenceTemplates])
 class AppDatabase extends _$AppDatabase {
@@ -21,27 +24,40 @@ class AppDatabase extends _$AppDatabase {
       AppDatabase(driftDatabase(name: 'timecalc'));
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) => m.createAll(),
-        onUpgrade: (m, from, to) async {
-          if (from < 2) {
+        // 使用 drift 生成的 step-by-step 迁移：每个步骤使用「目标版本」的
+        // 表结构快照（drift_dev schema steps 生成），确保建表/加列与历史
+        // schema 完全一致（例如 v4 建 recurrence_templates 时不含 v5 新列）。
+        onUpgrade: migration_steps.stepByStep(
+          from1To2: (m, schema) async {
             // v1 -> v2：任务记录原计划日期；新增计划偏好表（M2）。
             // Settings 默认行不在此写入，由 SettingsRepository.get() 惰性 seed。
-            await m.addColumn(tasks, tasks.originalPlannedDate);
-            await m.createTable(settings);
-          }
-          if (from < 3) {
+            await m.addColumn(schema.tasks, schema.tasks.originalPlannedDate);
+            await m.createTable(schema.settings);
+          },
+          from2To3: (m, schema) async {
             // v2 -> v3：任务增加归档标记（JSON 导入替换保留历史）。
-            await m.addColumn(tasks, tasks.archivedAt);
-          }
-          if (from < 4) {
+            await m.addColumn(schema.tasks, schema.tasks.archivedAt);
+          },
+          from3To4: (m, schema) async {
             // v3 -> v4：任务关联重复模板；新增重复模板表（FR-4）。
-            await m.addColumn(tasks, tasks.recurrenceTemplateId);
-            await m.createTable(recurrenceTemplates);
-          }
-        },
+            await m.addColumn(
+              schema.tasks,
+              schema.tasks.recurrenceTemplateId,
+            );
+            await m.createTable(schema.recurrenceTemplates);
+          },
+          from4To5: (m, schema) async {
+            // v4 -> v5：重复模板增加删除实例墓碑列（防止被删实例复活）。
+            await m.addColumn(
+              schema.recurrenceTemplates,
+              schema.recurrenceTemplates.deletedInstanceDates,
+            );
+          },
+        ),
       );
 }

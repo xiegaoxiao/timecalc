@@ -75,7 +75,7 @@ void main() {
       await tasks.update(
         id: created.id,
         title: '新标题',
-        note: '新备注',
+        note: const Value('新备注'),
         plannedDate: '2026-01-05',
         estimatedMinutes: const Value(90),
       );
@@ -85,6 +85,22 @@ void main() {
       expect(fetched?.note, '新备注');
       expect(fetched?.plannedDate, '2026-01-05');
       expect(fetched?.estimatedMinutes, 90);
+    });
+
+    test('编辑时备注可显式清空（Value(null)，回归）', () async {
+      final goal = await goals.create(title: '目标', deadlineDate: '2026-01-01');
+      final created = await tasks.create(
+        goalId: goal.id,
+        title: '任务',
+        note: '旧备注',
+        plannedDate: '2026-01-01',
+      );
+
+      // 修复前：传 null 被当作「不修改」，备注无法清空。
+      await tasks.update(id: created.id, note: const Value(null));
+
+      final fetched = await tasks.byId(created.id);
+      expect(fetched?.note, isNull);
     });
 
     test('任务可显式清除预估时长与科目（Value(null)）', () async {

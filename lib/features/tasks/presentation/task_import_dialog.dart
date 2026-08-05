@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../services/duration_format.dart';
+import '../../goals/data/subject_repository_provider.dart';
 import '../data/task_repository_provider.dart';
 import '../domain/task_import_parser.dart';
 
@@ -155,6 +156,8 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
       ref.invalidate(tasksByDateProvider);
       ref.invalidate(tasksByMonthProvider);
       ref.invalidate(unfinishedBeforeProvider);
+      // 导入会按 JSON 自动新建科目，科目列表缓存必须同步失效。
+      ref.invalidate(subjectListProvider(widget.goalId));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

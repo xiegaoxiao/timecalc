@@ -52,7 +52,7 @@ class WeeklyRecurrenceHandler extends RecurrenceRuleHandler {
 
   @override
   String? validate(Map<String, dynamic> json) {
-    final weekdays = (json['weekdays'] as List?)?.cast<int>();
+    final weekdays = _asIntList(json['weekdays']);
     if (weekdays == null || weekdays.isEmpty) return '请至少选择一个星期';
     if (weekdays.any((d) => d < 1 || d > 7)) return '星期必须在 1～7 之间';
     return null;
@@ -65,7 +65,7 @@ class WeeklyRecurrenceHandler extends RecurrenceRuleHandler {
     required String from,
     required String to,
   }) {
-    final weekdays = (json['weekdays'] as List).cast<int>().toSet();
+    final weekdays = (_asIntList(json['weekdays']) ?? const []).toSet();
     final out = <String>[];
     var cursor = _parse(startDate);
     final fromD = _parse(from);
@@ -115,7 +115,8 @@ class IntervalRecurrenceHandler extends RecurrenceRuleHandler {
     required String from,
     required String to,
   }) {
-    final n = json['everyNDays'] as int;
+    final n = json['everyNDays'];
+    if (n is! int) return const [];
     final out = <String>[];
     var cursor = _parse(startDate);
     final fromD = _parse(from);
@@ -155,7 +156,7 @@ class SequenceRecurrenceHandler extends RecurrenceRuleHandler {
 
   @override
   String? validate(Map<String, dynamic> json) {
-    final offsets = (json['offsets'] as List?)?.cast<int>();
+    final offsets = _asIntList(json['offsets']);
     if (offsets == null || offsets.isEmpty) return '请输入至少一个间隔天数';
     if (offsets.any((d) => d < 1 || d > 365)) {
       return '间隔天数必须在 1～365 之间';
@@ -170,7 +171,7 @@ class SequenceRecurrenceHandler extends RecurrenceRuleHandler {
     required String from,
     required String to,
   }) {
-    final offsets = (json['offsets'] as List).cast<int>();
+    final offsets = _asIntList(json['offsets']);
     final start = _parse(startDate);
     final fromD = _parse(from);
     final toD = _parse(to);
@@ -180,6 +181,9 @@ class SequenceRecurrenceHandler extends RecurrenceRuleHandler {
     if (!start.isBefore(fromD) && !start.isAfter(toD)) {
       out.add(_format(start));
     }
+
+    // 参数非法（如非 int 列表）时不产生后续发生日，仅保留起始日。
+    if (offsets == null) return out;
 
     var cumulative = 0;
     for (final offset in offsets) {
@@ -202,6 +206,18 @@ List<String> _dailyDates(String startDate, String from, String to) {
   while (!cursor.isAfter(toD)) {
     if (!cursor.isBefore(fromD)) out.add(_format(cursor));
     cursor = cursor.add(const Duration(days: 1));
+  }
+  return out;
+}
+
+/// 把 JSON 参数值安全解析为 int 列表；非 List 或含非 int 元素返回 null
+/// （避免 `as int` 抛 TypeError，由调用方决定回退/报错）。
+List<int>? _asIntList(Object? value) {
+  if (value is! List) return null;
+  final out = <int>[];
+  for (final element in value) {
+    if (element is! int) return null;
+    out.add(element);
   }
   return out;
 }

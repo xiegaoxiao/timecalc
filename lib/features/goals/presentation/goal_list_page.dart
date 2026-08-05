@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../services/countdown_service.dart';
+import '../../tasks/data/recurrence_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
 import '../data/goal_repository_provider.dart';
 import 'goal_form_dialog.dart';
@@ -274,6 +275,9 @@ class _GoalCard extends ConsumerWidget {
     ref.invalidate(tasksByMonthProvider);
     ref.invalidate(unfinishedBeforeProvider);
     ref.invalidate(archivedTaskListProvider);
+    // 目标级联删除会连带删除其重复模板（recurrence_repository.deleteWithCascade），
+    // 模板缓存必须同步失效，避免删除后残留陈旧模板数据。
+    ref.invalidate(recurrenceTemplatesProvider);
   }
 
   static DateTime _parseDate(String yyyyMMdd) {

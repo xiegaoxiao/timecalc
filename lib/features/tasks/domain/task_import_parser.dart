@@ -121,6 +121,10 @@ class TaskImportParser {
             issues.add(const ImportIssue('科目名称不能为空'));
             continue;
           }
+          if (name.length > 100) {
+            issues.add(ImportIssue('科目名称不能超过 100 字'));
+            continue;
+          }
           if (entry.value is! List) {
             issues.add(ImportIssue('科目「$name」的值必须是任务数组'));
             continue;
@@ -189,6 +193,12 @@ class TaskImportParser {
       final title = raw['title'];
       if (title is! String || title.trim().isEmpty) {
         issues.add(ImportIssue('title 必填且不能为空', location: location));
+        continue;
+      }
+      // 与数据库约束一致（Tasks.title 最大 200），避免超长标题写入时
+      // 抛出底层数据库异常而非干净的校验错误。
+      if (title.trim().length > 200) {
+        issues.add(ImportIssue('title 不能超过 200 字', location: location));
         continue;
       }
 

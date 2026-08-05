@@ -111,9 +111,10 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
         await repo.update(
           id: widget.task!.id,
           title: title,
-          note: _noteController.text.trim().isEmpty
+          // 空备注显式置空（Value(null)）：编辑时清空备注必须落库。
+          note: Value(_noteController.text.trim().isEmpty
               ? null
-              : _noteController.text.trim(),
+              : _noteController.text.trim()),
           plannedDate: dateText,
           estimatedMinutes: Value(minutes),
           subjectId: Value(_subjectId),
@@ -130,7 +131,11 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
           estimatedMinutes: minutes,
         );
       }
+      // 跨页刷新（FR-3 验收）：任务日期/状态变更影响今天页、日历、逾期横幅。
       ref.invalidate(taskListProvider(widget.goalId));
+      ref.invalidate(tasksByDateProvider);
+      ref.invalidate(tasksByMonthProvider);
+      ref.invalidate(unfinishedBeforeProvider);
       if (mounted) Navigator.of(context).pop();
     } finally {
       if (mounted) setState(() => _saving = false);

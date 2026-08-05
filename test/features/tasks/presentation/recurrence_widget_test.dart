@@ -163,4 +163,35 @@ void main() {
     final templates = await recurrence.byGoal(goalId);
     expect(templates.single.ruleType, 'weekly');
   });
+
+  testWidgets('编辑未注册 ruleType 的模板：回退到默认规则，不崩溃（回归）', (tester) async {
+    // 直接写入一条未知规则类型（如历史数据/未来扩展的 handler 未注册）。
+    final template = await recurrence.create(
+      goalId: goalId,
+      title: '旧版规则任务',
+      rule: RecurrenceRule.fromMap(
+        ruleType: 'daily',
+        json: const {},
+      ),
+      startDate: '2026-08-05',
+      today: fixedNow,
+    );
+    await db.customStatement(
+      "UPDATE recurrence_templates SET rule_type = 'unknown-type' WHERE id = ?",
+      [template.id],
+    );
+
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    // 打开第一个实例的操作菜单 → 编辑重复规则：不应崩溃。
+    await tester.tap(find.byTooltip('任务操作').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('编辑重复规则'));
+    await tester.pumpAndSettle();
+
+    // 对话框正常打开，规则类型回退到默认（每天）。
+    expect(find.text('编辑重复任务'), findsOneWidget);
+    expect(find.text('每天'), findsWidgets);
+  });
 }

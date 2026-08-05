@@ -15,6 +15,9 @@ class SettingsRepository {
   static const int _singletonId = 1;
 
   /// 读取计划偏好；首次调用时写入默认行（每天 120 分钟、每周 7 天，PRD §5.1）。
+  ///
+  /// 用 insertOrIgnore 惰性 seed：并发首次调用时只有一个写入成功，
+  /// 其余走读取路径，避免 UNIQUE 约束竞态异常。
   Future<Setting> get() async {
     final existing = await _byId();
     if (existing != null) return existing;
@@ -26,6 +29,7 @@ class SettingsRepository {
         createdAt: now,
         updatedAt: now,
       ),
+      mode: InsertMode.insertOrIgnore,
     );
     return (await _byId())!;
   }

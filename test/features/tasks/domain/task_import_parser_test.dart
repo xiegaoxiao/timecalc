@@ -88,6 +88,22 @@ void main() {
       expect(parser.parse(json2, today: today).issues.single.message, contains('title 必填'));
     });
 
+    test('title 超过 200 字被拒绝（与数据库约束一致，回归）', () {
+      final longTitle = '长' * 201;
+      final json = '{"unclassified": [{"title": "$longTitle", "date": "2026-08-06"}]}';
+      final result = parser.parse(json, today: today);
+      expect(result.isValid, isFalse);
+      expect(result.issues.single.message, contains('200'));
+    });
+
+    test('科目名称超过 100 字被拒绝（回归）', () {
+      final longSubject = '科' * 101;
+      final json = '{"subjects": {"$longSubject": [{"title": "A", "date": "2026-08-06"}]}}';
+      final result = parser.parse(json, today: today);
+      expect(result.isValid, isFalse);
+      expect(result.issues.single.message, contains('100'));
+    });
+
     test('minutes 非法', () {
       const badType = '{"unclassified": [{"title":"A","date":"2026-08-06","minutes":"180"}]}';
       expect(parser.parse(badType, today: today).issues.single.message, contains('minutes 必须是整数'));

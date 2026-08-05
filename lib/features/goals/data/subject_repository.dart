@@ -61,6 +61,16 @@ class SubjectRepository {
           updatedAt: Value(DateTime.now().toUtc()),
         ),
       );
+      // 重复任务模板同样解除科目归属：模板的 subject_id 为外键，
+      // 不置空会在删除科目时触发约束异常（修复：删除科目崩溃）。
+      await (_db.update(_db.recurrenceTemplates)
+            ..where((t) => t.subjectId.equals(id)))
+          .write(
+            RecurrenceTemplatesCompanion(
+              subjectId: const Value(null),
+              updatedAt: Value(DateTime.now().toUtc()),
+            ),
+          );
       await (_db.delete(_db.subjects)..where((s) => s.id.equals(id))).go();
     });
   }

@@ -109,6 +109,61 @@ void main() {
     test('未知类型被拒绝', () {
       expect(service.validateRaw('unknown', const {}), contains('未知的规则类型'));
     });
+
+    test('非 int 参数：validate 返回错误而非抛 TypeError（回归）', () {
+      expect(
+        service.validateRaw('weekly', const {'weekdays': ['一', 2]}),
+        isNotNull,
+      );
+      expect(
+        service.validateRaw('weekly', const {'weekdays': 3}),
+        isNotNull,
+      );
+      expect(
+        service.validateRaw('sequence', const {'offsets': [1, '二']}),
+        isNotNull,
+      );
+      expect(
+        service.validateRaw('interval', const {'everyNDays': '2'}),
+        isNotNull,
+      );
+    });
+
+    test('非 int 参数：occurrences 不抛异常，宽容回退（回归）', () {
+      // weekly：非法 weekdays 回退为空集合，不产出日期。
+      expect(
+        service.occurrences(
+          ruleType: 'weekly',
+          json: const {'weekdays': ['一']},
+          startDate: '2026-08-05',
+          from: '2026-08-05',
+          to: '2026-08-12',
+        ),
+        isEmpty,
+      );
+      // sequence：非法 offsets 仅保留起始日第 1 次。
+      expect(
+        service.occurrences(
+          ruleType: 'sequence',
+          json: const {'offsets': ['一']},
+          startDate: '2026-08-05',
+          from: '2026-08-05',
+          to: '2026-08-12',
+        ),
+        ['2026-08-05'],
+      );
+      // interval：非法 everyNDays 回退为空列表。
+      expect(
+        service.occurrences(
+          ruleType: 'interval',
+          json: const {'everyNDays': 'x'},
+          startDate: '2026-08-05',
+          from: '2026-08-05',
+          to: '2026-08-12',
+        ),
+        isEmpty,
+      );
+    });
   });
 
   group('RecurrenceRule 序列化往返', () {

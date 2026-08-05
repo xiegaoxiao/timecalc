@@ -101,8 +101,9 @@ class _TodayPageState extends ConsumerState<TodayPage> {
       ref.invalidate(goalListProvider);
     }
 
-    // 空态：无进行中目标且今日无任务。
-    if (activeGoals.isEmpty && todayTasks.isEmpty) {
+    // 空态：无进行中目标、今日无任务、且无逾期未完成任务时展示。
+    // 有逾期任务时保留 FR-3.7 横幅与任务区，避免横幅被空态遮蔽（回归）。
+    if (activeGoals.isEmpty && todayTasks.isEmpty && unfinished.isEmpty) {
       return _EmptyView(
         hasAnyGoal: goals.isNotEmpty,
         onCreateGoal: _createGoal,
@@ -190,8 +191,9 @@ class _TodayPageState extends ConsumerState<TodayPage> {
           ],
         ),
         if (todayTasks.isEmpty)
-          _TodayEmptyView(onAddTask: addGoals.isEmpty ? null : () {
-            QuickTaskFormDialog.show(context, date: today, goals: addGoals);
+          _TodayEmptyView(onAddTask: addGoals.isEmpty ? null : () async {
+            // 等待对话框保存完成后再刷新，避免 invalidate 早于数据写入（回归）。
+            await QuickTaskFormDialog.show(context, date: today, goals: addGoals);
             onChanged();
           })
         else

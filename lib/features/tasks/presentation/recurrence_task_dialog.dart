@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -88,12 +89,20 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
     _endDate = endDate == null ? null : _parseDate(endDate);
 
     if (template != null) {
-      _ruleType = template.ruleType;
-      final rule = RecurrenceRule(
-        ruleType: template.ruleType,
-        ruleJson: template.ruleJson,
-      );
-      _ruleJson = Map<String, dynamic>.from(rule.jsonMap);
+      // 兜底：模板 ruleType 未注册时回退到首个已注册类型，
+      // 避免 SegmentedButton.selected 含不存在的 segment 触发断言崩溃。
+      final handler = _registry.handlerFor(template.ruleType);
+      if (handler != null) {
+        _ruleType = template.ruleType;
+        final rule = RecurrenceRule(
+          ruleType: template.ruleType,
+          ruleJson: template.ruleJson,
+        );
+        _ruleJson = Map<String, dynamic>.from(rule.jsonMap);
+      } else {
+        _ruleType = _registry.all.first.type;
+        _ruleJson = Map<String, dynamic>.from(_registry.all.first.defaultJson());
+      }
     } else {
       _ruleType = _registry.all.first.type;
       _ruleJson = Map<String, dynamic>.from(_registry.all.first.defaultJson());
@@ -243,6 +252,11 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
           endDate: endDate,
           applyTo: applyTo!,
           today: today,
+          // 编辑模式的标题/科目/时长/起始日期在对话框中可编辑（FR-4）。
+          title: _titleController.text.trim(),
+          subjectId: Value(_subjectId),
+          estimatedMinutes: Value(_estimatedMinutes),
+          startDate: startDate,
         );
       } else {
         await repo.create(

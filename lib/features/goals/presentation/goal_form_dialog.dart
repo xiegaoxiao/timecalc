@@ -29,6 +29,7 @@ class GoalFormDialog extends ConsumerStatefulWidget {
 
 class _GoalFormDialogState extends ConsumerState<GoalFormDialog> {
   final _formKey = GlobalKey<FormState>();
+  final _deadlineFieldKey = GlobalKey<FormFieldState<DateTime>>();
   late final TextEditingController _titleController;
   final _descriptionController = TextEditingController();
   final _subjectController = TextEditingController();
@@ -63,15 +64,18 @@ class _GoalFormDialogState extends ConsumerState<GoalFormDialog> {
 
   Future<void> _pickDeadline() async {
     final now = DateTime.now();
+    final field = _deadlineFieldKey.currentState;
     final picked = await showDatePicker(
       context: context,
-      initialDate: _deadline ?? now,
+      initialDate: field?.value ?? _deadline ?? now,
       firstDate: DateTime(now.year - 10),
       lastDate: DateTime(now.year + 10),
       helpText: '选择截止日期',
     );
     if (picked != null) {
       setState(() => _deadline = picked);
+      // 同步 FormField 内部值，让日期选择后的校验错误即时消除。
+      field?.didChange(picked);
     }
   }
 
@@ -89,7 +93,9 @@ class _GoalFormDialogState extends ConsumerState<GoalFormDialog> {
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final title = _titleController.text.trim();
-    final deadline = _deadline!;
+    // 表单校验已保证截止日期必填（FormField validator），此处兜底防御。
+    final deadline = _deadline;
+    if (deadline == null) return;
 
     setState(() => _saving = true);
     try {
@@ -152,24 +158,37 @@ class _GoalFormDialogState extends ConsumerState<GoalFormDialog> {
                 },
               ),
               const SizedBox(height: 12),
-              InkWell(
-                onTap: _pickDeadline,
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: '截止日期 *',
-                    border: OutlineInputBorder(),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.event_outlined),
-                      const SizedBox(width: 8),
-                      Text(
-                        _deadline == null
-                            ? '请选择日期'
-                            : DateFormat('yyyy-MM-dd').format(_deadline!),
+              // 截止日期为必填项；用 FormField 承载校验（FR-1.1），
+              // 不选日期直接提交时展示错误而非空值解包崩溃。
+              FormField<DateTime>(
+                key: _deadlineFieldKey,
+                validator: (value) =>
+                    _deadline == null ? '请选择截止日期' : null,
+                builder: (field) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    InkWell(
+                      onTap: _pickDeadline,
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: '截止日期 *',
+                          border: const OutlineInputBorder(),
+                          errorText: field.errorText,
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.event_outlined),
+                            const SizedBox(width: 8),
+                            Text(
+                              _deadline == null
+                                  ? '请选择日期'
+                                  : DateFormat('yyyy-MM-dd').format(_deadline!),
+                            ),
+                          ],
+                        ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 12),

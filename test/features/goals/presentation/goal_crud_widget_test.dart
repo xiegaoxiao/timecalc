@@ -231,4 +231,36 @@ void main() {
     final updated = await repository.byId(goal.id);
     expect(updated?.title, '考研数学（强化）');
   });
+
+  testWidgets('创建目标不选截止日期：表单校验拦截，不崩溃不写库（回归）', (tester) async {
+    await pumpApp(tester);
+
+    await tester.tap(find.text('计划'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('创建目标'));
+    await tester.pumpAndSettle();
+
+    // 只填名称，不选截止日期直接提交。
+    await tester.enterText(find.byType(TextFormField).first, '考研');
+    await tester.tap(find.text('创建').last);
+    await tester.pumpAndSettle();
+
+    // 显示截止日期校验错误；对话框未关闭、未创建目标。
+    expect(find.text('请选择截止日期'), findsOneWidget);
+    expect(find.text('目标详情'), findsNothing);
+    expect(await db.select(db.goals).get(), isEmpty);
+
+    // 补选截止日期后正常创建。
+    await tester.tap(find.text('请选择日期'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('20'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('创建').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('目标详情'), findsOneWidget);
+    expect(await db.select(db.goals).get(), hasLength(1));
+  });
 }

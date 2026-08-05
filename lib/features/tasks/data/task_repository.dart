@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/tables.dart';
 import '../domain/task_import_parser.dart';
+import 'recurrence_repository.dart';
 
 /// 任务数据访问层（FR-3）。
 class TaskRepository {
@@ -288,7 +289,7 @@ class TaskRepository {
   }
 
   /// 更新任务字段。字符串字段为 null 表示不修改；
-  /// 可置空字段（[estimatedMinutes]、[subjectId]）用 `Value` 包装，
+  /// 可置空字段（[note]、[estimatedMinutes]、[subjectId]）用 `Value` 包装，
   /// 传 `Value(null)` 表示显式置空，不传（null）表示不修改。
   ///
   /// 当计划日期变化且任务尚未记录原计划日期时，自动记录原日期
@@ -296,7 +297,7 @@ class TaskRepository {
   Future<void> update({
     required int id,
     String? title,
-    String? note,
+    Value<String?>? note,
     String? plannedDate,
     Value<int?>? estimatedMinutes,
     Value<int?>? subjectId,
@@ -309,7 +310,7 @@ class TaskRepository {
       await (_db.update(_db.tasks)..where((t) => t.id.equals(id))).write(
         TasksCompanion(
           title: title == null ? const Value.absent() : Value(title),
-          note: note == null ? const Value.absent() : Value(note),
+          note: note ?? const Value.absent(),
           plannedDate:
               plannedDate == null ? const Value.absent() : Value(plannedDate),
           estimatedMinutes: estimatedMinutes ?? const Value.absent(),
@@ -386,9 +387,40 @@ class TaskRepository {
     return Value(current.plannedDate);
   }
 
+  /// 删除任务。
+  ///
+  /// 删除重复任务的实例时，将该实例的日期记入模板墓碑
+  /// （deletedInstanceDates，schema v5），后续滚动生成跳过这些日期，
+  /// 保证用户删除的实例不会随窗口前移「复活」。
   Future<void> delete(int id) {
     return _db.transaction(() async {
+      final task = await byId(id);
+      if (task == null) return;
       await (_db.delete(_db.tasks)..where((t) => t.id.equals(id))).go();
+      final templateId = task.recurrenceTemplateId;
+      if (templateId != null) {
+        await _recordDeletedInstance(templateId, task.plannedDate);
+      }
     });
+  }
+
+  /// 把 [date] 记入模板墓碑（同一事务内调用，删除实例后写入）。
+  Future<void> _recordDeletedInstance(int templateId, String date) async {
+    final template = await (_db.select(_db.recurrenceTemplates)
+          ..where((t) => t.id.equals(templateId)))
+        .getSingleOrNull();
+    if (template == null) return;
+    final tombstones =
+        RecurrenceRepository.decodeTombstones(template.deletedInstanceDates)
+          ..add(date);
+    await (_db.update(_db.recurrenceTemplates)
+          ..where((t) => t.id.equals(templateId)))
+        .write(
+          RecurrenceTemplatesCompanion(
+            deletedInstanceDates:
+                Value(RecurrenceRepository.encodeTombstones(tombstones)),
+            updatedAt: Value(DateTime.now().toUtc()),
+          ),
+        );
   }
 }

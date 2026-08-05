@@ -1123,6 +1123,17 @@ class $RecurrenceTemplatesTable extends RecurrenceTemplates
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _deletedInstanceDatesMeta =
+      const VerificationMeta('deletedInstanceDates');
+  @override
+  late final GeneratedColumn<String> deletedInstanceDates =
+      GeneratedColumn<String>(
+        'deleted_instance_dates',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1138,6 +1149,7 @@ class $RecurrenceTemplatesTable extends RecurrenceTemplates
     generatedThroughDate,
     createdAt,
     updatedAt,
+    deletedInstanceDates,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1248,6 +1260,15 @@ class $RecurrenceTemplatesTable extends RecurrenceTemplates
     } else if (isInserting) {
       context.missing(_updatedAtMeta);
     }
+    if (data.containsKey('deleted_instance_dates')) {
+      context.handle(
+        _deletedInstanceDatesMeta,
+        deletedInstanceDates.isAcceptableOrUnknown(
+          data['deleted_instance_dates']!,
+          _deletedInstanceDatesMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1309,6 +1330,10 @@ class $RecurrenceTemplatesTable extends RecurrenceTemplates
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
       )!,
+      deletedInstanceDates: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}deleted_instance_dates'],
+      ),
     );
   }
 
@@ -1333,6 +1358,13 @@ class RecurrenceTemplate extends DataClass
   final String generatedThroughDate;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  /// 已删除实例日期（schema v5 引入，墓碑）。
+  ///
+  /// 用户删除某个重复实例任务后，该日期记录在此（JSON 数组，yyyy-MM-dd），
+  /// 后续 generateDue/updateRule 滚动生成时跳过这些日期，被删除的实例
+  /// 不会随窗口滚动「复活」。null 表示从未删除过实例。
+  final String? deletedInstanceDates;
   const RecurrenceTemplate({
     required this.id,
     required this.goalId,
@@ -1347,6 +1379,7 @@ class RecurrenceTemplate extends DataClass
     required this.generatedThroughDate,
     required this.createdAt,
     required this.updatedAt,
+    this.deletedInstanceDates,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1370,6 +1403,9 @@ class RecurrenceTemplate extends DataClass
     map['generated_through_date'] = Variable<String>(generatedThroughDate);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || deletedInstanceDates != null) {
+      map['deleted_instance_dates'] = Variable<String>(deletedInstanceDates);
+    }
     return map;
   }
 
@@ -1394,6 +1430,9 @@ class RecurrenceTemplate extends DataClass
       generatedThroughDate: Value(generatedThroughDate),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
+      deletedInstanceDates: deletedInstanceDates == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedInstanceDates),
     );
   }
 
@@ -1418,6 +1457,9 @@ class RecurrenceTemplate extends DataClass
       ),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      deletedInstanceDates: serializer.fromJson<String?>(
+        json['deletedInstanceDates'],
+      ),
     );
   }
   @override
@@ -1437,6 +1479,7 @@ class RecurrenceTemplate extends DataClass
       'generatedThroughDate': serializer.toJson<String>(generatedThroughDate),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'deletedInstanceDates': serializer.toJson<String?>(deletedInstanceDates),
     };
   }
 
@@ -1454,6 +1497,7 @@ class RecurrenceTemplate extends DataClass
     String? generatedThroughDate,
     DateTime? createdAt,
     DateTime? updatedAt,
+    Value<String?> deletedInstanceDates = const Value.absent(),
   }) => RecurrenceTemplate(
     id: id ?? this.id,
     goalId: goalId ?? this.goalId,
@@ -1470,6 +1514,9 @@ class RecurrenceTemplate extends DataClass
     generatedThroughDate: generatedThroughDate ?? this.generatedThroughDate,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
+    deletedInstanceDates: deletedInstanceDates.present
+        ? deletedInstanceDates.value
+        : this.deletedInstanceDates,
   );
   RecurrenceTemplate copyWithCompanion(RecurrenceTemplatesCompanion data) {
     return RecurrenceTemplate(
@@ -1490,6 +1537,9 @@ class RecurrenceTemplate extends DataClass
           : this.generatedThroughDate,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedInstanceDates: data.deletedInstanceDates.present
+          ? data.deletedInstanceDates.value
+          : this.deletedInstanceDates,
     );
   }
 
@@ -1508,7 +1558,8 @@ class RecurrenceTemplate extends DataClass
           ..write('active: $active, ')
           ..write('generatedThroughDate: $generatedThroughDate, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedInstanceDates: $deletedInstanceDates')
           ..write(')'))
         .toString();
   }
@@ -1528,6 +1579,7 @@ class RecurrenceTemplate extends DataClass
     generatedThroughDate,
     createdAt,
     updatedAt,
+    deletedInstanceDates,
   );
   @override
   bool operator ==(Object other) =>
@@ -1545,7 +1597,8 @@ class RecurrenceTemplate extends DataClass
           other.active == this.active &&
           other.generatedThroughDate == this.generatedThroughDate &&
           other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.deletedInstanceDates == this.deletedInstanceDates);
 }
 
 class RecurrenceTemplatesCompanion extends UpdateCompanion<RecurrenceTemplate> {
@@ -1562,6 +1615,7 @@ class RecurrenceTemplatesCompanion extends UpdateCompanion<RecurrenceTemplate> {
   final Value<String> generatedThroughDate;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
+  final Value<String?> deletedInstanceDates;
   const RecurrenceTemplatesCompanion({
     this.id = const Value.absent(),
     this.goalId = const Value.absent(),
@@ -1576,6 +1630,7 @@ class RecurrenceTemplatesCompanion extends UpdateCompanion<RecurrenceTemplate> {
     this.generatedThroughDate = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.deletedInstanceDates = const Value.absent(),
   });
   RecurrenceTemplatesCompanion.insert({
     this.id = const Value.absent(),
@@ -1591,6 +1646,7 @@ class RecurrenceTemplatesCompanion extends UpdateCompanion<RecurrenceTemplate> {
     required String generatedThroughDate,
     required DateTime createdAt,
     required DateTime updatedAt,
+    this.deletedInstanceDates = const Value.absent(),
   }) : goalId = Value(goalId),
        title = Value(title),
        ruleType = Value(ruleType),
@@ -1613,6 +1669,7 @@ class RecurrenceTemplatesCompanion extends UpdateCompanion<RecurrenceTemplate> {
     Expression<String>? generatedThroughDate,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
+    Expression<String>? deletedInstanceDates,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1629,6 +1686,8 @@ class RecurrenceTemplatesCompanion extends UpdateCompanion<RecurrenceTemplate> {
         'generated_through_date': generatedThroughDate,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedInstanceDates != null)
+        'deleted_instance_dates': deletedInstanceDates,
     });
   }
 
@@ -1646,6 +1705,7 @@ class RecurrenceTemplatesCompanion extends UpdateCompanion<RecurrenceTemplate> {
     Value<String>? generatedThroughDate,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
+    Value<String?>? deletedInstanceDates,
   }) {
     return RecurrenceTemplatesCompanion(
       id: id ?? this.id,
@@ -1661,6 +1721,7 @@ class RecurrenceTemplatesCompanion extends UpdateCompanion<RecurrenceTemplate> {
       generatedThroughDate: generatedThroughDate ?? this.generatedThroughDate,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      deletedInstanceDates: deletedInstanceDates ?? this.deletedInstanceDates,
     );
   }
 
@@ -1708,6 +1769,11 @@ class RecurrenceTemplatesCompanion extends UpdateCompanion<RecurrenceTemplate> {
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
+    if (deletedInstanceDates.present) {
+      map['deleted_instance_dates'] = Variable<String>(
+        deletedInstanceDates.value,
+      );
+    }
     return map;
   }
 
@@ -1726,7 +1792,8 @@ class RecurrenceTemplatesCompanion extends UpdateCompanion<RecurrenceTemplate> {
           ..write('active: $active, ')
           ..write('generatedThroughDate: $generatedThroughDate, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedInstanceDates: $deletedInstanceDates')
           ..write(')'))
         .toString();
   }
@@ -4138,6 +4205,7 @@ typedef $$RecurrenceTemplatesTableCreateCompanionBuilder =
       required String generatedThroughDate,
       required DateTime createdAt,
       required DateTime updatedAt,
+      Value<String?> deletedInstanceDates,
     });
 typedef $$RecurrenceTemplatesTableUpdateCompanionBuilder =
     RecurrenceTemplatesCompanion Function({
@@ -4154,6 +4222,7 @@ typedef $$RecurrenceTemplatesTableUpdateCompanionBuilder =
       Value<String> generatedThroughDate,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
+      Value<String?> deletedInstanceDates,
     });
 
 final class $$RecurrenceTemplatesTableReferences
@@ -4283,6 +4352,11 @@ class $$RecurrenceTemplatesTableFilterComposer
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deletedInstanceDates => $composableBuilder(
+    column: $table.deletedInstanceDates,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4422,6 +4496,11 @@ class $$RecurrenceTemplatesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get deletedInstanceDates => $composableBuilder(
+    column: $table.deletedInstanceDates,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$GoalsTableOrderingComposer get goalId {
     final $$GoalsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -4514,6 +4593,11 @@ class $$RecurrenceTemplatesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get deletedInstanceDates => $composableBuilder(
+    column: $table.deletedInstanceDates,
+    builder: (column) => column,
+  );
 
   $$GoalsTableAnnotationComposer get goalId {
     final $$GoalsTableAnnotationComposer composer = $composerBuilder(
@@ -4636,6 +4720,7 @@ class $$RecurrenceTemplatesTableTableManager
                 Value<String> generatedThroughDate = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
+                Value<String?> deletedInstanceDates = const Value.absent(),
               }) => RecurrenceTemplatesCompanion(
                 id: id,
                 goalId: goalId,
@@ -4650,6 +4735,7 @@ class $$RecurrenceTemplatesTableTableManager
                 generatedThroughDate: generatedThroughDate,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                deletedInstanceDates: deletedInstanceDates,
               ),
           createCompanionCallback:
               ({
@@ -4666,6 +4752,7 @@ class $$RecurrenceTemplatesTableTableManager
                 required String generatedThroughDate,
                 required DateTime createdAt,
                 required DateTime updatedAt,
+                Value<String?> deletedInstanceDates = const Value.absent(),
               }) => RecurrenceTemplatesCompanion.insert(
                 id: id,
                 goalId: goalId,
@@ -4680,6 +4767,7 @@ class $$RecurrenceTemplatesTableTableManager
                 generatedThroughDate: generatedThroughDate,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                deletedInstanceDates: deletedInstanceDates,
               ),
           withReferenceMapper: (p0) => p0
               .map(

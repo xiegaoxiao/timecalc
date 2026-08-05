@@ -113,7 +113,11 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
       if (minutes != null) {
         ref.read(lastMinutesProvider.notifier).state = minutes;
       }
+      // 跨页刷新（FR-3 验收）：批量新增影响今天页、日历、逾期横幅。
       ref.invalidate(taskListProvider(widget.goalId));
+      ref.invalidate(tasksByDateProvider);
+      ref.invalidate(tasksByMonthProvider);
+      ref.invalidate(unfinishedBeforeProvider);
       if (mounted) Navigator.of(context).pop();
     } finally {
       if (mounted) setState(() => _saving = false);

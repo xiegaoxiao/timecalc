@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 
 import '../../../core/database/database.dart';
@@ -27,6 +29,32 @@ class RecurrenceRepository {
   final AppDatabase _db;
 
   static final _registry = RecurrenceRuleRegistry();
+
+  /// 编码墓碑日期集合为 JSON 数组文本（升序去重）；空集合返回 null。
+  ///
+  /// 供 TaskRepository 删除实例时写入模板的 deletedInstanceDates 字段。
+  static String? encodeTombstones(Set<String> dates) {
+    if (dates.isEmpty) return null;
+    final sorted = dates.toList()..sort();
+    return jsonEncode(sorted);
+  }
+
+  /// 解码墓碑日期集合；null/空/非法 JSON 返回空集合（宽容处理脏数据）。
+  static Set<String> decodeTombstones(String? encoded) {
+    if (encoded == null || encoded.isEmpty) return <String>{};
+    try {
+      final decoded = jsonDecode(encoded);
+      if (decoded is! List) return <String>{};
+      return <String>{
+        for (final item in decoded)
+          if (item is String && _dateFormat.hasMatch(item)) item,
+      };
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
+  static final RegExp _dateFormat = RegExp(r'^\d{4}-\d{2}-\d{2}$');
 
   /// 校验并解析规则 JSON；非法抛 ArgumentError（对话框已先校验，兜底防御）。
   Map<String, dynamic> _validatedJson(RecurrenceRule rule) {
@@ -134,6 +162,8 @@ class RecurrenceRepository {
             .where((t) => t.archivedAt == null)
             .map((t) => t.plannedDate)
             .toSet();
+        // 用户删除过的实例日期（墓碑）：滚动生成时跳过，防止被删实例复活。
+        final tombstoneDates = decodeTombstones(template.deletedInstanceDates);
 
         final dates = service.occurrences(
           ruleType: template.ruleType,
@@ -143,6 +173,7 @@ class RecurrenceRepository {
           to: target,
         );
         for (final date in dates) {
+          if (tombstoneDates.contains(date)) continue;
           if (existingDates.contains(date)) continue;
           await _insertInstance(
             goalId: template.goalId,
@@ -185,7 +216,8 @@ class RecurrenceRepository {
 
   /// 修改重复规则（FR-4.4）。
   ///
-  /// 模板的规则与结束日期总是更新。按 [applyTo]：
+  /// 模板的规则、结束日期与基础信息（[title]/[subjectId]/[estimatedMinutes]/
+  /// [startDate]）总是更新（null 表示不修改）。按 [applyTo]：
   /// - [RecurrenceApplyTo.future]：删除该模板「今天之后未完成」的实例
   ///   （已完成实例保留，不覆盖 FR-4.4），再按新规则重新生成未来实例；
   /// - [RecurrenceApplyTo.template]：仅更新模板规则，已有实例不动。
@@ -195,6 +227,10 @@ class RecurrenceRepository {
     String? endDate,
     required RecurrenceApplyTo applyTo,
     DateTime? today,
+    String? title,
+    Value<int?>? subjectId,
+    Value<int?>? estimatedMinutes,
+    String? startDate,
   }) async {
     _validatedJson(rule);
     final service = RecurrenceService();
@@ -202,6 +238,8 @@ class RecurrenceRepository {
       final template = await byId(templateId);
       if (template == null) return;
       final todayStr = _format(today ?? DateTime.now());
+      // 起始日期可随编辑更新；重生成时使用新的起始日。
+      final effectiveStartDate = startDate ?? template.startDate;
 
       if (applyTo == RecurrenceApplyTo.future) {
         // 删除今天之后未完成的实例（已完成保留）。
@@ -213,7 +251,7 @@ class RecurrenceRepository {
             .go();
       }
 
-      // 更新模板规则与结束日期，并重置生成窗口（未来实例按新规则生成）。
+      // 更新模板规则、结束日期与基础信息，并重置生成窗口（未来实例按新规则生成）。
       final target = _minDate(_plusDays(todayStr, 30), endDate);
       await (_db.update(_db.recurrenceTemplates)
             ..where((t) => t.id.equals(templateId)))
@@ -222,6 +260,11 @@ class RecurrenceRepository {
               ruleType: Value(rule.ruleType),
               ruleJson: Value(rule.ruleJson),
               endDate: Value(endDate),
+              title: title == null ? const Value.absent() : Value(title),
+              subjectId: subjectId ?? const Value.absent(),
+              estimatedMinutes: estimatedMinutes ?? const Value.absent(),
+              startDate:
+                  startDate == null ? const Value.absent() : Value(startDate),
               generatedThroughDate: Value(
                 applyTo == RecurrenceApplyTo.future
                     ? _minusDays(todayStr, 1) // 触发重新生成
@@ -233,11 +276,11 @@ class RecurrenceRepository {
           );
 
       if (applyTo == RecurrenceApplyTo.future) {
-        // 按新规则重新生成未来实例（含今天）。
+        // 按新规则重新生成未来实例（含今天），使用更新后的基础信息。
         final dates = service.occurrences(
           ruleType: rule.ruleType,
           json: rule.jsonMap,
-          startDate: template.startDate,
+          startDate: effectiveStartDate,
           from: todayStr,
           to: target,
         );
@@ -246,13 +289,17 @@ class RecurrenceRepository {
             .get();
         final existingDates =
             existing.where((t) => t.archivedAt == null).map((t) => t.plannedDate).toSet();
+        // 用户删除过的实例日期（墓碑）：重生成时跳过，防止被删实例复活。
+        final tombstoneDates = decodeTombstones(template.deletedInstanceDates);
         for (final date in dates) {
+          if (tombstoneDates.contains(date)) continue;
           if (existingDates.contains(date)) continue;
           await _insertInstance(
             goalId: template.goalId,
-            subjectId: template.subjectId,
-            title: template.title,
-            estimatedMinutes: template.estimatedMinutes,
+            subjectId: subjectId?.value ?? template.subjectId,
+            title: title ?? template.title,
+            estimatedMinutes:
+                estimatedMinutes?.value ?? template.estimatedMinutes,
             templateId: templateId,
             date: date,
           );

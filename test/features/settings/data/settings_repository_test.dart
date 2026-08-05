@@ -60,4 +60,13 @@ void main() {
     expect(SettingsRepository.decodeWeekdays(''), isEmpty);
     expect(SettingsRepository.decodeWeekdays('abc'), isEmpty);
   });
+
+  test('并发首次 get 不抛约束异常（insertOrIgnore，回归）', () async {
+    final results = await Future.wait([repo.get(), repo.get(), repo.get()]);
+    expect(results, hasLength(3));
+    expect(results.every((s) => s.dailyAvailableMinutes == 120), isTrue);
+    // 仍只有单行。
+    final rows = await db.select(db.settings).get();
+    expect(rows.length, 1);
+  });
 }

@@ -105,6 +105,13 @@ class RecurrenceTemplates extends Table {
   TextColumn get generatedThroughDate => text()();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
+
+  /// 已删除实例日期（schema v5 引入，墓碑）。
+  ///
+  /// 用户删除某个重复实例任务后，该日期记录在此（JSON 数组，yyyy-MM-dd），
+  /// 后续 generateDue/updateRule 滚动生成时跳过这些日期，被删除的实例
+  /// 不会随窗口滚动「复活」。null 表示从未删除过实例。
+  TextColumn get deletedInstanceDates => text().nullable()();
 }
 
 /// 计划偏好（单行表，PRD §9 Settings 的 M2 子集）。

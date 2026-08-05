@@ -1,8 +1,10 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:timecalc/core/database/database.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
+import 'package:timecalc/features/goals/data/subject_repository.dart';
 import 'package:timecalc/features/tasks/data/recurrence_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 import 'package:timecalc/features/tasks/domain/recurrence/recurrence_rule.dart';
@@ -11,6 +13,7 @@ import 'package:timecalc/features/tasks/domain/recurrence/recurrence_rule.dart';
 void main() {
   late AppDatabase db;
   late GoalRepository goals;
+  late SubjectRepository subjects;
   late TaskRepository tasks;
   late RecurrenceRepository recurrence;
 
@@ -19,6 +22,7 @@ void main() {
   setUp(() {
     db = AppDatabase(NativeDatabase.memory());
     goals = GoalRepository(db);
+    subjects = SubjectRepository(db);
     tasks = TaskRepository(db);
     recurrence = RecurrenceRepository(db);
   });
@@ -213,6 +217,73 @@ void main() {
           .toSet();
       expect(weekdays, {1, 3, 5});
     });
+
+    test('编辑基础信息：标题/科目/时长/起始日期写入模板', () async {
+      final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+      final subject = await subjects.create(
+        goalId: goal.id,
+        name: '数学',
+        color: '#000000',
+      );
+      final template = await recurrence.create(
+        goalId: goal.id,
+        title: '背单词',
+        rule: rule('daily', const {}),
+        startDate: '2026-08-05',
+        today: fixedToday,
+      );
+
+      // 仅改基础信息，规则不变。
+      await recurrence.updateRule(
+        templateId: template.id,
+        rule: rule('daily', const {}),
+        applyTo: RecurrenceApplyTo.template,
+        today: fixedToday,
+        title: '数学真题',
+        subjectId: Value(subject.id),
+        estimatedMinutes: Value(45),
+        startDate: '2026-08-10',
+      );
+
+      final updated = await recurrence.byId(template.id);
+      expect(updated?.title, '数学真题');
+      expect(updated?.subjectId, subject.id);
+      expect(updated?.estimatedMinutes, 45);
+      expect(updated?.startDate, '2026-08-10');
+      // 仅改模板：已有实例不动。
+      expect((await tasks.byGoal(goal.id)).length, 31);
+    });
+
+    test('编辑起始日期并应用未来实例：未来实例按新起始日重生成', () async {
+      final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+      final template = await recurrence.create(
+        goalId: goal.id,
+        title: '背单词',
+        rule: rule('daily', const {}),
+        startDate: '2026-08-05',
+        today: fixedToday,
+      );
+
+      await recurrence.updateRule(
+        templateId: template.id,
+        rule: rule('daily', const {}),
+        applyTo: RecurrenceApplyTo.future,
+        today: fixedToday,
+        title: '改期背单词',
+        startDate: '2026-08-10',
+      );
+
+      // applyTo.future 仅处理「严格晚于今天」的实例：今天（08-05）的
+      // 实例不属于未来，保留；未来实例按新起始日 08-10 重新生成。
+      final instances = await tasks.byGoal(goal.id);
+      final dates = instances.map((t) => t.plannedDate).toList();
+      expect(dates, contains('2026-08-05'));
+      expect(dates, contains('2026-08-10'));
+      expect(dates, isNot(contains('2026-08-06')));
+      // 新标题用于重新生成的实例。
+      final regenerated = instances.firstWhere((t) => t.plannedDate == '2026-08-10');
+      expect(regenerated.title, '改期背单词');
+    });
   });
 
   group('delete（删除模板，实例降级）', () {
@@ -232,6 +303,149 @@ void main() {
       final instances = await tasks.byGoal(goal.id);
       expect(instances, isNotEmpty);
       expect(instances.every((t) => t.recurrenceTemplateId == null), isTrue);
+    });
+  });
+
+  group('科目删除联动（subject_id 外键，回归）', () {
+    test('科目被重复模板引用时删除成功：模板与任务解除归属', () async {
+      final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+      final subject = await subjects.create(
+        goalId: goal.id,
+        name: '数学',
+        color: '#000000',
+      );
+      final template = await recurrence.create(
+        goalId: goal.id,
+        subjectId: subject.id,
+        title: '数学真题',
+        rule: rule('daily', const {}),
+        startDate: '2026-08-05',
+        today: fixedToday,
+      );
+
+      // 修复前：DELETE FROM subjects 触发 recurrence_templates.subject_id
+      // 外键约束异常导致删除科目失败。
+      await subjects.delete(subject.id);
+
+      expect(await subjects.byId(subject.id), isNull);
+      final updated = await recurrence.byId(template.id);
+      expect(updated?.subjectId, isNull);
+      // 实例任务保留且解除科目归属。
+      final instances = await tasks.byGoal(goal.id);
+      expect(instances, isNotEmpty);
+      expect(instances.every((t) => t.subjectId == null), isTrue);
+    });
+  });
+
+  group('墓碑（deletedInstanceDates，schema v5）', () {
+    test('删除实例后 generateDue 不再复活该日期（回归）', () async {
+      final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+      final template = await recurrence.create(
+        goalId: goal.id,
+        title: '背单词',
+        rule: rule('daily', const {}),
+        startDate: '2026-08-05',
+        today: fixedToday,
+      );
+
+      // updateRule(future) 会把 generatedThrough 重置到今日之前，
+      // 使后续 generateDue 从今日起重扫窗口——墓碑日期此时才可能落入窗口。
+      await recurrence.updateRule(
+        templateId: template.id,
+        rule: rule('daily', const {}),
+        applyTo: RecurrenceApplyTo.future,
+        today: fixedToday,
+      );
+
+      // 删除 08-20 的实例。
+      final instances = await tasks.byGoal(goal.id);
+      final target = instances.firstWhere((t) => t.plannedDate == '2026-08-20');
+      await tasks.delete(target.id);
+
+      // 模板墓碑已记录该日期。
+      final updated = await recurrence.byId(template.id);
+      expect(RecurrenceRepository.decodeTombstones(updated!.deletedInstanceDates),
+          {'2026-08-20'});
+
+      // 时间前移到 08-25：generateDue 窗口含 08-20，应跳过墓碑日期。
+      final later = DateTime(2026, 8, 25, 12);
+      expect(await recurrence.generateDue(today: later), 20); // 09-05 ~ 09-24 共 20 条
+      final all = await tasks.byGoal(goal.id);
+      expect(all.map((t) => t.plannedDate), isNot(contains('2026-08-20')));
+      // 08-20 之后的日期正常生成。
+      expect(all.map((t) => t.plannedDate), contains('2026-08-21'));
+      expect(all.map((t) => t.plannedDate), contains('2026-09-24'));
+    });
+
+    test('updateRule 重生成时跳过墓碑日期，已完成实例保留', () async {
+      final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+      final template = await recurrence.create(
+        goalId: goal.id,
+        title: '背单词',
+        rule: rule('daily', const {}),
+        startDate: '2026-08-05',
+        today: fixedToday,
+      );
+
+      final instances = await tasks.byGoal(goal.id);
+      final done = instances.firstWhere((t) => t.plannedDate == '2026-08-05');
+      await tasks.setDone(done.id, true);
+      final deleted = instances.firstWhere((t) => t.plannedDate == '2026-08-08');
+      await tasks.delete(deleted.id);
+
+      // 改为每周一三五并应用未来实例：重生成时跳过墓碑日期 08-08。
+      await recurrence.updateRule(
+        templateId: template.id,
+        rule: rule('weekly', const {'weekdays': [1, 3, 5]}),
+        applyTo: RecurrenceApplyTo.future,
+        today: fixedToday,
+      );
+
+      final all = await tasks.byGoal(goal.id);
+      // 已完成实例保留；墓碑日期（08-08，周五）不复活。
+      expect(all.map((t) => t.plannedDate), contains('2026-08-05'));
+      expect(all.map((t) => t.plannedDate), isNot(contains('2026-08-08')));
+      // 其余日期落在一三五。
+      final weekdays = all
+          .where((t) => t.plannedDate != '2026-08-05')
+          .map((t) => DateTime.parse(t.plannedDate).weekday)
+          .toSet();
+      expect(weekdays, {1, 3, 5});
+    });
+
+    test('墓碑编解码：空/null/非法 JSON 宽容处理', () async {
+      expect(RecurrenceRepository.encodeTombstones({}), isNull);
+      expect(RecurrenceRepository.encodeTombstones({'2026-08-10'}), '["2026-08-10"]');
+      expect(RecurrenceRepository.decodeTombstones(null), isEmpty);
+      expect(RecurrenceRepository.decodeTombstones(''), isEmpty);
+      expect(RecurrenceRepository.decodeTombstones('not-json'), isEmpty);
+      expect(RecurrenceRepository.decodeTombstones('["2026-08-10"]'), {'2026-08-10'});
+      // 非法元素（非日期字符串）被过滤。
+      expect(
+        RecurrenceRepository.decodeTombstones('["2026-08-10", 42, "bad"]'),
+        {'2026-08-10'},
+      );
+    });
+
+    test('删除普通任务不写墓碑', () async {
+      final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+      final template = await recurrence.create(
+        goalId: goal.id,
+        title: '背单词',
+        rule: rule('daily', const {}),
+        startDate: '2026-08-05',
+        today: fixedToday,
+      );
+
+      final ordinary = await tasks.create(
+        goalId: goal.id,
+        title: '普通任务',
+        plannedDate: '2026-08-06',
+      );
+      await tasks.delete(ordinary.id);
+
+      final updated = await recurrence.byId(template.id);
+      expect(updated?.deletedInstanceDates, isNull);
     });
   });
 
