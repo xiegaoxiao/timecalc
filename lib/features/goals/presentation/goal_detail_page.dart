@@ -71,7 +71,8 @@ class GoalDetailBody extends ConsumerWidget {
                 subjects: subjects,
                 tasks: unassigned,
                 title: '未分类任务',
-                emptyText: '没有未分类任务。点击科目进入对应任务列表，或点「添加任务」创建',
+                description: '不归属特定科目的安排，如科目复习/复盘、考研报名等',
+                emptyText: '还没有此类任务。可点「添加任务」或「批量添加」创建',
                 onChanged: () => ref.invalidate(taskListProvider(goal.id)),
               );
             },
