@@ -368,6 +368,12 @@
 
 | 日期 | 项目/包 | 版本 | 用途 | 许可证 | 替代方案 | 决策与理由 |
 |---|---|---|---|---|---|---|
+| 2026-08-05 | drift + drift_flutter | 2.34.3 / 0.3.1 | SQLite ORM、事务、migration | MIT | sqflite_common_ffi + 手写 SQL | 按借鉴清单 §3.4 采用，类型安全查询与 migration 测试体系满足 PRD §11 |
+| 2026-08-05 | drift_dev + build_runner | 2.34.5 / 2.15.1 | drift 代码生成 | MIT / BSD-3-Clause | 手写数据访问层 | 与 drift 配套，仅生成表结构代码 |
+| 2026-08-05 | flutter_riverpod | 2.6.1 | 状态与依赖管理 | MIT | Provider/Bloc | 按借鉴清单 §3.5，异步状态与测试替换 |
+| 2026-08-05 | go_router | 17.4.0 | 路由 | BSD-3-Clause | Navigator 2.0 手写 | 声明式路由 + StatefulShell 满足主导航 |
+| 2026-08-05 | intl | 0.20.2 | 日期/数字格式化 | BSD-3-Clause | 手写格式化 | flutter_localizations 强依赖版本 |
+| 2026-08-05 | path_provider | 2.1.6 | 跨平台目录 | BSD-3-Clause | 平台通道手写 | M3 备份恢复将使用，随 drift_flutter 引入 |
 |  |  |  |  |  |  |  |
 
 每次引入或移除重要第三方依赖时新增一行；许可证判断以实际使用版本仓库中的 `LICENSE`/`NOTICE` 为准。
