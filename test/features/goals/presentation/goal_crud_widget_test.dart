@@ -40,7 +40,7 @@ void main() {
     await db.close();
   });
 
-  testWidgets('创建目标 → 计划页出现目标卡片', (tester) async {
+  testWidgets('创建目标 → 自动进入目标详情页（回归：创建后跳转）', (tester) async {
     await pumpApp(tester);
 
     // 切到「计划」页并打开创建目标对话框。
@@ -55,7 +55,7 @@ void main() {
     expect(find.text('请输入目标名称'), findsOneWidget);
 
     // 填写名称。
-    await tester.enterText(find.byType(TextFormField).first, '考研数学');
+    await tester.enterText(find.byType(TextFormField).first, '考研');
     await tester.pumpAndSettle();
 
     // 填写截止日期：日期选择器默认显示当月（2026-08），选择 20 日。
@@ -69,9 +69,52 @@ void main() {
     await tester.tap(find.text('创建').last);
     await tester.pumpAndSettle();
 
-    // 目标卡片出现在计划页，截止日期为所选 2026-08-20。
-    expect(find.text('考研数学'), findsOneWidget);
+    // 创建成功后自动进入目标详情页（引导继续配置），标题与截止日期可见。
+    expect(find.text('目标详情'), findsOneWidget);
+    expect(find.text('考研'), findsOneWidget);
     expect(find.textContaining('截止 2026-08-20'), findsOneWidget);
+    // 详情页有返回键，可回到计划页。
+    expect(find.byType(BackButton), findsOneWidget);
+  });
+
+  testWidgets('创建目标时可一次性添加多个科目，详情页显示科目（计划组用法）', (tester) async {
+    await pumpApp(tester);
+
+    await tester.tap(find.text('计划'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('创建目标'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField).first, '考研');
+    await tester.tap(find.text('请选择日期'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('20'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+
+    // 依次添加四个科目（考研四门课：政治/英语/数学/408）。
+    for (final subject in ['政治', '英语', '数学', '408']) {
+      await tester.enterText(find.byType(TextField).last, subject);
+      await tester.tap(find.byTooltip('添加科目'));
+      await tester.pumpAndSettle();
+    }
+
+    // 输入框中的科目已加入 chips。
+    expect(find.widgetWithText(Chip, '政治'), findsOneWidget);
+    expect(find.widgetWithText(Chip, '英语'), findsOneWidget);
+    expect(find.widgetWithText(Chip, '数学'), findsOneWidget);
+    expect(find.widgetWithText(Chip, '408'), findsOneWidget);
+
+    await tester.tap(find.text('创建').last);
+    await tester.pumpAndSettle();
+
+    // 自动进入详情页，四个科目 chips 均已创建。
+    expect(find.text('目标详情'), findsOneWidget);
+    expect(find.widgetWithText(InputChip, '政治'), findsOneWidget);
+    expect(find.widgetWithText(InputChip, '英语'), findsOneWidget);
+    expect(find.widgetWithText(InputChip, '数学'), findsOneWidget);
+    expect(find.widgetWithText(InputChip, '408'), findsOneWidget);
   });
 
   testWidgets('创建目标后，今天页展示目标卡片与倒计时（FR-1 验收）', (tester) async {

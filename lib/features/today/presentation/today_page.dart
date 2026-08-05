@@ -113,6 +113,13 @@ class _EmptyView extends StatelessWidget {
 
   final bool hasAnyGoal;
 
+  Future<void> _createGoal(BuildContext context) async {
+    final createdId = await GoalFormDialog.show(context);
+    if (createdId != null && context.mounted) {
+      context.push('/goals/$createdId');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Center(
@@ -127,7 +134,7 @@ class _EmptyView extends StatelessWidget {
           const SizedBox(height: 16),
           if (!hasAnyGoal)
             FilledButton.icon(
-              onPressed: () => GoalFormDialog.show(context),
+              onPressed: () => _createGoal(context),
               icon: const Icon(Icons.add),
               label: const Text('创建目标'),
             ),

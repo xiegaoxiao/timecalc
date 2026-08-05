@@ -8,12 +8,14 @@ import 'package:timecalc/core/database/database.dart';
 import 'package:timecalc/core/database/database_provider.dart';
 import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
+import 'package:timecalc/features/goals/data/subject_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 
 /// 任务与科目 CRUD 用户流程 Widget 测试（checklists §5.3）。
 void main() {
   late AppDatabase db;
   late GoalRepository goals;
+  late SubjectRepository subjects;
   late TaskRepository tasks;
   late int goalId;
 
@@ -40,6 +42,7 @@ void main() {
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
     goals = GoalRepository(db);
+    subjects = SubjectRepository(db);
     tasks = TaskRepository(db);
     goalId = (await goals.create(title: '考研数学', deadlineDate: '2026-12-20')).id;
   });
@@ -162,5 +165,30 @@ void main() {
 
     // 任务显示科目归属。
     expect(find.textContaining('数学'), findsWidgets);
+  });
+
+  testWidgets('点击科目 chip 可重命名（回归：科目重命名）', (tester) async {
+    final subject = await subjects.create(goalId: goalId, name: '数学', color: '#3F6C51');
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    expect(find.text('数学'), findsOneWidget);
+
+    // 点击科目 chip 打开重命名对话框。
+    await tester.tap(find.widgetWithText(InputChip, '数学'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('重命名科目「数学」'), findsOneWidget);
+
+    // 修改为「高等数学」。
+    await tester.enterText(find.byType(TextField).last, '高等数学');
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('高等数学'), findsOneWidget);
+    expect(find.text('数学'), findsNothing);
+
+    // 数据库同步更新。
+    final renamed = await subjects.byId(subject.id);
+    expect(renamed?.name, '高等数学');
   });
 }

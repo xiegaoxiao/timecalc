@@ -13,13 +13,21 @@ import 'goal_form_dialog.dart';
 class GoalListPage extends ConsumerWidget {
   const GoalListPage({super.key});
 
+  /// 打开创建对话框；创建成功后自动进入目标详情页，引导继续添加任务。
+  Future<void> _createGoal(BuildContext context) async {
+    final createdId = await GoalFormDialog.show(context);
+    if (createdId != null && context.mounted) {
+      context.push('/goals/$createdId');
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final goalsAsync = ref.watch(goalListProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('计划')),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => GoalFormDialog.show(context),
+        onPressed: () => _createGoal(context),
         tooltip: '创建目标',
         child: const Icon(Icons.add),
       ),
@@ -46,6 +54,13 @@ class GoalListPage extends ConsumerWidget {
 class _EmptyView extends StatelessWidget {
   const _EmptyView();
 
+  Future<void> _createGoal(BuildContext context) async {
+    final createdId = await GoalFormDialog.show(context);
+    if (createdId != null && context.mounted) {
+      context.push('/goals/$createdId');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // 数据为空时提供与当前页相关的首个操作（PRD §8）。
@@ -60,7 +75,7 @@ class _EmptyView extends StatelessWidget {
           const Text('创建一个目标，把截止日期变成今天的行动'),
           const SizedBox(height: 16),
           FilledButton.icon(
-            onPressed: () => GoalFormDialog.show(context),
+            onPressed: () => _createGoal(context),
             icon: const Icon(Icons.add),
             label: const Text('创建目标'),
           ),

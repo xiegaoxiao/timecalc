@@ -46,6 +46,44 @@ class GoalRepository {
     });
   }
 
+  /// 创建目标并一次性创建其科目（如「考研」+ 政治/英语/数学/408）。
+  ///
+  /// 目标与科目在同一事务内完成（NFR-2）：任一步失败整体回滚，
+  /// 不会留下"无科目的目标"或"无目标的科目"半成品。
+  Future<Goal> createWithSubjects({
+    required String title,
+    required String deadlineDate,
+    String? description,
+    List<String> subjectNames = const [],
+  }) {
+    final now = DateTime.now().toUtc();
+    return _db.transaction(() async {
+      final goalId = await _db.into(_db.goals).insert(GoalsCompanion.insert(
+            title: title,
+            deadlineDate: deadlineDate,
+            description: Value(description),
+            createdAt: now,
+            updatedAt: now,
+          ));
+      final uniqueNames = subjectNames
+          .map((n) => n.trim())
+          .where((n) => n.isNotEmpty)
+          .toSet()
+          .toList();
+      for (var i = 0; i < uniqueNames.length; i++) {
+        await _db.into(_db.subjects).insert(SubjectsCompanion.insert(
+              goalId: goalId,
+              name: uniqueNames[i],
+              color: '#3F6C51',
+              sortOrder: Value(i),
+              createdAt: now,
+              updatedAt: now,
+            ));
+      }
+      return (await byId(goalId))!;
+    });
+  }
+
   /// 更新目标的基础字段。字符串字段为 null 表示不修改；
   /// [description] 传 `Value(null)` 表示显式清空描述。
   Future<void> update({
