@@ -39,6 +39,14 @@ class TaskTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final done = task.status == 'done';
 
+    // 科目名：任务归属科目的名称；无科目或科目加载中则为空。
+    final subjectName = ref
+        .watch(subjectListProvider(task.goalId))
+        .valueOrNull
+        ?.where((s) => s.id == task.subjectId)
+        .map((s) => s.name)
+        .firstOrNull;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
@@ -62,6 +70,7 @@ class TaskTile extends ConsumerWidget {
             Text(
               [
                 ?goalTitle,
+                ?subjectName,
                 if (task.estimatedMinutes != null)
                   DurationFormat.minutes(task.estimatedMinutes!),
               ].join(' · '),

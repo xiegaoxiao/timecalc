@@ -8,6 +8,7 @@ import 'package:timecalc/core/database/database.dart';
 import 'package:timecalc/core/database/database_provider.dart';
 import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
+import 'package:timecalc/features/goals/data/subject_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 
 /// 今天页每日执行闭环 Widget 测试（checklists §11 M2）。
@@ -20,6 +21,7 @@ import 'package:timecalc/features/tasks/data/task_repository.dart';
 void main() {
   late AppDatabase db;
   late GoalRepository goals;
+  late SubjectRepository subjects;
   late TaskRepository tasks;
   late DateTime fixedNow;
 
@@ -39,6 +41,7 @@ void main() {
   setUp(() {
     db = AppDatabase(NativeDatabase.memory());
     goals = GoalRepository(db);
+    subjects = SubjectRepository(db);
     tasks = TaskRepository(db);
     fixedNow = DateTime(2026, 8, 5, 12);
   });
@@ -182,6 +185,36 @@ void main() {
     // 副标题标注目标名（考研卡片标题外，任务条目中也出现）。
     expect(find.textContaining('考研 · 1 小时 30 分'), findsOneWidget);
     expect(find.textContaining('论文 · 1 小时'), findsOneWidget);
+  });
+
+  testWidgets('今日任务条目展示归属科目名（FR-1.5）', (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    final subject = await subjects.create(
+      goalId: goal.id,
+      name: '数学',
+      color: '#112233',
+    );
+    await tasks.create(
+      goalId: goal.id,
+      subjectId: subject.id,
+      title: '刷题',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 90,
+    );
+    // 无科目任务作为对照。
+    await tasks.create(
+      goalId: goal.id,
+      title: '复盘',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 30,
+    );
+
+    await pumpApp(tester);
+
+    // 有科目的任务展示「目标 · 科目 · 时长」。
+    expect(find.textContaining('考研 · 数学 · 1 小时 30 分'), findsOneWidget);
+    // 无科目的任务不展示科目段。
+    expect(find.textContaining('考研 · 30 分'), findsOneWidget);
   });
 
   testWidgets('没有任务的日期不显示过载（空态中性）', (tester) async {
