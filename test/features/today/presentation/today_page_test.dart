@@ -226,4 +226,30 @@ void main() {
     expect(find.textContaining('今日 '), findsNothing);
     expect(find.textContaining('超出'), findsNothing);
   });
+
+  testWidgets('删除目标后今天页任务立即消失（回归：级联删除跨页刷新）', (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    await tasks.create(goalId: goal.id, title: '背单词', plannedDate: '2026-08-05', estimatedMinutes: 90);
+
+    await pumpApp(tester);
+    // 今天页初始展示该任务。
+    expect(find.text('背单词'), findsOneWidget);
+    expect(find.text('今日任务总计 1 小时 30 分'), findsOneWidget);
+
+    // 切到计划页，删除目标（二次确认）。
+    await tester.tap(find.text('计划'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('目标操作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '删除'));
+    await tester.pumpAndSettle();
+
+    // 回到今天页：任务与负载卡都不再显示。
+    await tester.tap(find.text('今天'));
+    await tester.pumpAndSettle();
+    expect(find.text('背单词'), findsNothing);
+    expect(find.textContaining('今日任务总计'), findsNothing);
+  });
 }
