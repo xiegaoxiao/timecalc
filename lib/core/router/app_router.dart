@@ -6,6 +6,7 @@ import '../../features/goals/presentation/goal_detail_page.dart';
 import '../../features/goals/presentation/goal_list_page.dart';
 import '../../features/progress/presentation/progress_page.dart';
 import '../../features/settings/presentation/settings_page.dart';
+import '../../features/tasks/presentation/subject_task_page.dart';
 import '../../features/today/presentation/today_page.dart';
 
 /// 主导航目的地（PRD §7 信息架构：今天 / 计划 / 进度 / 设置）。
@@ -64,6 +65,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/goals/:goalId',
         name: 'goalDetail',
         builder: (context, state) => GoalDetailPage(goalId: state.pathParameters['goalId']!),
+      ),
+      GoRoute(
+        path: '/goals/:goalId/subjects/:subjectId',
+        name: 'subjectTasks',
+        builder: (context, state) => SubjectTaskPage(
+          goalId: int.parse(state.pathParameters['goalId']!),
+          subjectId: int.parse(state.pathParameters['subjectId']!),
+        ),
       ),
     ],
   );

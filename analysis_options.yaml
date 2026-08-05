@@ -9,6 +9,12 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+# 本地参考模板（他人开源项目，含独立 .git）不参与 TimeCalc 的分析与构建。
+analyzer:
+  exclude:
+    - ui-template/**
+    - '**/ui-template/**'
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`
