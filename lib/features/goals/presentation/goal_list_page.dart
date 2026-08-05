@@ -10,6 +10,9 @@ import '../data/goal_repository_provider.dart';
 import 'goal_form_dialog.dart';
 
 /// 计划页：目标列表（FR-1 目标 CRUD 入口）。
+///
+/// [GoalListBody] 抽出无 Scaffold 的目标列表主体，供 M2 计划页
+/// 「目标」分段内嵌复用；本页保留独立使用时的 Scaffold 与 FAB。
 class GoalListPage extends ConsumerWidget {
   const GoalListPage({super.key});
 
@@ -23,7 +26,6 @@ class GoalListPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final goalsAsync = ref.watch(goalListProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('计划')),
       floatingActionButton: FloatingActionButton(
@@ -31,30 +33,51 @@ class GoalListPage extends ConsumerWidget {
         tooltip: '创建目标',
         child: const Icon(Icons.add),
       ),
-      body: goalsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => _ErrorView(error: error),
-        data: (goals) {
-          if (goals.isEmpty) {
-            return const _EmptyView();
-          }
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: goals.length,
-            itemBuilder: (context, index) {
-              return _GoalCard(goal: goals[index]);
-            },
-          );
-        },
-      ),
+      body: GoalListBody(onCreateGoal: () => _createGoal(context)),
+    );
+  }
+}
+
+/// 目标列表主体（无 Scaffold）：空态 / 错误 / 目标卡片列表。
+///
+/// [onCreateGoal] 为空时，空态按钮回退为内置的创建流程。
+class GoalListBody extends ConsumerWidget {
+  const GoalListBody({super.key, this.onCreateGoal});
+
+  final Future<void> Function()? onCreateGoal;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final goalsAsync = ref.watch(goalListProvider);
+    return goalsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, _) => _ErrorView(error: error),
+      data: (goals) {
+        if (goals.isEmpty) {
+          return _EmptyView(onCreateGoal: onCreateGoal);
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: goals.length,
+          itemBuilder: (context, index) {
+            return _GoalCard(goal: goals[index]);
+          },
+        );
+      },
     );
   }
 }
 
 class _EmptyView extends StatelessWidget {
-  const _EmptyView();
+  const _EmptyView({this.onCreateGoal});
+
+  final Future<void> Function()? onCreateGoal;
 
   Future<void> _createGoal(BuildContext context) async {
+    if (onCreateGoal != null) {
+      await onCreateGoal!();
+      return;
+    }
     final createdId = await GoalFormDialog.show(context);
     if (createdId != null && context.mounted) {
       context.push('/goals/$createdId');
