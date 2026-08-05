@@ -1,4 +1,5 @@
 import 'package:drift/native.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -189,6 +190,63 @@ void main() {
     expect(find.text('当前共 24 小时（1～1440 分钟）'), findsOneWidget);
     await tester.tap(find.byTooltip('小时加'));
     await tester.pumpAndSettle();
+    expect(find.text('当前共 24 小时（1～1440 分钟）'), findsOneWidget);
+  });
+
+  testWidgets('点击小时中间数字区域可直接输入编辑并生效', (tester) async {
+    // 今日有一个 60 分钟任务，负载概览卡会展示「今日 1 小时 · 可用 …」。
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    await tasks.create(
+      goalId: goal.id,
+      title: '背单词',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 60,
+    );
+
+    await pumpApp(tester);
+    await tester.tap(find.text('设置'));
+    await tester.pumpAndSettle();
+
+    // 点击小时步进器的数字区域进入编辑态。
+    final hourInput = find.descendant(
+      of: find.byKey(const Key('hourStepField')),
+      matching: find.byType(TextField),
+    );
+    await tester.tap(hourInput);
+    await tester.pumpAndSettle();
+    await tester.enterText(hourInput, '5');
+    await tester.pumpAndSettle();
+    // 回车确认并失焦，触发提交。
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(find.text('当前共 5 小时（1～1440 分钟）'), findsOneWidget);
+
+    // 保存后今天页可用时长变为 5 小时。
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('今天'));
+    await tester.pumpAndSettle();
+    expect(find.text('今日 1 小时 · 可用 5 小时'), findsOneWidget);
+  });
+
+  testWidgets('编辑输入超出范围时夹取到边界（小时 30 → 24）', (tester) async {
+    await pumpApp(tester);
+    await tester.tap(find.text('设置'));
+    await tester.pumpAndSettle();
+
+    final hourInput = find.descendant(
+      of: find.byKey(const Key('hourStepField')),
+      matching: find.byType(TextField),
+    );
+    await tester.tap(hourInput);
+    await tester.pumpAndSettle();
+    await tester.enterText(hourInput, '30');
+    await tester.pumpAndSettle();
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    // 30 小时超出上限，夹取到 24 小时。
     expect(find.text('当前共 24 小时（1～1440 分钟）'), findsOneWidget);
   });
 }
