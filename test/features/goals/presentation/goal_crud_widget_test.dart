@@ -145,4 +145,47 @@ void main() {
     expect(find.text('还没有目标'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '创建目标'), findsOneWidget);
   });
+
+  testWidgets('从计划页进入目标详情后 AppBar 有返回键（回归：导航栈）', (tester) async {
+    await repository.create(title: '考研数学', deadlineDate: '2026-12-20');
+    await pumpApp(tester);
+
+    await tester.tap(find.text('计划'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('考研数学'));
+    await tester.pumpAndSettle();
+
+    // 详情页打开，存在返回按钮（BackButton），点击可回到计划页。
+    expect(find.text('目标详情'), findsOneWidget);
+    final backButton = find.byType(BackButton);
+    expect(backButton, findsOneWidget);
+
+    await tester.tap(backButton);
+    await tester.pumpAndSettle();
+    expect(find.text('计划'), findsWidgets);
+  });
+
+  testWidgets('编辑目标后详情页即时显示新标题与截止日期（回归：详情刷新）', (tester) async {
+    final goal = await repository.create(title: '考研数学', deadlineDate: '2026-12-20');
+    await pumpApp(tester);
+
+    await tester.tap(find.text('计划'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('考研数学'));
+    await tester.pumpAndSettle();
+    // 详情页头部为组合文案（倒计时 · 截止日期）。
+    expect(find.textContaining('截止 2026-12-20'), findsOneWidget);
+
+    // 打开编辑对话框并修改标题与截止日期。
+    await tester.tap(find.byTooltip('编辑目标'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).first, '考研数学（强化）');
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    // 详情页立即显示新标题与截止日期；数据库同步更新。
+    expect(find.text('考研数学（强化）'), findsOneWidget);
+    final updated = await repository.byId(goal.id);
+    expect(updated?.title, '考研数学（强化）');
+  });
 }

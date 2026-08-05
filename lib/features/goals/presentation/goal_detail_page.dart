@@ -19,7 +19,7 @@ class GoalDetailPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final goalAsync = ref.watch(goalDetailProvider(goalId));
+    final goalAsync = ref.watch(goalDetailProvider(int.parse(goalId)));
     return Scaffold(
       appBar: AppBar(title: const Text('目标详情')),
       body: goalAsync.when(
@@ -51,11 +51,6 @@ class GoalDetailPage extends ConsumerWidget {
     );
   }
 }
-
-/// 单个目标的详情查询 Provider。
-final goalDetailProvider = FutureProvider.family<Goal?, String>((ref, id) {
-  return ref.watch(goalRepositoryProvider).byId(int.parse(id));
-});
 
 class _GoalHeader extends ConsumerWidget {
   const _GoalHeader({required this.goal});
