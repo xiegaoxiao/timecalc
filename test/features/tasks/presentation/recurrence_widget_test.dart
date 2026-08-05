@@ -1,0 +1,166 @@
+import 'package:drift/native.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:timecalc/app.dart';
+import 'package:timecalc/core/database/database.dart';
+import 'package:timecalc/core/database/database_provider.dart';
+import 'package:timecalc/core/providers/clock_provider.dart';
+import 'package:timecalc/features/goals/data/goal_repository.dart';
+import 'package:timecalc/features/tasks/data/recurrence_repository.dart';
+import 'package:timecalc/features/tasks/data/task_repository.dart';
+import 'package:timecalc/features/tasks/domain/recurrence/recurrence_rule.dart';
+
+/// 重复任务用户流程 Widget 测试（FR-4）。
+///
+/// 固定时钟 2026-08-05（周三）。验证：
+/// - 通过「重复任务」按钮创建：艾宾浩斯序列生成实例，实例出现在今天/列表并带重复标记
+/// - 实例菜单「停止重复」：不再生成，历史保留
+/// - 实例菜单「编辑重复规则」：FR-4.4 二选一
+void main() {
+  late AppDatabase db;
+  late GoalRepository goals;
+  late TaskRepository tasks;
+  late RecurrenceRepository recurrence;
+  late int goalId;
+  late DateTime fixedNow;
+
+  Future<void> pumpApp(WidgetTester tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          clockProvider.overrideWithValue(() => fixedNow),
+        ],
+        child: const TimeCalcApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> openGoalDetail(WidgetTester tester) async {
+    await tester.tap(find.text('计划'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('考研'));
+    await tester.pumpAndSettle();
+  }
+
+  setUp(() async {
+    db = AppDatabase(NativeDatabase.memory());
+    goals = GoalRepository(db);
+    tasks = TaskRepository(db);
+    recurrence = RecurrenceRepository(db);
+    goalId = (await goals.create(title: '考研', deadlineDate: '2026-12-31')).id;
+    fixedNow = DateTime(2026, 8, 5, 12);
+  });
+
+  tearDown(() async {
+    await db.close();
+  });
+
+  testWidgets('创建艾宾浩斯重复任务：生成实例并出现在今日页/列表（FR-4.3）', (tester) async {
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    await tester.tap(find.text('重复任务'));
+    await tester.pumpAndSettle();
+    expect(find.text('重复任务'), findsWidgets);
+
+    // 规则类型默认「每天」；切换到「间隔序列」（艾宾浩斯）。
+    await tester.enterText(find.byType(TextFormField).first, '复习单词');
+    await tester.tap(find.text('间隔序列'));
+    await tester.pumpAndSettle();
+
+    // 默认序列 1,2,4,7,15,30；起始日今天 08-05 → 预览含 08-05、08-06、08-08。
+    expect(find.textContaining('08-05'), findsWidgets);
+    expect(find.textContaining('08-06'), findsWidgets);
+
+    await tester.tap(find.text('创建').last);
+    await tester.pumpAndSettle();
+
+    // 创建后生成 6 个实例（未分类区展示），均带重复标记。
+    expect(find.text('复习单词'), findsWidgets);
+    expect(find.byTooltip('重复任务'), findsWidgets);
+
+    final instances = await tasks.byGoal(goalId);
+    expect(instances.map((t) => t.plannedDate).toList(),
+        ['2026-08-05', '2026-08-06', '2026-08-08', '2026-08-12', '2026-08-19', '2026-09-03']);
+    expect(instances.every((t) => t.recurrenceTemplateId != null), isTrue);
+
+    // 今天页也出现今日实例（先返回计划页，再切到今天）。
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('今天'));
+    await tester.pumpAndSettle();
+    expect(find.text('复习单词'), findsOneWidget);
+  });
+
+  testWidgets('停止重复：确认后不再生成，已生成实例保留（FR-4.5）', (tester) async {
+    // 直接建模板 + 实例。
+    final template = await recurrence.create(
+      goalId: goalId,
+      title: '背单词',
+      rule: RecurrenceRule.fromMap(ruleType: 'daily', json: const {}),
+      startDate: '2026-08-05',
+      today: fixedNow,
+    );
+
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    // 打开第一个实例的操作菜单 → 停止重复。
+    await tester.tap(find.byTooltip('任务操作').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('停止重复'));
+    await tester.pumpAndSettle();
+    expect(find.text('停止重复？'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, '停止重复'));
+    await tester.pumpAndSettle();
+
+    // 模板已停用；实例仍在。
+    expect((await recurrence.byId(template.id))?.active, isFalse);
+    expect((await tasks.byGoal(goalId)).isNotEmpty, isTrue);
+    // 时间前移后也不再生。
+    expect(await recurrence.generateDue(today: DateTime(2026, 8, 20)), 0);
+  });
+
+  testWidgets('编辑重复规则：保存时弹出 FR-4.4 二选一', (tester) async {
+    await recurrence.create(
+      goalId: goalId,
+      title: '背单词',
+      rule: RecurrenceRule.fromMap(ruleType: 'daily', json: const {}),
+      startDate: '2026-08-05',
+      today: fixedNow,
+    );
+
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    // 打开第一个实例的操作菜单 → 编辑重复规则。
+    await tester.tap(find.byTooltip('任务操作').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('编辑重复规则'));
+    await tester.pumpAndSettle();
+
+    // 对话框预填模板信息（编辑模式标题）。
+    expect(find.text('编辑重复任务'), findsOneWidget);
+
+    // 切换到「每周指定星期」规则。
+    await tester.tap(find.text('每周指定星期'));
+    await tester.pumpAndSettle();
+
+    // 保存 → FR-4.4 二选一。
+    await tester.tap(find.text('保存').last);
+    await tester.pumpAndSettle();
+    expect(find.text('如何应用修改？'), findsOneWidget);
+    expect(find.text('仅修改模板'), findsOneWidget);
+    expect(find.text('仅修改未来实例'), findsOneWidget);
+    await tester.tap(find.text('仅修改模板'));
+    await tester.pumpAndSettle();
+
+    // 模板规则已改为 weekly，实例数量不变（仅改模板）。
+    final templates = await recurrence.byGoal(goalId);
+    expect(templates.single.ruleType, 'weekly');
+  });
+}

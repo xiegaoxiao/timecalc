@@ -15,6 +15,12 @@ final recurrenceTemplatesProvider =
   return ref.watch(recurrenceRepositoryProvider).byGoal(goalId);
 });
 
+/// 单个重复模板（任务条目标注/编辑规则用）。
+final recurrenceTemplateProvider =
+    FutureProvider.family<RecurrenceTemplate?, int>((ref, templateId) {
+  return ref.watch(recurrenceRepositoryProvider).byId(templateId);
+});
+
 /// 应用启动时的滚动生成任务（FR-4.3：窗口临近时生成缺失实例）。
 ///
 /// 由 AppShell 首帧 watch 一次触发；无 active 模板时为空操作。

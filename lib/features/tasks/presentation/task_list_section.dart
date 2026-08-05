@@ -4,8 +4,10 @@ import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../../../services/duration_format.dart';
+import '../data/recurrence_repository_provider.dart';
 import '../data/task_repository_provider.dart';
 import 'batch_task_form_dialog.dart';
+import 'recurrence_task_dialog.dart';
 import 'task_form_dialog.dart';
 import 'task_import_dialog.dart';
 
@@ -87,6 +89,15 @@ class TaskListSection extends ConsumerWidget {
                   icon: const Icon(Icons.upload_file, size: 18),
                   label: const Text('JSON 导入'),
                 ),
+                TextButton.icon(
+                  onPressed: () => RecurrenceTaskDialog.show(
+                    context,
+                    goalId: goalId,
+                    subjects: subjects,
+                  ),
+                  icon: const Icon(Icons.autorenew, size: 18),
+                  label: const Text('重复任务'),
+                ),
               ],
             ],
           ),
@@ -157,11 +168,25 @@ class _TaskTile extends ConsumerWidget {
             onChanged();
           },
         ),
-        title: Text(
-          task.title,
-          style: done
-              ? const TextStyle(decoration: TextDecoration.lineThrough)
-              : null,
+        title: Row(
+          children: [
+            Flexible(
+              child: Text(
+                task.title,
+                style: done
+                    ? const TextStyle(decoration: TextDecoration.lineThrough)
+                    : null,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (task.recurrenceTemplateId != null) ...[
+              const SizedBox(width: 6),
+              const Tooltip(
+                message: '重复任务',
+                child: Icon(Icons.autorenew, size: 16),
+              ),
+            ],
+          ],
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -189,6 +214,10 @@ class _TaskTile extends ConsumerWidget {
               _handleAction(context, ref, action),
           itemBuilder: (_) => [
             const PopupMenuItem(value: 'edit', child: Text('编辑')),
+            if (task.recurrenceTemplateId != null) ...[
+              const PopupMenuItem(value: 'editRecurrence', child: Text('编辑重复规则')),
+              const PopupMenuItem(value: 'stopRecurrence', child: Text('停止重复')),
+            ],
             const PopupMenuItem(value: 'delete', child: Text('删除')),
           ],
         ),
@@ -208,6 +237,47 @@ class _TaskTile extends ConsumerWidget {
           subjects: subjects,
         );
         onChanged();
+      case 'editRecurrence':
+        final templateId = task.recurrenceTemplateId;
+        if (templateId != null) {
+          final template =
+              await ref.read(recurrenceTemplateProvider(templateId).future);
+          if (template != null && context.mounted) {
+            await RecurrenceTaskDialog.show(
+              context,
+              goalId: goalId,
+              subjects: subjects,
+              editTemplate: template,
+            );
+            onChanged();
+          }
+        }
+      case 'stopRecurrence':
+        final templateId = task.recurrenceTemplateId;
+        if (templateId != null) {
+          final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('停止重复？'),
+              content: const Text('停止后不再生成新的重复任务，已生成的任务保留。'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('停止重复'),
+                ),
+              ],
+            ),
+          );
+          if (confirmed == true) {
+            await ref.read(recurrenceRepositoryProvider).stop(templateId);
+            ref.invalidate(recurrenceTemplatesProvider(goalId));
+            onChanged();
+          }
+        }
       case 'delete':
         final confirmed = await showDialog<bool>(
           context: context,

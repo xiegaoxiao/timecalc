@@ -9,7 +9,9 @@ import '../../../services/duration_format.dart';
 import '../../goals/data/subject_repository_provider.dart';
 import '../../settings/data/settings_repository.dart';
 import '../../settings/data/settings_repository_provider.dart';
+import '../data/recurrence_repository_provider.dart';
 import '../data/task_repository_provider.dart';
+import 'recurrence_task_dialog.dart';
 import 'task_form_dialog.dart';
 
 /// 跨目标任务条目（M2：今日页与日历选日面板共用）。
@@ -58,11 +60,25 @@ class TaskTile extends ConsumerWidget {
             onChanged();
           },
         ),
-        title: Text(
-          task.title,
-          style: done
-              ? const TextStyle(decoration: TextDecoration.lineThrough)
-              : null,
+        title: Row(
+          children: [
+            Flexible(
+              child: Text(
+                task.title,
+                style: done
+                    ? const TextStyle(decoration: TextDecoration.lineThrough)
+                    : null,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (task.recurrenceTemplateId != null) ...[
+              const SizedBox(width: 6),
+              const Tooltip(
+                message: '重复任务',
+                child: Icon(Icons.autorenew, size: 16),
+              ),
+            ],
+          ],
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -91,6 +107,10 @@ class TaskTile extends ConsumerWidget {
             const PopupMenuItem(value: 'edit', child: Text('编辑')),
             const PopupMenuItem(value: 'deferNext', child: Text('延期至下一可用日')),
             const PopupMenuItem(value: 'deferPick', child: Text('延期…')),
+            if (task.recurrenceTemplateId != null) ...[
+              const PopupMenuItem(value: 'editRecurrence', child: Text('编辑重复规则')),
+              const PopupMenuItem(value: 'stopRecurrence', child: Text('停止重复')),
+            ],
             const PopupMenuItem(value: 'delete', child: Text('删除')),
           ],
         ),
@@ -107,9 +127,58 @@ class TaskTile extends ConsumerWidget {
         await _deferToNextAvailable(context, ref);
       case 'deferPick':
         await _deferPickDate(context, ref);
+      case 'editRecurrence':
+        await _editRecurrence(context, ref);
+      case 'stopRecurrence':
+        await _stopRecurrence(context, ref);
       case 'delete':
         await _delete(context, ref);
     }
+  }
+
+  /// 编辑重复规则（打开规则对话框，预填当前模板）。
+  Future<void> _editRecurrence(BuildContext context, WidgetRef ref) async {
+    final templateId = task.recurrenceTemplateId;
+    if (templateId == null) return;
+    final template = await ref.read(recurrenceTemplateProvider(templateId).future);
+    if (template == null || !context.mounted) return;
+    final subjects =
+        ref.read(subjectListProvider(task.goalId)).valueOrNull ?? const <Subject>[];
+    await RecurrenceTaskDialog.show(
+      context,
+      goalId: task.goalId,
+      subjects: subjects,
+      editTemplate: template,
+    );
+    onChanged();
+  }
+
+  /// 停止重复（确认后停用模板，历史实例保留，FR-4.5）。
+  Future<void> _stopRecurrence(BuildContext context, WidgetRef ref) async {
+    final templateId = task.recurrenceTemplateId;
+    if (templateId == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('停止重复？'),
+        content: const Text('停止后不再生成新的重复任务，已生成的任务保留。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('停止重复'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final repo = ref.read(recurrenceRepositoryProvider);
+    await repo.stop(templateId);
+    ref.invalidate(recurrenceTemplatesProvider(task.goalId));
+    onChanged();
   }
 
   Future<void> _edit(BuildContext context, WidgetRef ref) async {
