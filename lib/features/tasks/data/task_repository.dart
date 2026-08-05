@@ -26,6 +26,46 @@ class TaskRepository {
         .getSingleOrNull();
   }
 
+  /// 返回计划日期为 [date]（yyyy-MM-dd）的全部任务（跨目标，供今日页使用）。
+  Future<List<Task>> byDate(String date) {
+    final query = _db.select(_db.tasks)
+      ..where((t) => t.plannedDate.equals(date))
+      ..orderBy([
+        (t) => OrderingTerm.asc(t.goalId),
+        (t) => OrderingTerm.asc(t.sortOrder),
+        (t) => OrderingTerm.asc(t.id),
+      ]);
+    return query.get();
+  }
+
+  /// 返回计划日期在 [start]～[end]（含，yyyy-MM-dd，字典序比较）的全部任务，
+  /// 供日历月视图聚合使用。
+  Future<List<Task>> byDateRange(String start, String end) {
+    final query = _db.select(_db.tasks)
+      ..where((t) => t.plannedDate.isBetweenValues(start, end))
+      ..orderBy([
+        (t) => OrderingTerm.asc(t.plannedDate),
+        (t) => OrderingTerm.asc(t.goalId),
+        (t) => OrderingTerm.asc(t.id),
+      ]);
+    return query.get();
+  }
+
+  /// 返回计划日期早于 [date]（yyyy-MM-dd）且未完成的任务（FR-3.7）。
+  ///
+  /// 用于次日首次打开时集中提示昨日及以前未完成任务的延期/保留选择。
+  Future<List<Task>> unfinishedBefore(String date) {
+    final query = _db.select(_db.tasks)
+      ..where((t) => t.plannedDate.isSmallerThanValue(date) &
+          t.status.equals(TaskStatus.todo))
+      ..orderBy([
+        (t) => OrderingTerm.asc(t.plannedDate),
+        (t) => OrderingTerm.asc(t.goalId),
+        (t) => OrderingTerm.asc(t.id),
+      ]);
+    return query.get();
+  }
+
   /// 创建任务。plannedDate 为本地日历日期文本（yyyy-MM-dd）。
   ///
   /// [estimatedMinutes] 仅接受 1～1440 分钟整数（FR-3 验收），
@@ -123,6 +163,9 @@ class TaskRepository {
   /// 更新任务字段。字符串字段为 null 表示不修改；
   /// 可置空字段（[estimatedMinutes]、[subjectId]）用 `Value` 包装，
   /// 传 `Value(null)` 表示显式置空，不传（null）表示不修改。
+  ///
+  /// 当计划日期变化且任务尚未记录原计划日期时，自动记录原日期
+  /// （FR-3.3 验收：延期/改期保留原计划日期；仅记录首次，不随后续调整刷新）。
   Future<void> update({
     required int id,
     String? title,
@@ -132,6 +175,10 @@ class TaskRepository {
     Value<int?>? subjectId,
   }) {
     return _db.transaction(() async {
+      final current = await byId(id);
+      if (current == null) return;
+      final original =
+          _originalDateOnReschedule(current: current, newPlannedDate: plannedDate);
       await (_db.update(_db.tasks)..where((t) => t.id.equals(id))).write(
         TasksCompanion(
           title: title == null ? const Value.absent() : Value(title),
@@ -140,10 +187,76 @@ class TaskRepository {
               plannedDate == null ? const Value.absent() : Value(plannedDate),
           estimatedMinutes: estimatedMinutes ?? const Value.absent(),
           subjectId: subjectId ?? const Value.absent(),
+          originalPlannedDate: original,
           updatedAt: Value(DateTime.now().toUtc()),
         ),
       );
     });
+  }
+
+  /// 延期单个任务到 [newPlannedDate]（yyyy-MM-dd）。
+  ///
+  /// 事务内读取当前行：日期未变则不写入（no-op）；仅当原计划日期为空时
+  /// 记录当前日期（FR-3.3 验收）。任务内容、归属与预估时长保持不变。
+  Future<void> defer(int id, String newPlannedDate) {
+    return _db.transaction(() async {
+      final current = await byId(id);
+      if (current == null) return;
+      // 计划日期未变视为无效操作（不写库）；改期后仅记录首次原日期。
+      if (current.plannedDate == newPlannedDate) return;
+      final original =
+          _originalDateOnReschedule(current: current, newPlannedDate: newPlannedDate);
+      await (_db.update(_db.tasks)..where((t) => t.id.equals(id))).write(
+        TasksCompanion(
+          plannedDate: Value(newPlannedDate),
+          originalPlannedDate: original,
+          updatedAt: Value(DateTime.now().toUtc()),
+        ),
+      );
+    });
+  }
+
+  /// 批量延期到同一日期（FR-3.7 次日未完成任务集中处理）。
+  ///
+  /// 全部延期在单个事务内完成（NFR-2）：任一条失败整体回滚，无半写入。
+  /// 返回实际发生延期（计划日期被改变）的任务数。
+  Future<int> deferMany(List<int> ids, String newPlannedDate) {
+    return _db.transaction(() async {
+      var changed = 0;
+      for (final id in ids) {
+        final current = await byId(id);
+        if (current == null) continue;
+        if (current.plannedDate == newPlannedDate) continue;
+        await (_db.update(_db.tasks)..where((t) => t.id.equals(id))).write(
+          TasksCompanion(
+            plannedDate: Value(newPlannedDate),
+            originalPlannedDate:
+                current.originalPlannedDate == null
+                    ? Value(current.plannedDate)
+                    : const Value.absent(),
+            updatedAt: Value(DateTime.now().toUtc()),
+          ),
+        );
+        changed++;
+      }
+      return changed;
+    });
+  }
+
+  /// 改期时计算应写入的 originalPlannedDate 字段。
+  ///
+  /// 仅当计划日期确实变化且原计划日期尚未记录时，记录当前计划日期；
+  /// 否则不修改（Value.absent）。
+  Value<String?> _originalDateOnReschedule({
+    required Task current,
+    required String? newPlannedDate,
+  }) {
+    if (newPlannedDate == null ||
+        newPlannedDate == current.plannedDate ||
+        current.originalPlannedDate != null) {
+      return const Value.absent();
+    }
+    return Value(current.plannedDate);
   }
 
   Future<void> delete(int id) {

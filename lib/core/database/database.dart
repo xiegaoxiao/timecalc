@@ -5,11 +5,12 @@ import 'tables.dart';
 
 part 'database.g.dart';
 
-/// TimeCalc 本地数据库（schema v1）。
+/// TimeCalc 本地数据库（schema v2）。
 ///
-/// M1 承载目标/科目/任务三张表。后续 schema 变更必须提供
-/// migration 与 migration 测试（SOP S3、NFR-2）。
-@DriftDatabase(tables: [Goals, Subjects, Tasks])
+/// v1：目标/科目/任务三张表。
+/// v2：Tasks 增加 original_planned_date；新增 Settings 计划偏好表（M2）。
+/// 后续 schema 变更必须提供 migration 与 migration 测试（SOP S3、NFR-2）。
+@DriftDatabase(tables: [Goals, Subjects, Tasks, Settings])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
@@ -18,13 +19,18 @@ class AppDatabase extends _$AppDatabase {
       AppDatabase(driftDatabase(name: 'timecalc'));
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) => m.createAll(),
         onUpgrade: (m, from, to) async {
-          // schema v1 之后每次升级在此追加迁移步骤，并配套 migration 测试。
+          if (from < 2) {
+            // v1 -> v2：任务记录原计划日期；新增计划偏好表（M2）。
+            // Settings 默认行不在此写入，由 SettingsRepository.get() 惰性 seed。
+            await m.addColumn(tasks, tasks.originalPlannedDate);
+            await m.createTable(settings);
+          }
         },
       );
 }

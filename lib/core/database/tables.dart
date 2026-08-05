@@ -22,6 +22,14 @@ class TaskStatus {
   static const String done = 'done';
 }
 
+/// 计划偏好默认值（PRD §5.1：默认每天 2 小时、每周 7 天）。
+class SettingsDefaults {
+  static const int dailyAvailableMinutes = 120;
+
+  /// 每周可用日（ISO 星期 1=周一 … 7=周日），默认全部可用。
+  static const Set<int> availableWeekdays = {1, 2, 3, 4, 5, 6, 7};
+}
+
 class Goals extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get title => text().withLength(min: 1, max: 200)();
@@ -56,4 +64,33 @@ class Tasks extends Table {
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
+
+  /// 原计划日期（FR-3.3 验收：延期保留原计划日期）。
+  ///
+  /// schema v2 引入，仅记录首次延期/改期前的日期，不随后续延期刷新，
+  /// 用于审计与后续恢复/统计。未延期过的任务为 null。
+  TextColumn get originalPlannedDate => text().nullable()();
+}
+
+/// 计划偏好（单行表，PRD §9 Settings 的 M2 子集）。
+///
+/// schema v2 引入。默认行不写死在迁移里，由 SettingsRepository.get()
+/// 惰性 seed（insertOrIgnore），保证迁移库与全新安装行为一致。
+class Settings extends Table {
+  /// 单行表固定主键 1。
+  IntColumn get id => integer()();
+
+  /// 每日可用时长（分钟），PRD §5.1 默认 120。
+  IntColumn get dailyAvailableMinutes =>
+      integer().withDefault(const Constant(120))();
+
+  /// 每周可用日，逗号分隔的 ISO 星期（1=周一…7=周日），如 `1,2,3,4,5,6,7`。
+  TextColumn get availableWeekdays =>
+      text().withDefault(const Constant('1,2,3,4,5,6,7'))();
+
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }

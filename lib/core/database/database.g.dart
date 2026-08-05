@@ -1107,6 +1107,17 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _originalPlannedDateMeta =
+      const VerificationMeta('originalPlannedDate');
+  @override
+  late final GeneratedColumn<String> originalPlannedDate =
+      GeneratedColumn<String>(
+        'original_planned_date',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1121,6 +1132,7 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     sortOrder,
     createdAt,
     updatedAt,
+    originalPlannedDate,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1222,6 +1234,15 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     } else if (isInserting) {
       context.missing(_updatedAtMeta);
     }
+    if (data.containsKey('original_planned_date')) {
+      context.handle(
+        _originalPlannedDateMeta,
+        originalPlannedDate.isAcceptableOrUnknown(
+          data['original_planned_date']!,
+          _originalPlannedDateMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1279,6 +1300,10 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
       )!,
+      originalPlannedDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}original_planned_date'],
+      ),
     );
   }
 
@@ -1301,6 +1326,12 @@ class Task extends DataClass implements Insertable<Task> {
   final int sortOrder;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  /// 原计划日期（FR-3.3 验收：延期保留原计划日期）。
+  ///
+  /// schema v2 引入，仅记录首次延期/改期前的日期，不随后续延期刷新，
+  /// 用于审计与后续恢复/统计。未延期过的任务为 null。
+  final String? originalPlannedDate;
   const Task({
     required this.id,
     required this.goalId,
@@ -1314,6 +1345,7 @@ class Task extends DataClass implements Insertable<Task> {
     required this.sortOrder,
     required this.createdAt,
     required this.updatedAt,
+    this.originalPlannedDate,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1338,6 +1370,9 @@ class Task extends DataClass implements Insertable<Task> {
     map['sort_order'] = Variable<int>(sortOrder);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || originalPlannedDate != null) {
+      map['original_planned_date'] = Variable<String>(originalPlannedDate);
+    }
     return map;
   }
 
@@ -1361,6 +1396,9 @@ class Task extends DataClass implements Insertable<Task> {
       sortOrder: Value(sortOrder),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
+      originalPlannedDate: originalPlannedDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(originalPlannedDate),
     );
   }
 
@@ -1382,6 +1420,9 @@ class Task extends DataClass implements Insertable<Task> {
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      originalPlannedDate: serializer.fromJson<String?>(
+        json['originalPlannedDate'],
+      ),
     );
   }
   @override
@@ -1400,6 +1441,7 @@ class Task extends DataClass implements Insertable<Task> {
       'sortOrder': serializer.toJson<int>(sortOrder),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'originalPlannedDate': serializer.toJson<String?>(originalPlannedDate),
     };
   }
 
@@ -1416,6 +1458,7 @@ class Task extends DataClass implements Insertable<Task> {
     int? sortOrder,
     DateTime? createdAt,
     DateTime? updatedAt,
+    Value<String?> originalPlannedDate = const Value.absent(),
   }) => Task(
     id: id ?? this.id,
     goalId: goalId ?? this.goalId,
@@ -1431,6 +1474,9 @@ class Task extends DataClass implements Insertable<Task> {
     sortOrder: sortOrder ?? this.sortOrder,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
+    originalPlannedDate: originalPlannedDate.present
+        ? originalPlannedDate.value
+        : this.originalPlannedDate,
   );
   Task copyWithCompanion(TasksCompanion data) {
     return Task(
@@ -1452,6 +1498,9 @@ class Task extends DataClass implements Insertable<Task> {
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      originalPlannedDate: data.originalPlannedDate.present
+          ? data.originalPlannedDate.value
+          : this.originalPlannedDate,
     );
   }
 
@@ -1469,7 +1518,8 @@ class Task extends DataClass implements Insertable<Task> {
           ..write('completedAt: $completedAt, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('originalPlannedDate: $originalPlannedDate')
           ..write(')'))
         .toString();
   }
@@ -1488,6 +1538,7 @@ class Task extends DataClass implements Insertable<Task> {
     sortOrder,
     createdAt,
     updatedAt,
+    originalPlannedDate,
   );
   @override
   bool operator ==(Object other) =>
@@ -1504,7 +1555,8 @@ class Task extends DataClass implements Insertable<Task> {
           other.completedAt == this.completedAt &&
           other.sortOrder == this.sortOrder &&
           other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.originalPlannedDate == this.originalPlannedDate);
 }
 
 class TasksCompanion extends UpdateCompanion<Task> {
@@ -1520,6 +1572,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
   final Value<int> sortOrder;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
+  final Value<String?> originalPlannedDate;
   const TasksCompanion({
     this.id = const Value.absent(),
     this.goalId = const Value.absent(),
@@ -1533,6 +1586,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.sortOrder = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.originalPlannedDate = const Value.absent(),
   });
   TasksCompanion.insert({
     this.id = const Value.absent(),
@@ -1547,6 +1601,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.sortOrder = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
+    this.originalPlannedDate = const Value.absent(),
   }) : goalId = Value(goalId),
        title = Value(title),
        plannedDate = Value(plannedDate),
@@ -1565,6 +1620,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Expression<int>? sortOrder,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
+    Expression<String>? originalPlannedDate,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1579,6 +1635,8 @@ class TasksCompanion extends UpdateCompanion<Task> {
       if (sortOrder != null) 'sort_order': sortOrder,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (originalPlannedDate != null)
+        'original_planned_date': originalPlannedDate,
     });
   }
 
@@ -1595,6 +1653,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Value<int>? sortOrder,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
+    Value<String?>? originalPlannedDate,
   }) {
     return TasksCompanion(
       id: id ?? this.id,
@@ -1609,6 +1668,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
       sortOrder: sortOrder ?? this.sortOrder,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      originalPlannedDate: originalPlannedDate ?? this.originalPlannedDate,
     );
   }
 
@@ -1651,6 +1711,11 @@ class TasksCompanion extends UpdateCompanion<Task> {
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
+    if (originalPlannedDate.present) {
+      map['original_planned_date'] = Variable<String>(
+        originalPlannedDate.value,
+      );
+    }
     return map;
   }
 
@@ -1668,6 +1733,377 @@ class TasksCompanion extends UpdateCompanion<Task> {
           ..write('completedAt: $completedAt, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('originalPlannedDate: $originalPlannedDate')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SettingsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _dailyAvailableMinutesMeta =
+      const VerificationMeta('dailyAvailableMinutes');
+  @override
+  late final GeneratedColumn<int> dailyAvailableMinutes = GeneratedColumn<int>(
+    'daily_available_minutes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(120),
+  );
+  static const VerificationMeta _availableWeekdaysMeta = const VerificationMeta(
+    'availableWeekdays',
+  );
+  @override
+  late final GeneratedColumn<String> availableWeekdays =
+      GeneratedColumn<String>(
+        'available_weekdays',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('1,2,3,4,5,6,7'),
+      );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    dailyAvailableMinutes,
+    availableWeekdays,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'settings';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Setting> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('daily_available_minutes')) {
+      context.handle(
+        _dailyAvailableMinutesMeta,
+        dailyAvailableMinutes.isAcceptableOrUnknown(
+          data['daily_available_minutes']!,
+          _dailyAvailableMinutesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('available_weekdays')) {
+      context.handle(
+        _availableWeekdaysMeta,
+        availableWeekdays.isAcceptableOrUnknown(
+          data['available_weekdays']!,
+          _availableWeekdaysMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Setting map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Setting(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      dailyAvailableMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}daily_available_minutes'],
+      )!,
+      availableWeekdays: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}available_weekdays'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $SettingsTable createAlias(String alias) {
+    return $SettingsTable(attachedDatabase, alias);
+  }
+}
+
+class Setting extends DataClass implements Insertable<Setting> {
+  /// 单行表固定主键 1。
+  final int id;
+
+  /// 每日可用时长（分钟），PRD §5.1 默认 120。
+  final int dailyAvailableMinutes;
+
+  /// 每周可用日，逗号分隔的 ISO 星期（1=周一…7=周日），如 `1,2,3,4,5,6,7`。
+  final String availableWeekdays;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const Setting({
+    required this.id,
+    required this.dailyAvailableMinutes,
+    required this.availableWeekdays,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['daily_available_minutes'] = Variable<int>(dailyAvailableMinutes);
+    map['available_weekdays'] = Variable<String>(availableWeekdays);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  SettingsCompanion toCompanion(bool nullToAbsent) {
+    return SettingsCompanion(
+      id: Value(id),
+      dailyAvailableMinutes: Value(dailyAvailableMinutes),
+      availableWeekdays: Value(availableWeekdays),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory Setting.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Setting(
+      id: serializer.fromJson<int>(json['id']),
+      dailyAvailableMinutes: serializer.fromJson<int>(
+        json['dailyAvailableMinutes'],
+      ),
+      availableWeekdays: serializer.fromJson<String>(json['availableWeekdays']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'dailyAvailableMinutes': serializer.toJson<int>(dailyAvailableMinutes),
+      'availableWeekdays': serializer.toJson<String>(availableWeekdays),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  Setting copyWith({
+    int? id,
+    int? dailyAvailableMinutes,
+    String? availableWeekdays,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => Setting(
+    id: id ?? this.id,
+    dailyAvailableMinutes: dailyAvailableMinutes ?? this.dailyAvailableMinutes,
+    availableWeekdays: availableWeekdays ?? this.availableWeekdays,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  Setting copyWithCompanion(SettingsCompanion data) {
+    return Setting(
+      id: data.id.present ? data.id.value : this.id,
+      dailyAvailableMinutes: data.dailyAvailableMinutes.present
+          ? data.dailyAvailableMinutes.value
+          : this.dailyAvailableMinutes,
+      availableWeekdays: data.availableWeekdays.present
+          ? data.availableWeekdays.value
+          : this.availableWeekdays,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Setting(')
+          ..write('id: $id, ')
+          ..write('dailyAvailableMinutes: $dailyAvailableMinutes, ')
+          ..write('availableWeekdays: $availableWeekdays, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    dailyAvailableMinutes,
+    availableWeekdays,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Setting &&
+          other.id == this.id &&
+          other.dailyAvailableMinutes == this.dailyAvailableMinutes &&
+          other.availableWeekdays == this.availableWeekdays &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class SettingsCompanion extends UpdateCompanion<Setting> {
+  final Value<int> id;
+  final Value<int> dailyAvailableMinutes;
+  final Value<String> availableWeekdays;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  const SettingsCompanion({
+    this.id = const Value.absent(),
+    this.dailyAvailableMinutes = const Value.absent(),
+    this.availableWeekdays = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  SettingsCompanion.insert({
+    this.id = const Value.absent(),
+    this.dailyAvailableMinutes = const Value.absent(),
+    this.availableWeekdays = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+  }) : createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<Setting> custom({
+    Expression<int>? id,
+    Expression<int>? dailyAvailableMinutes,
+    Expression<String>? availableWeekdays,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (dailyAvailableMinutes != null)
+        'daily_available_minutes': dailyAvailableMinutes,
+      if (availableWeekdays != null) 'available_weekdays': availableWeekdays,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  SettingsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? dailyAvailableMinutes,
+    Value<String>? availableWeekdays,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+  }) {
+    return SettingsCompanion(
+      id: id ?? this.id,
+      dailyAvailableMinutes:
+          dailyAvailableMinutes ?? this.dailyAvailableMinutes,
+      availableWeekdays: availableWeekdays ?? this.availableWeekdays,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (dailyAvailableMinutes.present) {
+      map['daily_available_minutes'] = Variable<int>(
+        dailyAvailableMinutes.value,
+      );
+    }
+    if (availableWeekdays.present) {
+      map['available_weekdays'] = Variable<String>(availableWeekdays.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SettingsCompanion(')
+          ..write('id: $id, ')
+          ..write('dailyAvailableMinutes: $dailyAvailableMinutes, ')
+          ..write('availableWeekdays: $availableWeekdays, ')
+          ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
@@ -1680,11 +2116,17 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $GoalsTable goals = $GoalsTable(this);
   late final $SubjectsTable subjects = $SubjectsTable(this);
   late final $TasksTable tasks = $TasksTable(this);
+  late final $SettingsTable settings = $SettingsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities => [goals, subjects, tasks];
+  List<DatabaseSchemaEntity> get allSchemaEntities => [
+    goals,
+    subjects,
+    tasks,
+    settings,
+  ];
 }
 
 typedef $$GoalsTableCreateCompanionBuilder =
@@ -2563,6 +3005,7 @@ typedef $$TasksTableCreateCompanionBuilder =
       Value<int> sortOrder,
       required DateTime createdAt,
       required DateTime updatedAt,
+      Value<String?> originalPlannedDate,
     });
 typedef $$TasksTableUpdateCompanionBuilder =
     TasksCompanion Function({
@@ -2578,6 +3021,7 @@ typedef $$TasksTableUpdateCompanionBuilder =
       Value<int> sortOrder,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
+      Value<String?> originalPlannedDate,
     });
 
 final class $$TasksTableReferences
@@ -2674,6 +3118,11 @@ class $$TasksTableFilterComposer extends Composer<_$AppDatabase, $TasksTable> {
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get originalPlannedDate => $composableBuilder(
+    column: $table.originalPlannedDate,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2783,6 +3232,11 @@ class $$TasksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get originalPlannedDate => $composableBuilder(
+    column: $table.originalPlannedDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$GoalsTableOrderingComposer get goalId {
     final $$GoalsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -2875,6 +3329,11 @@ class $$TasksTableAnnotationComposer
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 
+  GeneratedColumn<String> get originalPlannedDate => $composableBuilder(
+    column: $table.originalPlannedDate,
+    builder: (column) => column,
+  );
+
   $$GoalsTableAnnotationComposer get goalId {
     final $$GoalsTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -2962,6 +3421,7 @@ class $$TasksTableTableManager
                 Value<int> sortOrder = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
+                Value<String?> originalPlannedDate = const Value.absent(),
               }) => TasksCompanion(
                 id: id,
                 goalId: goalId,
@@ -2975,6 +3435,7 @@ class $$TasksTableTableManager
                 sortOrder: sortOrder,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                originalPlannedDate: originalPlannedDate,
               ),
           createCompanionCallback:
               ({
@@ -2990,6 +3451,7 @@ class $$TasksTableTableManager
                 Value<int> sortOrder = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
+                Value<String?> originalPlannedDate = const Value.absent(),
               }) => TasksCompanion.insert(
                 id: id,
                 goalId: goalId,
@@ -3003,6 +3465,7 @@ class $$TasksTableTableManager
                 sortOrder: sortOrder,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                originalPlannedDate: originalPlannedDate,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -3082,6 +3545,198 @@ typedef $$TasksTableProcessedTableManager =
       Task,
       PrefetchHooks Function({bool goalId, bool subjectId})
     >;
+typedef $$SettingsTableCreateCompanionBuilder =
+    SettingsCompanion Function({
+      Value<int> id,
+      Value<int> dailyAvailableMinutes,
+      Value<String> availableWeekdays,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+    });
+typedef $$SettingsTableUpdateCompanionBuilder =
+    SettingsCompanion Function({
+      Value<int> id,
+      Value<int> dailyAvailableMinutes,
+      Value<String> availableWeekdays,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+
+class $$SettingsTableFilterComposer
+    extends Composer<_$AppDatabase, $SettingsTable> {
+  $$SettingsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get dailyAvailableMinutes => $composableBuilder(
+    column: $table.dailyAvailableMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get availableWeekdays => $composableBuilder(
+    column: $table.availableWeekdays,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SettingsTableOrderingComposer
+    extends Composer<_$AppDatabase, $SettingsTable> {
+  $$SettingsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get dailyAvailableMinutes => $composableBuilder(
+    column: $table.dailyAvailableMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get availableWeekdays => $composableBuilder(
+    column: $table.availableWeekdays,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SettingsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SettingsTable> {
+  $$SettingsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get dailyAvailableMinutes => $composableBuilder(
+    column: $table.dailyAvailableMinutes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get availableWeekdays => $composableBuilder(
+    column: $table.availableWeekdays,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$SettingsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SettingsTable,
+          Setting,
+          $$SettingsTableFilterComposer,
+          $$SettingsTableOrderingComposer,
+          $$SettingsTableAnnotationComposer,
+          $$SettingsTableCreateCompanionBuilder,
+          $$SettingsTableUpdateCompanionBuilder,
+          (Setting, BaseReferences<_$AppDatabase, $SettingsTable, Setting>),
+          Setting,
+          PrefetchHooks Function()
+        > {
+  $$SettingsTableTableManager(_$AppDatabase db, $SettingsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SettingsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SettingsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SettingsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> dailyAvailableMinutes = const Value.absent(),
+                Value<String> availableWeekdays = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => SettingsCompanion(
+                id: id,
+                dailyAvailableMinutes: dailyAvailableMinutes,
+                availableWeekdays: availableWeekdays,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> dailyAvailableMinutes = const Value.absent(),
+                Value<String> availableWeekdays = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime updatedAt,
+              }) => SettingsCompanion.insert(
+                id: id,
+                dailyAvailableMinutes: dailyAvailableMinutes,
+                availableWeekdays: availableWeekdays,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SettingsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SettingsTable,
+      Setting,
+      $$SettingsTableFilterComposer,
+      $$SettingsTableOrderingComposer,
+      $$SettingsTableAnnotationComposer,
+      $$SettingsTableCreateCompanionBuilder,
+      $$SettingsTableUpdateCompanionBuilder,
+      (Setting, BaseReferences<_$AppDatabase, $SettingsTable, Setting>),
+      Setting,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -3092,4 +3747,6 @@ class $AppDatabaseManager {
       $$SubjectsTableTableManager(_db, _db.subjects);
   $$TasksTableTableManager get tasks =>
       $$TasksTableTableManager(_db, _db.tasks);
+  $$SettingsTableTableManager get settings =>
+      $$SettingsTableTableManager(_db, _db.settings);
 }

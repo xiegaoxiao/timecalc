@@ -146,6 +146,128 @@ void main() {
     });
   });
 
+  group('按日期查询（M2：今日任务与日历）', () {
+    test('byDate 返回指定日期的全部任务（跨目标）', () async {
+      final goalA = await goals.create(title: '目标A', deadlineDate: '2026-02-01');
+      final goalB = await goals.create(title: '目标B', deadlineDate: '2026-02-01');
+      await tasks.create(goalId: goalA.id, title: 'A-当日', plannedDate: '2026-01-10');
+      await tasks.create(goalId: goalA.id, title: 'A-其他日', plannedDate: '2026-01-11');
+      await tasks.create(goalId: goalB.id, title: 'B-当日', plannedDate: '2026-01-10');
+
+      final list = await tasks.byDate('2026-01-10');
+      expect(list.map((t) => t.title).toSet(), {'A-当日', 'B-当日'});
+    });
+
+    test('byDateRange 返回日期范围内的任务（含首尾）', () async {
+      final goal = await goals.create(title: '目标', deadlineDate: '2026-03-01');
+      await tasks.create(goalId: goal.id, title: '月初', plannedDate: '2026-02-01');
+      await tasks.create(goalId: goal.id, title: '月中', plannedDate: '2026-02-15');
+      await tasks.create(goalId: goal.id, title: '月末', plannedDate: '2026-02-28');
+      await tasks.create(goalId: goal.id, title: '范围外', plannedDate: '2026-03-05');
+
+      final list = await tasks.byDateRange('2026-02-01', '2026-02-28');
+      expect(list.map((t) => t.title).toSet(), {'月初', '月中', '月末'});
+    });
+
+    test('unfinishedBefore 只返回早于指定日且未完成的任务', () async {
+      final goal = await goals.create(title: '目标', deadlineDate: '2026-03-01');
+      final early = await tasks.create(goalId: goal.id, title: '昨日未完成', plannedDate: '2026-01-05');
+      await tasks.create(goalId: goal.id, title: '当日任务', plannedDate: '2026-01-10');
+
+      // 未完成时进入结果。
+      var list = await tasks.unfinishedBefore('2026-01-10');
+      expect(list.map((t) => t.title), ['昨日未完成']);
+
+      // 完成后不再进入结果。
+      await tasks.setDone(early.id, true);
+      list = await tasks.unfinishedBefore('2026-01-10');
+      expect(list, isEmpty);
+    });
+  });
+
+  group('延期（FR-3.3）', () {
+    test('defer 记录原计划日期一次，任务内容与归属保持不变', () async {
+      final goal = await goals.create(title: '目标', deadlineDate: '2026-03-01');
+      final subject = await subjects.create(goalId: goal.id, name: '数学', color: '#112233');
+      final created = await tasks.create(
+        goalId: goal.id,
+        subjectId: subject.id,
+        title: '套卷',
+        note: '含解析',
+        plannedDate: '2026-01-10',
+        estimatedMinutes: 90,
+      );
+
+      await tasks.defer(created.id, '2026-01-12');
+      var fetched = await tasks.byId(created.id);
+      expect(fetched?.plannedDate, '2026-01-12');
+      expect(fetched?.originalPlannedDate, '2026-01-10');
+      expect(fetched?.title, '套卷');
+      expect(fetched?.subjectId, subject.id);
+      expect(fetched?.note, '含解析');
+      expect(fetched?.estimatedMinutes, 90);
+
+      // 再次延期不覆盖原计划日期。
+      await tasks.defer(created.id, '2026-01-15');
+      fetched = await tasks.byId(created.id);
+      expect(fetched?.plannedDate, '2026-01-15');
+      expect(fetched?.originalPlannedDate, '2026-01-10');
+    });
+
+    test('defer 到同一日期为 no-op，不产生 updatedAt 变更', () async {
+      final goal = await goals.create(title: '目标', deadlineDate: '2026-03-01');
+      final created = await tasks.create(goalId: goal.id, title: '任务', plannedDate: '2026-01-10');
+      final before = await tasks.byId(created.id);
+
+      await tasks.defer(created.id, '2026-01-10');
+      final after = await tasks.byId(created.id);
+      expect(after?.plannedDate, '2026-01-10');
+      expect(after?.originalPlannedDate, isNull);
+      expect(after?.updatedAt, before?.updatedAt);
+    });
+
+    test('deferMany 批量延期在同一事务内完成，无半写入', () async {
+      final goal = await goals.create(title: '目标', deadlineDate: '2026-03-01');
+      final task1 = await tasks.create(goalId: goal.id, title: '任务1', plannedDate: '2026-01-05');
+      final task2 = await tasks.create(goalId: goal.id, title: '任务2', plannedDate: '2026-01-06');
+
+      final changed = await tasks.deferMany([task1.id, task2.id], '2026-01-20');
+      expect(changed, 2);
+      expect((await tasks.byId(task1.id))?.plannedDate, '2026-01-20');
+      expect((await tasks.byId(task1.id))?.originalPlannedDate, '2026-01-05');
+      expect((await tasks.byId(task2.id))?.plannedDate, '2026-01-20');
+      expect((await tasks.byId(task2.id))?.originalPlannedDate, '2026-01-06');
+    });
+
+    test('deferMany 中途失败整体回滚（NFR-2）', () async {
+      final goal = await goals.create(title: '目标', deadlineDate: '2026-03-01');
+      final task1 = await tasks.create(goalId: goal.id, title: '任务1', plannedDate: '2026-01-05');
+      final task2 = await tasks.create(goalId: goal.id, title: '任务2', plannedDate: '2026-01-06');
+
+      await expectLater(
+        db.transaction(() async {
+          await tasks.deferMany([task1.id, task2.id], '2026-01-20');
+          throw StateError('模拟批量延期中途失败');
+        }),
+        throwsA(isA<StateError>()),
+      );
+
+      expect((await tasks.byId(task1.id))?.plannedDate, '2026-01-05');
+      expect((await tasks.byId(task1.id))?.originalPlannedDate, isNull);
+      expect((await tasks.byId(task2.id))?.plannedDate, '2026-01-06');
+    });
+
+    test('update 改期时自动记录原计划日期（编辑改期同样满足 FR-3.3 验收）', () async {
+      final goal = await goals.create(title: '目标', deadlineDate: '2026-03-01');
+      final created = await tasks.create(goalId: goal.id, title: '任务', plannedDate: '2026-01-10');
+
+      await tasks.update(id: created.id, plannedDate: '2026-01-15');
+      final fetched = await tasks.byId(created.id);
+      expect(fetched?.plannedDate, '2026-01-15');
+      expect(fetched?.originalPlannedDate, '2026-01-10');
+    });
+  });
+
   group('科目（FR-1.5）', () {
     test('科目增删改查', () async {
       final goal = await goals.create(title: '目标', deadlineDate: '2026-01-01');
