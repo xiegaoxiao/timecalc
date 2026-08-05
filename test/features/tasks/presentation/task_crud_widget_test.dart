@@ -149,6 +149,69 @@ void main() {
     expect(await tasks.byGoal(goalId), isEmpty);
   });
 
+  testWidgets('JSON 导入：校验失败时列出错误且不写库', (tester) async {
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    await tester.tap(find.text('JSON 导入'));
+    await tester.pumpAndSettle();
+    expect(find.text('JSON 导入任务'), findsOneWidget);
+
+    // 粘贴非法 JSON：早于今天 + 非法日期 + 标题缺失。
+    await tester.enterText(
+      find.byType(TextField).last,
+      '{"subjects":{"数学":[{"title":"A","date":"2026-08-04"},{"title":"B","date":"2026-02-30"}]},"unclassified":[{"date":"2026-08-06"}]}',
+    );
+    await tester.tap(find.text('校验'));
+    await tester.pumpAndSettle();
+
+    // 三条错误 + 导入按钮不可用 + 数据库无写入。
+    expect(find.text('发现 3 个问题'), findsOneWidget);
+    expect(find.textContaining('不能早于今天'), findsOneWidget);
+    expect(find.textContaining('不是有效日期'), findsOneWidget);
+    expect(find.textContaining('title 必填'), findsOneWidget);
+    final importButton = tester.widget<FilledButton>(find.widgetWithText(FilledButton, '导入'));
+    expect(importButton.onPressed, isNull);
+    expect(await tasks.byGoal(goalId), isEmpty);
+  });
+
+  testWidgets('JSON 导入：合法数据科目与未分类隔离写入', (tester) async {
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    await tester.tap(find.text('JSON 导入'));
+    await tester.pumpAndSettle();
+
+    // 粘贴合法 JSON（固定时钟 2026-08-05，日期不早于今天）。
+    await tester.enterText(
+      find.byType(TextField).last,
+      '{"subjects":{"数学":[{"title":"真题 2013","date":"2026-08-06","minutes":180}]},"unclassified":[{"title":"复盘","date":"2026-08-06"}]}',
+    );
+    await tester.tap(find.text('校验'));
+    await tester.pumpAndSettle();
+
+    // 预览：科目（将新建）与未分类分组隔离。
+    expect(find.text('校验通过：2 个任务'), findsOneWidget);
+    expect(find.text('科目「数学」（将新建）'), findsOneWidget);
+    expect(find.text('• 真题 2013 · 2026-08-06 · 3 小时'), findsOneWidget);
+    expect(find.text('• 复盘 · 2026-08-06'), findsOneWidget);
+
+    await tester.tap(find.text('导入'));
+    await tester.pumpAndSettle();
+
+    // 对话框关闭，SnackBar 提示已创建科目与任务。
+    expect(find.text('JSON 导入任务'), findsNothing);
+    expect(find.text('已创建 1 个科目，导入 2 个任务'), findsOneWidget);
+
+    final goalTasks = await tasks.byGoal(goalId);
+    expect(goalTasks, hasLength(2));
+    final math = goalTasks.firstWhere((t) => t.title == '真题 2013');
+    final review = goalTasks.firstWhere((t) => t.title == '复盘');
+    expect(math.subjectId, isNotNull);
+    expect(review.subjectId, isNull);
+    expect(math.estimatedMinutes, 180);
+  });
+
   testWidgets('科目增删与任务归属科目显示（FR-1.5）', (tester) async {
     await pumpApp(tester);
     await openGoalDetail(tester);

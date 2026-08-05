@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/database/tables.dart';
+import '../domain/task_import_parser.dart';
 
 /// 任务数据访问层（FR-3）。
 class TaskRepository {
@@ -145,6 +146,61 @@ class TaskRepository {
     final mm = date.month.toString().padLeft(2, '0');
     final dd = date.day.toString().padLeft(2, '0');
     return '${date.year}-$mm-$dd';
+  }
+
+  /// 批量导入（JSON 导入升级版）。
+  ///
+  /// 科目与未分类任务在单个事务内写入（NFR-2）：目标下不存在的科目自动创建
+  /// （沿用默认颜色与排序），任务按计划日期与归属写入；任一条失败整体回滚，
+  /// 无半写入。日期与时长已在解析层校验，本方法不重复业务校验。
+  Future<ImportStats> importPlan({
+    required int goalId,
+    required List<ImportedTaskItem> items,
+  }) {
+    return _db.transaction(() async {
+      final now = DateTime.now().toUtc();
+      final existing = await (_db.select(_db.subjects)
+            ..where((s) => s.goalId.equals(goalId)))
+          .get();
+      final nameToId = {for (final s in existing) s.name: s.id};
+      var maxSort = existing.isEmpty
+          ? -1
+          : existing.map((s) => s.sortOrder).reduce((a, b) => a > b ? a : b);
+
+      var createdSubjects = 0;
+      for (final item in items) {
+        final name = item.subjectName;
+        int? subjectId;
+        if (name != null) {
+          subjectId = nameToId[name];
+          if (subjectId == null) {
+            maxSort++;
+            subjectId = await _db.into(_db.subjects).insert(
+                  SubjectsCompanion.insert(
+                    goalId: goalId,
+                    name: name,
+                    color: '#3F6C51',
+                    sortOrder: Value(maxSort),
+                    createdAt: now,
+                    updatedAt: now,
+                  ),
+                );
+            nameToId[name] = subjectId;
+            createdSubjects++;
+          }
+        }
+        await _db.into(_db.tasks).insert(TasksCompanion.insert(
+              goalId: goalId,
+              subjectId: Value(subjectId),
+              title: item.title,
+              plannedDate: item.date,
+              estimatedMinutes: Value(item.minutes),
+              createdAt: now,
+              updatedAt: now,
+            ));
+      }
+      return ImportStats(createdSubjects: createdSubjects, createdTasks: items.length);
+    });
   }
 
   /// 完成任务状态切换（todo <-> done）。事务封装（NFR-2）。

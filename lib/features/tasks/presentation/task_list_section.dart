@@ -7,6 +7,7 @@ import '../../../services/duration_format.dart';
 import '../data/task_repository_provider.dart';
 import 'batch_task_form_dialog.dart';
 import 'task_form_dialog.dart';
+import 'task_import_dialog.dart';
 
 /// 任务列表区域（FR-3.1/FR-3.2）：创建、编辑、删除、完成任务。
 ///
@@ -68,6 +69,15 @@ class TaskListSection extends ConsumerWidget {
                   ),
                   icon: const Icon(Icons.playlist_add, size: 18),
                   label: const Text('批量添加'),
+                ),
+                TextButton.icon(
+                  onPressed: () => TaskImportDialog.show(
+                    context,
+                    goalId: goalId,
+                    subjects: subjects,
+                  ),
+                  icon: const Icon(Icons.upload_file, size: 18),
+                  label: const Text('JSON 导入'),
                 ),
               ],
             ],
