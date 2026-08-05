@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
+import '../../../shared/widgets/duration_step_input.dart';
 import '../data/task_repository_provider.dart';
-import '../domain/duration_validator.dart';
 
 /// 跨目标快速创建任务对话框（M2：今日页/日历选日面板「添加任务」）。
 ///
@@ -47,9 +47,9 @@ class QuickTaskFormDialog extends ConsumerStatefulWidget {
 class _QuickTaskFormDialogState extends ConsumerState<QuickTaskFormDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _titleController;
-  final _minutesController = TextEditingController();
   final _noteController = TextEditingController();
   late int? _goalId;
+  int? _estimatedMinutes;
   bool _saving = false;
 
   @override
@@ -64,7 +64,6 @@ class _QuickTaskFormDialogState extends ConsumerState<QuickTaskFormDialog> {
   @override
   void dispose() {
     _titleController.dispose();
-    _minutesController.dispose();
     _noteController.dispose();
     super.dispose();
   }
@@ -73,7 +72,8 @@ class _QuickTaskFormDialogState extends ConsumerState<QuickTaskFormDialog> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final goalId = _goalId;
     if (goalId == null) return;
-    final minutesText = _minutesController.text.trim();
+    // 0 分钟视为未设置（预估时长合法范围为 1～1440，FR-3 验收）。
+    final minutes = _estimatedMinutes == 0 ? null : _estimatedMinutes;
 
     setState(() => _saving = true);
     try {
@@ -85,8 +85,7 @@ class _QuickTaskFormDialogState extends ConsumerState<QuickTaskFormDialog> {
             ? null
             : _noteController.text.trim(),
         plannedDate: DateFormat('yyyy-MM-dd').format(widget.date),
-        estimatedMinutes:
-            minutesText.isEmpty ? null : int.parse(minutesText),
+        estimatedMinutes: minutes,
       );
       if (mounted) Navigator.of(context).pop();
     } finally {
@@ -132,21 +131,17 @@ class _QuickTaskFormDialogState extends ConsumerState<QuickTaskFormDialog> {
                   return null;
                 },
               ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _minutesController,
-                decoration: const InputDecoration(
-                  labelText: '预估时长（分钟）',
-                  hintText: '1～1440',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) return null;
-                  return DurationValidator.validate(value);
-                },
+              const SizedBox(height: 16),
+              DurationStepInput(
+                label: '预估时长',
+                value: _estimatedMinutes,
+                allowEmpty: true,
+                onChanged: (minutes) =>
+                    setState(() => _estimatedMinutes = minutes),
+                hourFieldKey: const Key('quickHourField'),
+                minuteFieldKey: const Key('quickMinuteField'),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _noteController,
                 decoration: const InputDecoration(

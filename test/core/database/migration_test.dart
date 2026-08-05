@@ -11,8 +11,9 @@ import '../../generated_migrations/schema.dart';
 ///
 /// 覆盖：
 /// - v1 空库创建、三张表存在、必要列与约束符合预期；
-/// - v1 -> v2 升级成功：v1 数据在升级后保留，新列/新表可用且符合 v2 结构；
-/// - v1 -> v2 升级失败：失败后原 v1 数据保持可用，修复后迁移可重试成功。
+/// - v1 -> v3 升级成功：v1 数据在升级后保留，新列/新表可用且符合 v3 结构；
+/// - v2 -> v3 升级成功：v2 数据保留，archived_at 默认 null；
+/// - 升级失败：失败后原数据保持可用，修复后迁移可重试成功。
 void main() {
   // 迁移测试通过 SchemaVerifier 在同一底层连接上多次打开 AppDatabase，
   // drift 的「重复打开数据库」启发式会产生无关警告，按官方 FAQ 关闭。
@@ -86,7 +87,12 @@ void main() {
     ]));
   });
 
-  test('schema v1 -> v2：迁移成功保留数据，结构符合 v2 预期', () async {
+  test('schema v3：tasks 含归档标记列', () async {
+    final taskColumns = await _columns(db, 'tasks');
+    expect(taskColumns, contains('archived_at'));
+  });
+
+  test('schema v1 -> v3：迁移成功保留数据，结构符合 v3 预期', () async {
     final verifier = SchemaVerifier(GeneratedHelper());
     // 以 v1 结构初始化数据库并写入数据。
     final schema = await verifier.schemaAt(1);
@@ -102,9 +108,9 @@ void main() {
       ['迁移任务', '2026-08-05', 1750000000, 1750000000],
     );
 
-    // 以真实 AppDatabase 打开并执行 v1 -> v2 迁移，再与 v2 预期结构比对。
+    // 以真实 AppDatabase 打开并执行 v1 -> v3 迁移，再与 v3 预期结构比对。
     final upgraded = AppDatabase(schema.newConnection());
-    await verifier.migrateAndValidate(upgraded, 2);
+    await verifier.migrateAndValidate(upgraded, 3);
 
     // 数据在升级后保留，新列默认 null。
     final goal = await (upgraded.select(upgraded.goals)..where((g) => g.id.equals(1))).getSingle();
@@ -115,6 +121,7 @@ void main() {
     expect(task.title, '迁移任务');
     expect(task.plannedDate, '2026-08-05');
     expect(task.originalPlannedDate, isNull);
+    expect(task.archivedAt, isNull);
 
     final tables = await upgraded.customSelect(
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
@@ -125,7 +132,43 @@ void main() {
     schema.close();
   });
 
-  test('schema v1 -> v2：迁移失败时原 v1 数据保持可用，修复后可重试成功', () async {
+  test('schema v2 -> v3：v2 数据保留，archived_at 默认 null', () async {
+    final verifier = SchemaVerifier(GeneratedHelper());
+    // 以 v2 结构初始化数据库并写入数据（含 settings 默认行）。
+    final schema = await verifier.schemaAt(2);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['v2 目标', '2026-08-05', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO tasks (goal_id, title, planned_date, original_planned_date, created_at, updated_at) '
+      'VALUES (1, ?, ?, ?, ?, ?)',
+      ['v2 任务', '2026-08-06', '2026-08-05', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO settings (id, created_at, updated_at) VALUES (1, ?, ?)',
+      [1750000000, 1750000000],
+    );
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 3);
+
+    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    expect(task.title, 'v2 任务');
+    expect(task.plannedDate, '2026-08-06');
+    expect(task.originalPlannedDate, '2026-08-05');
+    expect(task.archivedAt, isNull);
+
+    final settings = await upgraded.select(upgraded.settings).getSingle();
+    expect(settings.dailyAvailableMinutes, 120);
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('schema v1 -> v3：迁移失败时原 v1 数据保持可用，修复后可重试成功', () async {
     final verifier = SchemaVerifier(GeneratedHelper());
     final schema = await verifier.schemaAt(1);
     schema.rawDatabase.execute(
@@ -144,7 +187,7 @@ void main() {
 
     // 以正确迁移策略重新打开（新连接），迁移应成功且数据仍在。
     final repaired = AppDatabase(schema.newConnection());
-    await verifier.migrateAndValidate(repaired, 2);
+    await verifier.migrateAndValidate(repaired, 3);
 
     final goal = await (repaired.select(repaired.goals)..where((g) => g.id.equals(1))).getSingle();
     expect(goal.title, '失败恢复目标');

@@ -7,6 +7,7 @@ import '../../../core/database/database.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../services/countdown_service.dart';
 import '../../../services/defer_service.dart';
+import '../../../services/duration_format.dart';
 import '../../../services/load_service.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../../goals/presentation/goal_form_dialog.dart';
@@ -83,7 +84,6 @@ class _TodayPageState extends ConsumerState<TodayPage> {
     required List<Task> todayTasks,
     required List<Task> unfinished,
   }) {
-    final todayStr = DateFormat('yyyy-MM-dd').format(today);
     final activeGoals = goals
         .where((g) =>
             g.status != 'completed' &&
@@ -91,10 +91,13 @@ class _TodayPageState extends ConsumerState<TodayPage> {
             g.status != 'archived')
         .toList();
 
-    // 数据变更后的统一刷新（今日列表、未完成任务横幅、倒计时卡）。
+    // 数据变更后的统一刷新（FR-3 验收：今日列表、日历、目标详情在同一
+    // 操作周期内同步更新）。family 级 invalidate 覆盖所有日期/月份实例。
     void onChanged() {
-      ref.invalidate(tasksByDateProvider(todayStr));
-      ref.invalidate(unfinishedBeforeProvider(todayStr));
+      ref.invalidate(tasksByDateProvider);
+      ref.invalidate(tasksByMonthProvider);
+      ref.invalidate(taskListProvider);
+      ref.invalidate(unfinishedBeforeProvider);
       ref.invalidate(goalListProvider);
     }
 
@@ -213,8 +216,9 @@ class _TodayPageState extends ConsumerState<TodayPage> {
 
 /// 今日负载概览（FR-3.5）。
 ///
-/// 展示当日未完成任务预估时长与可用时长；超出时显示「超出 X 分钟」
-/// 文案与警告图标（状态不只依赖颜色表达）。
+/// 标题展示「今日任务总计 X 小时 Y 分」（当日未完成任务预估时长之和）；
+/// 副标题展示可用时长，超出时追加「超出 X 分」文案与警告图标
+/// （状态不只依赖颜色表达）。
 class _LoadOverviewCard extends StatelessWidget {
   const _LoadOverviewCard({
     required this.load,
@@ -232,13 +236,19 @@ class _LoadOverviewCard extends StatelessWidget {
     return Card(
       child: ListTile(
         leading: Icon(over > 0 ? Icons.warning_amber_rounded : Icons.balance),
-        title: Text('今日 $load 分钟 · 可用 $available 分钟'),
-        subtitle: over > 0
-            ? Text(
-                '超出 $over 分钟，请调整任务或可用时间',
+        title: Text('今日任务总计 ${DurationFormat.minutes(load)}'),
+        subtitle: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('可用 ${DurationFormat.minutes(available)}'),
+            if (over > 0)
+              Text(
+                '超出 ${DurationFormat.minutes(over)}，请调整任务或可用时间',
                 style: TextStyle(color: scheme.error),
-              )
-            : null,
+              ),
+          ],
+        ),
         trailing: over > 0
             ? Icon(Icons.error_outline, color: scheme.error)
             : null,

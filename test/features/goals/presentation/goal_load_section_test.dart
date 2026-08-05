@@ -63,9 +63,9 @@ void main() {
     await pumpApp(tester);
     await openGoalDetail(tester, '考研');
 
-    expect(find.text('剩余任务时长：360 分钟'), findsOneWidget);
+    expect(find.text('剩余任务时长：6 小时'), findsOneWidget);
     expect(find.text('剩余可用天数：4 天'), findsOneWidget);
-    expect(find.text('建议日均时长：90 分钟 · 可用 120 分钟/天'), findsOneWidget);
+    expect(find.text('建议日均时长：1 小时 30 分 · 可用 2 小时/天'), findsOneWidget);
     // 建议日均未超可用时长，不显示计划风险。
     expect(find.textContaining('计划风险'), findsNothing);
   });
@@ -80,8 +80,8 @@ void main() {
     await openGoalDetail(tester, '考研');
 
     // 剩余 3 天（08-05/06/07）共 600 分钟 -> 建议日均 200 > 120。
-    expect(find.text('剩余任务时长：600 分钟'), findsOneWidget);
-    expect(find.text('建议日均时长：200 分钟 · 可用 120 分钟/天'), findsOneWidget);
+    expect(find.text('剩余任务时长：10 小时'), findsOneWidget);
+    expect(find.text('建议日均时长：3 小时 20 分 · 可用 2 小时/天'), findsOneWidget);
     expect(find.textContaining('计划风险'), findsOneWidget);
     // 系统只建议，不自动改计划（FR-5.5）。
     expect(find.textContaining('不会自动修改你的计划'), findsOneWidget);
@@ -98,7 +98,7 @@ void main() {
 
     expect(find.text('剩余可用天数：5 天'), findsOneWidget);
     // 500 / 5 = 100 分钟/天，未超可用时长，无风险。
-    expect(find.text('建议日均时长：100 分钟 · 可用 120 分钟/天'), findsOneWidget);
+    expect(find.text('建议日均时长：1 小时 40 分 · 可用 2 小时/天'), findsOneWidget);
     expect(find.textContaining('计划风险'), findsNothing);
   });
 
@@ -108,15 +108,15 @@ void main() {
 
     await pumpApp(tester);
     // 默认 120 分钟：今日负载 150 超 30。
-    expect(find.text('超出 30 分钟，请调整任务或可用时间'), findsOneWidget);
+    expect(find.text('超出 30 分，请调整任务或可用时间'), findsOneWidget);
 
-    // 设置页改为 180 分钟/天。
+    // 设置页用步进器改为 3 小时（小时加 1）。
     await tester.tap(find.text('设置'));
     await tester.pumpAndSettle();
-    await tester.enterText(
-      find.widgetWithText(TextFormField, '每日可用时长（分钟）'),
-      '180',
-    );
+    await tester.tap(find.byTooltip('小时加'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前共 3 小时'), findsOneWidget);
+
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
     expect(find.text('计划偏好已保存'), findsOneWidget);
@@ -124,7 +124,8 @@ void main() {
     // 回到今天页：150 分钟不再超出。
     await tester.tap(find.text('今天'));
     await tester.pumpAndSettle();
-    expect(find.text('今日 150 分钟 · 可用 180 分钟'), findsOneWidget);
+    expect(find.text('今日任务总计 2 小时 30 分'), findsOneWidget);
+    expect(find.text('可用 3 小时'), findsOneWidget);
     expect(find.textContaining('超出'), findsNothing);
   });
 
@@ -150,19 +151,136 @@ void main() {
     expect(fetched?.originalPlannedDate, '2026-08-05');
   });
 
-  testWidgets('设置页校验非法每日可用时长', (tester) async {
+  testWidgets('设置页步进器边界：小时不超过 24、分钟不低过 0、可回退', (tester) async {
     await pumpApp(tester);
     await tester.tap(find.text('设置'));
     await tester.pumpAndSettle();
 
-    await tester.enterText(
-      find.widgetWithText(TextFormField, '每日可用时长（分钟）'),
-      '0',
-    );
+    // 默认 2 小时 / 0 分。
+    expect(find.text('当前共 2 小时'), findsOneWidget);
+
+    // 小时步进：向下到 0 后不可再减。
+    await tester.tap(find.byTooltip('小时减'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('小时减'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前共 0 分'), findsOneWidget);
+    await tester.tap(find.byTooltip('小时减'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前共 0 分'), findsOneWidget);
+
+    // 每日可用时长为 0 时保存被阻止。
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
-
-    expect(find.text('请输入 1～1440 的整数分钟'), findsOneWidget);
+    expect(find.text('每日可用时长至少 1 分钟'), findsOneWidget);
     expect(find.text('计划偏好已保存'), findsNothing);
+
+    // 分钟步进：向上到 5，向下回 0。
+    await tester.tap(find.byTooltip('分钟加'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前共 5 分'), findsOneWidget);
+    await tester.tap(find.byTooltip('分钟减'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前共 0 分'), findsOneWidget);
+
+    // 小时向上到 24 后不可再增。
+    for (var i = 0; i < 25; i++) {
+      await tester.tap(find.byTooltip('小时加'));
+    }
+    await tester.pumpAndSettle();
+    expect(find.text('当前共 24 小时'), findsOneWidget);
+    await tester.tap(find.byTooltip('小时加'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前共 24 小时'), findsOneWidget);
+  });
+
+  testWidgets('点击小时中间数字区域可直接输入编辑并生效', (tester) async {
+    // 今日有一个 60 分钟任务，负载概览卡会展示「今日 1 小时 · 可用 …」。
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    await tasks.create(
+      goalId: goal.id,
+      title: '背单词',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 60,
+    );
+
+    await pumpApp(tester);
+    await tester.tap(find.text('设置'));
+    await tester.pumpAndSettle();
+
+    // 点击小时步进器的数字区域进入编辑态。
+    final hourInput = find.descendant(
+      of: find.byKey(const Key('hourStepField')),
+      matching: find.byType(TextField),
+    );
+    await tester.tap(hourInput);
+    await tester.pumpAndSettle();
+    await tester.enterText(hourInput, '5');
+    await tester.pumpAndSettle();
+    // 回车确认并失焦，触发提交。
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(find.text('当前共 5 小时'), findsOneWidget);
+
+    // 保存后今天页可用时长变为 5 小时。
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('今天'));
+    await tester.pumpAndSettle();
+    expect(find.text('今日任务总计 1 小时'), findsOneWidget);
+    expect(find.text('可用 5 小时'), findsOneWidget);
+  });
+
+  testWidgets('编辑输入超出范围时夹取到边界（小时 30 → 24）', (tester) async {
+    await pumpApp(tester);
+    await tester.tap(find.text('设置'));
+    await tester.pumpAndSettle();
+
+    final hourInput = find.descendant(
+      of: find.byKey(const Key('hourStepField')),
+      matching: find.byType(TextField),
+    );
+    await tester.tap(hourInput);
+    await tester.pumpAndSettle();
+    await tester.enterText(hourInput, '30');
+    await tester.pumpAndSettle();
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    // 30 小时超出上限，夹取到 24 小时。
+    expect(find.text('当前共 24 小时'), findsOneWidget);
+  });
+
+  testWidgets('历史任务区展示归档任务并可恢复回当前计划', (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    await tasks.create(goalId: goal.id, title: '旧任务', plannedDate: '2026-08-06', estimatedMinutes: 60);
+    // 归档全部任务（模拟 JSON 导入替换）。
+    await tasks.archiveAllActive(goal.id);
+
+    await pumpApp(tester);
+    await openGoalDetail(tester, '考研');
+
+    // 历史任务区在目标详情底部，先滚动到可见。
+    await tester.scrollUntilVisible(
+      find.text('历史任务（1）'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('历史任务（1）'), findsOneWidget);
+    expect(find.textContaining('旧任务'), findsOneWidget);
+
+    // 点击恢复：任务回到当前计划，历史区消失。
+    await tester.ensureVisible(find.text('恢复'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('恢复'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('历史任务（1）'), findsNothing);
+    final active = await tasks.byGoal(goal.id);
+    expect(active.map((t) => t.title), contains('旧任务'));
+    expect(await tasks.archivedByGoal(goal.id), isEmpty);
   });
 }

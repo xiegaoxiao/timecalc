@@ -64,41 +64,50 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('请输入任务标题'), findsOneWidget);
 
-    // 填写标题与预估时长。
+    // 填写标题。
     await tester.enterText(find.byType(TextFormField).first, '完成第一章');
-    await tester.enterText(find.byType(TextFormField).at(1), '120');
+
+    // 用步进器设置预估时长 120 分钟（2 小时）：点「小时加」两次。
+    await tester.tap(find.byTooltip('小时加'));
     await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('小时加'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前共 2 小时'), findsOneWidget);
+
     await tester.tap(find.text('创建').last);
     await tester.pumpAndSettle();
 
     // 任务出现在目标详情（任务条目标注预估时长）。
     expect(find.text('完成第一章'), findsOneWidget);
-    expect(find.text('2026-08-05 · 120 分钟'), findsOneWidget);
+    expect(find.text('2026-08-05 · 2 小时'), findsOneWidget);
   });
 
-  testWidgets('非法预估时长被阻止并提示（FR-3 验收）', (tester) async {
+  testWidgets('预估时长步进与无时长切换（FR-3 验收）', (tester) async {
     await pumpApp(tester);
     await openGoalDetail(tester);
 
     await tester.tap(find.text('添加任务'));
     await tester.pumpAndSettle();
-
     await tester.enterText(find.byType(TextFormField).first, '任务');
-    // 非法值：0。
-    await tester.enterText(find.byType(TextFormField).at(1), '0');
+
+    // 默认未设置时长（0 分起步，可直接步进）。
+    expect(find.text('当前共 0 分'), findsOneWidget);
+
+    // 分钟步进：一次 +5 分钟。
+    await tester.tap(find.byTooltip('分钟加'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前共 5 分'), findsOneWidget);
+
+    // 切到「无时长」再保存：任务预估时长为 null。
+    await tester.tap(find.text('无时长'));
+    await tester.pumpAndSettle();
+    expect(find.text('未设置时长'), findsOneWidget);
+
     await tester.tap(find.text('创建').last);
     await tester.pumpAndSettle();
-    expect(find.text('请输入 1～1440 之间的整数'), findsOneWidget);
-
-    // 非法值：1441。
-    await tester.enterText(find.byType(TextFormField).at(1), '1441');
-    await tester.tap(find.text('创建').last);
-    await tester.pumpAndSettle();
-    expect(find.text('请输入 1～1440 之间的整数'), findsOneWidget);
-
-    // 对话框未关闭，数据库未创建任务。
-    expect(find.text('创建任务'), findsOneWidget);
-    expect(await tasks.byGoal(goalId), isEmpty);
+    final created = (await tasks.byGoal(goalId)).single;
+    expect(created.title, '任务');
+    expect(created.estimatedMinutes, isNull);
   });
 
   testWidgets('完成任务后列表状态同步更新（FR-3 验收）', (tester) async {
@@ -138,6 +147,114 @@ void main() {
 
     expect(find.text('要删除的任务'), findsNothing);
     expect(await tasks.byGoal(goalId), isEmpty);
+  });
+
+  testWidgets('JSON 导入：内容变化自动校验，非法数据不写库', (tester) async {
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    await tester.tap(find.text('JSON 导入'));
+    await tester.pumpAndSettle();
+    expect(find.text('JSON 导入任务'), findsOneWidget);
+
+    // 粘贴非法 JSON：早于今天 + 非法日期 + 标题缺失。
+    await tester.enterText(
+      find.byType(TextField).last,
+      '{"subjects":{"数学":[{"title":"A","date":"2026-08-04"},{"title":"B","date":"2026-02-30"}]},"unclassified":[{"date":"2026-08-06"}]}',
+    );
+    // 等待自动校验防抖（400ms）完成。
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+
+    // 自动校验列出三条错误。
+    expect(find.text('发现 3 个问题'), findsOneWidget);
+    expect(find.textContaining('不能早于今天'), findsOneWidget);
+    expect(find.textContaining('不是有效日期'), findsOneWidget);
+    expect(find.textContaining('title 必填'), findsOneWidget);
+
+    // 点「导入」兜底校验：仍校验失败，不写入任何任务。
+    await tester.tap(find.text('导入'));
+    await tester.pumpAndSettle();
+    expect(find.text('JSON 导入任务'), findsOneWidget);
+    expect(await tasks.byGoal(goalId), isEmpty);
+  });
+
+  testWidgets('JSON 导入：自动校验通过，科目与未分类隔离写入', (tester) async {
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    await tester.tap(find.text('JSON 导入'));
+    await tester.pumpAndSettle();
+
+    // 粘贴合法 JSON（固定时钟 2026-08-05，日期不早于今天）。
+    await tester.enterText(
+      find.byType(TextField).last,
+      '{"subjects":{"数学":[{"title":"真题 2013","date":"2026-08-06","minutes":180}]},"unclassified":[{"title":"复盘","date":"2026-08-06"}]}',
+    );
+    // 等待自动校验完成。
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+
+    // 自动校验通过并展示分组预览：科目（将新建）与未分类隔离。
+    expect(find.text('校验通过：2 个任务'), findsOneWidget);
+    expect(find.text('科目「数学」（将新建）'), findsOneWidget);
+    expect(find.text('• 真题 2013 · 2026-08-06 · 3 小时'), findsOneWidget);
+    expect(find.text('• 复盘 · 2026-08-06'), findsOneWidget);
+
+    await tester.tap(find.text('导入'));
+    await tester.pumpAndSettle();
+
+    // 对话框关闭，SnackBar 提示导入结果。
+    expect(find.text('JSON 导入任务'), findsNothing);
+    expect(find.text('导入 2 个任务，新建 1 个科目'), findsOneWidget);
+
+    final goalTasks = await tasks.byGoal(goalId);
+    expect(goalTasks, hasLength(2));
+    final math = goalTasks.firstWhere((t) => t.title == '真题 2013');
+    final review = goalTasks.firstWhere((t) => t.title == '复盘');
+    expect(math.subjectId, isNotNull);
+    expect(review.subjectId, isNull);
+    expect(math.estimatedMinutes, 180);
+  });
+
+  testWidgets('JSON 导入替换：展示将被替换的任务，确认后旧任务归档保留', (tester) async {
+    await tasks.create(goalId: goalId, title: '旧任务A', plannedDate: '2026-08-06', estimatedMinutes: 60);
+    await tasks.create(goalId: goalId, title: '旧任务B', plannedDate: '2026-08-07');
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    await tester.tap(find.text('JSON 导入'));
+    await tester.pumpAndSettle();
+
+    // 对话框展示将被替换并保留为历史的当前任务清单。
+    expect(find.text('当前任务（将被替换并保留为历史）'), findsOneWidget);
+    expect(find.text('• 旧任务A · 2026-08-06 · 1 小时'), findsOneWidget);
+    expect(find.text('• 旧任务B · 2026-08-07'), findsOneWidget);
+
+    // 粘贴合法 JSON 并等待自动校验。
+    await tester.enterText(
+      find.byType(TextField).last,
+      '{"unclassified":[{"title":"新任务","date":"2026-08-10"}]}',
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(find.text('校验通过：1 个任务'), findsOneWidget);
+
+    // 点导入 → 弹替换确认。
+    await tester.tap(find.text('导入'));
+    await tester.pumpAndSettle();
+    expect(find.text('替换当前任务计划？'), findsOneWidget);
+    expect(find.textContaining('2 个任务将从计划中移除'), findsOneWidget);
+
+    await tester.tap(find.text('导入并替换'));
+    await tester.pumpAndSettle();
+
+    // 替换完成：当前列表只剩新任务，旧任务归档保留（历史任务）。
+    final goalTasks = await tasks.byGoal(goalId);
+    expect(goalTasks.map((t) => t.title).toList(), ['新任务']);
+    final archived = await tasks.archivedByGoal(goalId);
+    expect(archived.map((t) => t.title).toSet(), {'旧任务A', '旧任务B'});
+    expect(find.text('导入 1 个任务；2 个旧任务已归档到历史任务'), findsOneWidget);
   });
 
   testWidgets('科目增删与任务归属科目显示（FR-1.5）', (tester) async {

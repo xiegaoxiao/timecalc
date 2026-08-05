@@ -6,6 +6,7 @@ import 'package:timecalc/core/database/database.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/goals/data/subject_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
+import 'package:timecalc/features/tasks/domain/task_import_parser.dart';
 
 /// TaskRepository 内存数据库测试（FR-3）。
 void main() {
@@ -265,6 +266,111 @@ void main() {
       final fetched = await tasks.byId(created.id);
       expect(fetched?.plannedDate, '2026-01-15');
       expect(fetched?.originalPlannedDate, '2026-01-10');
+    });
+  });
+
+  group('JSON 批量导入（importPlan）', () {
+    const parser = TaskImportParser();
+    final today = DateTime(2026, 8, 5);
+
+    test('科目与未分类任务隔离写入，不存在的科目自动创建', () async {
+      final goal = await goals.create(title: '目标', deadlineDate: '2026-09-01');
+      // 预先存在的科目「英语」。
+      await subjects.create(goalId: goal.id, name: '英语', color: '#111111');
+
+      const json = '''
+      {
+        "subjects": {
+          "数学": [ { "title": "真题 2013", "date": "2026-08-06", "minutes": 180 } ],
+          "英语": [ { "title": "真题 2023", "date": "2026-08-07" } ]
+        },
+        "unclassified": [ { "title": "复盘", "date": "2026-08-06", "minutes": 30 } ]
+      }''';
+      final plan = parser.parse(json, today: today).plan!;
+
+      final stats = await tasks.importPlan(goalId: goal.id, items: plan.items);
+      expect(stats.createdSubjects, 1); // 仅「数学」是新建
+      expect(stats.createdTasks, 3);
+
+      final goalTasks = await tasks.byGoal(goal.id);
+      expect(goalTasks, hasLength(3));
+      expect(goalTasks.map((t) => t.title).toSet(), {'真题 2013', '真题 2023', '复盘'});
+
+      final subjectList = await subjects.byGoal(goal.id);
+      expect(subjectList.map((s) => s.name).toSet(), {'英语', '数学'});
+
+      final mathTask = goalTasks.firstWhere((t) => t.title == '真题 2013');
+      final englishTask = goalTasks.firstWhere((t) => t.title == '真题 2023');
+      final reviewTask = goalTasks.firstWhere((t) => t.title == '复盘');
+      expect(mathTask.subjectId, isNotNull);
+      expect(englishTask.subjectId, isNotNull);
+      expect(reviewTask.subjectId, isNull); // 未分类
+      expect(mathTask.estimatedMinutes, 180);
+      expect(reviewTask.estimatedMinutes, 30);
+      expect(mathTask.plannedDate, '2026-08-06');
+    });
+
+    test('导入在单事务内完成：中途失败整体回滚（NFR-2）', () async {
+      final goal = await goals.create(title: '目标', deadlineDate: '2026-09-01');
+      const json = '''
+      {
+        "subjects": {
+          "数学": [ { "title": "A", "date": "2026-08-06" } ]
+        },
+        "unclassified": [ { "title": "B", "date": "2026-08-07" } ]
+      }''';
+      final plan = parser.parse(json, today: today).plan!;
+
+      await expectLater(
+        db.transaction(() async {
+          await tasks.importPlan(goalId: goal.id, items: plan.items);
+          throw StateError('模拟导入中途失败');
+        }),
+        throwsA(isA<StateError>()),
+      );
+
+      // 科目与任务均未写入。
+      expect(await tasks.byGoal(goal.id), isEmpty);
+      expect(await subjects.byGoal(goal.id), isEmpty);
+    });
+
+    test('replaceExisting 替换：旧任务归档保留，新任务写入（导入替换语义）', () async {
+      final goal = await goals.create(title: '目标', deadlineDate: '2026-09-01');
+      final oldTask = await tasks.create(
+        goalId: goal.id,
+        title: '旧任务',
+        plannedDate: '2026-08-06',
+        estimatedMinutes: 60,
+      );
+      await tasks.create(goalId: goal.id, title: '旧任务2', plannedDate: '2026-08-07');
+
+      const json = '{"unclassified": [{"title":"新任务","date":"2026-08-10"}]}';
+      final plan = parser.parse(json, today: today).plan!;
+
+      final stats = await tasks.importPlan(
+        goalId: goal.id,
+        items: plan.items,
+        replaceExisting: true,
+      );
+      expect(stats.createdTasks, 1);
+      expect(stats.replacedTasks, 2);
+
+      // 当前列表只剩新任务；旧任务进入归档（历史保留）。
+      final active = await tasks.byGoal(goal.id);
+      expect(active.map((t) => t.title).toList(), ['新任务']);
+      final archived = await tasks.archivedByGoal(goal.id);
+      expect(archived.map((t) => t.title).toSet(), {'旧任务', '旧任务2'});
+
+      // 归档任务不进入常规查询（今日/日历/未完成）。
+      expect(await tasks.byDate('2026-08-06'), isEmpty);
+      expect(await tasks.byDateRange('2026-08-01', '2026-08-31'), hasLength(1));
+      expect(await tasks.unfinishedBefore('2026-08-10'), isEmpty);
+
+      // 恢复归档任务后重新进入当前计划。
+      await tasks.restoreArchived(oldTask.id);
+      final afterRestore = await tasks.byGoal(goal.id);
+      expect(afterRestore.map((t) => t.title).toSet(), {'新任务', '旧任务'});
+      expect(await tasks.byDate('2026-08-06'), hasLength(1));
     });
   });
 

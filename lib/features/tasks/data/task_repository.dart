@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/database/tables.dart';
+import '../domain/task_import_parser.dart';
 
 /// 任务数据访问层（FR-3）。
 class TaskRepository {
@@ -9,10 +10,10 @@ class TaskRepository {
 
   final AppDatabase _db;
 
-  /// 返回目标下的全部任务，按计划日期、创建时间排序。
+  /// 返回目标下的全部未归档任务，按计划日期、创建时间排序。
   Future<List<Task>> byGoal(int goalId) {
     final query = _db.select(_db.tasks)
-      ..where((t) => t.goalId.equals(goalId))
+      ..where((t) => t.goalId.equals(goalId) & t.archivedAt.isNull())
       ..orderBy([
         (t) => OrderingTerm.asc(t.plannedDate),
         (t) => OrderingTerm.asc(t.sortOrder),
@@ -26,10 +27,10 @@ class TaskRepository {
         .getSingleOrNull();
   }
 
-  /// 返回计划日期为 [date]（yyyy-MM-dd）的全部任务（跨目标，供今日页使用）。
+  /// 返回计划日期为 [date]（yyyy-MM-dd）的全部未归档任务（跨目标，供今日页使用）。
   Future<List<Task>> byDate(String date) {
     final query = _db.select(_db.tasks)
-      ..where((t) => t.plannedDate.equals(date))
+      ..where((t) => t.plannedDate.equals(date) & t.archivedAt.isNull())
       ..orderBy([
         (t) => OrderingTerm.asc(t.goalId),
         (t) => OrderingTerm.asc(t.sortOrder),
@@ -38,11 +39,12 @@ class TaskRepository {
     return query.get();
   }
 
-  /// 返回计划日期在 [start]～[end]（含，yyyy-MM-dd，字典序比较）的全部任务，
+  /// 返回计划日期在 [start]～[end]（含，yyyy-MM-dd，字典序比较）的全部未归档任务，
   /// 供日历月视图聚合使用。
   Future<List<Task>> byDateRange(String start, String end) {
     final query = _db.select(_db.tasks)
-      ..where((t) => t.plannedDate.isBetweenValues(start, end))
+      ..where((t) => t.plannedDate.isBetweenValues(start, end) &
+          t.archivedAt.isNull())
       ..orderBy([
         (t) => OrderingTerm.asc(t.plannedDate),
         (t) => OrderingTerm.asc(t.goalId),
@@ -51,16 +53,29 @@ class TaskRepository {
     return query.get();
   }
 
-  /// 返回计划日期早于 [date]（yyyy-MM-dd）且未完成的任务（FR-3.7）。
+  /// 返回计划日期早于 [date]（yyyy-MM-dd）且未完成、未归档的任务（FR-3.7）。
   ///
   /// 用于次日首次打开时集中提示昨日及以前未完成任务的延期/保留选择。
   Future<List<Task>> unfinishedBefore(String date) {
     final query = _db.select(_db.tasks)
       ..where((t) => t.plannedDate.isSmallerThanValue(date) &
-          t.status.equals(TaskStatus.todo))
+          t.status.equals(TaskStatus.todo) &
+          t.archivedAt.isNull())
       ..orderBy([
         (t) => OrderingTerm.asc(t.plannedDate),
         (t) => OrderingTerm.asc(t.goalId),
+        (t) => OrderingTerm.asc(t.id),
+      ]);
+    return query.get();
+  }
+
+  /// 返回目标下的全部归档任务（历史记录，按归档时间倒序）。
+  Future<List<Task>> archivedByGoal(int goalId) {
+    final query = _db.select(_db.tasks)
+      ..where((t) => t.goalId.equals(goalId) & t.archivedAt.isNotNull())
+      ..orderBy([
+        (t) => OrderingTerm.desc(t.archivedAt),
+        (t) => OrderingTerm.asc(t.plannedDate),
         (t) => OrderingTerm.asc(t.id),
       ]);
     return query.get();
@@ -145,6 +160,109 @@ class TaskRepository {
     final mm = date.month.toString().padLeft(2, '0');
     final dd = date.day.toString().padLeft(2, '0');
     return '${date.year}-$mm-$dd';
+  }
+
+  /// 批量导入（JSON 导入升级版）。
+  ///
+  /// 科目与未分类任务在单个事务内写入（NFR-2）：目标下不存在的科目自动创建
+  /// （沿用默认颜色与排序），任务按计划日期与归属写入；任一条失败整体回滚，
+  /// 无半写入。日期与时长已在解析层校验，本方法不重复业务校验。
+  ///
+  /// [replaceExisting] 为 true 时执行「替换」语义（JSON 导入默认行为）：
+  /// 先把目标下当前全部未归档任务标记为归档（保留历史记录，不物理删除），
+  /// 再写入 JSON 任务。替换与写入在同一事务内完成。
+  Future<ImportStats> importPlan({
+    required int goalId,
+    required List<ImportedTaskItem> items,
+    bool replaceExisting = false,
+  }) {
+    return _db.transaction(() async {
+      final now = DateTime.now().toUtc();
+      var replacedTasks = 0;
+      if (replaceExisting) {
+        replacedTasks = await (_db.update(_db.tasks)
+              ..where((t) => t.goalId.equals(goalId) & t.archivedAt.isNull()))
+            .write(
+              TasksCompanion(
+                archivedAt: Value(now),
+                updatedAt: Value(now),
+              ),
+            );
+      }
+
+      final existing = await (_db.select(_db.subjects)
+            ..where((s) => s.goalId.equals(goalId)))
+          .get();
+      final nameToId = {for (final s in existing) s.name: s.id};
+      var maxSort = existing.isEmpty
+          ? -1
+          : existing.map((s) => s.sortOrder).reduce((a, b) => a > b ? a : b);
+
+      var createdSubjects = 0;
+      for (final item in items) {
+        final name = item.subjectName;
+        int? subjectId;
+        if (name != null) {
+          subjectId = nameToId[name];
+          if (subjectId == null) {
+            maxSort++;
+            subjectId = await _db.into(_db.subjects).insert(
+                  SubjectsCompanion.insert(
+                    goalId: goalId,
+                    name: name,
+                    color: '#3F6C51',
+                    sortOrder: Value(maxSort),
+                    createdAt: now,
+                    updatedAt: now,
+                  ),
+                );
+            nameToId[name] = subjectId;
+            createdSubjects++;
+          }
+        }
+        await _db.into(_db.tasks).insert(TasksCompanion.insert(
+              goalId: goalId,
+              subjectId: Value(subjectId),
+              title: item.title,
+              plannedDate: item.date,
+              estimatedMinutes: Value(item.minutes),
+              createdAt: now,
+              updatedAt: now,
+            ));
+      }
+      return ImportStats(
+        createdSubjects: createdSubjects,
+        createdTasks: items.length,
+        replacedTasks: replacedTasks,
+      );
+    });
+  }
+
+  /// 归档目标下全部未归档任务（JSON 导入替换时保留历史）。
+  Future<int> archiveAllActive(int goalId) {
+    return _db.transaction(() async {
+      final now = DateTime.now().toUtc();
+      return (_db.update(_db.tasks)
+            ..where((t) => t.goalId.equals(goalId) & t.archivedAt.isNull()))
+          .write(
+            TasksCompanion(
+              archivedAt: Value(now),
+              updatedAt: Value(now),
+            ),
+          );
+    });
+  }
+
+  /// 恢复归档任务：重新进入未归档状态（回到其计划日期参与负载与列表）。
+  Future<void> restoreArchived(int id) {
+    return _db.transaction(() async {
+      await (_db.update(_db.tasks)..where((t) => t.id.equals(id))).write(
+        TasksCompanion(
+          archivedAt: const Value(null),
+          updatedAt: Value(DateTime.now().toUtc()),
+        ),
+      );
+    });
   }
 
   /// 完成任务状态切换（todo <-> done）。事务封装（NFR-2）。
