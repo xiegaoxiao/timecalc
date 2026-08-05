@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/goals/presentation/goal_detail_page.dart';
-import '../../features/goals/presentation/goal_list_page.dart';
+import '../../features/plan/presentation/plan_page.dart';
 import '../../features/progress/presentation/progress_page.dart';
 import '../../features/settings/presentation/settings_page.dart';
 import '../../features/tasks/presentation/subject_task_page.dart';
@@ -42,7 +42,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             GoRoute(
               path: '/plan',
               name: 'plan',
-              builder: (context, state) => const GoalListPage(),
+              builder: (context, state) => const PlanPage(),
             ),
           ]),
           StatefulShellBranch(routes: [
