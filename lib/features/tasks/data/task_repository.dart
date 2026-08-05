@@ -188,6 +188,15 @@ class TaskRepository {
                 updatedAt: Value(now),
               ),
             );
+        // 替换语义下停用该目标的重复模板，避免替换后模板继续生成实例。
+        await (_db.update(_db.recurrenceTemplates)
+              ..where((t) => t.goalId.equals(goalId) & t.active.equals(true)))
+            .write(
+              RecurrenceTemplatesCompanion(
+                active: const Value(false),
+                updatedAt: Value(now),
+              ),
+            );
       }
 
       final existing = await (_db.select(_db.subjects)
