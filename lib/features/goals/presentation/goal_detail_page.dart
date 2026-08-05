@@ -5,12 +5,13 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../services/countdown_service.dart';
+import '../../tasks/presentation/task_list_section.dart';
 import '../data/goal_repository_provider.dart';
+import '../data/subject_repository_provider.dart';
 import 'goal_form_dialog.dart';
+import 'subject_manager.dart';
 
-/// 目标详情页：目标信息与倒计时（FR-1）。
-///
-/// 任务 CRUD 区域（FR-3）在 PR 4 添加。
+/// 目标详情页：目标概览 → 科目 → 任务（PRD §7 层级）。
 class GoalDetailPage extends ConsumerWidget {
   const GoalDetailPage({super.key, required this.goalId});
 
@@ -28,13 +29,21 @@ class GoalDetailPage extends ConsumerWidget {
           if (goal == null) {
             return const Center(child: Text('目标不存在'));
           }
+          final subjectsAsync = ref.watch(subjectListProvider(goal.id));
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
               _GoalHeader(goal: goal),
               const Divider(height: 32),
-              // TODO(PR 4): 任务 CRUD 区域。
-              const Center(child: Text('任务区域（M1 PR 4 交付）')),
+              SubjectManager(goalId: goal.id),
+              const SizedBox(height: 24),
+              subjectsAsync.maybeWhen(
+                data: (subjects) => TaskListSection(
+                  goalId: goal.id,
+                  subjects: subjects,
+                ),
+                orElse: () => const SizedBox.shrink(),
+              ),
             ],
           );
         },
