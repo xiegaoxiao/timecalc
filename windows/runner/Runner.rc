@@ -1,4 +1,4 @@
-// Microsoft Visual C++ generated resource script.
+﻿// Microsoft Visual C++ generated resource script.
 //
 #pragma code_page(65001)
 #include "resource.h"
@@ -89,19 +89,31 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.timecalc" "\0"
-            VALUE "FileDescription", "timecalc" "\0"
+            VALUE "CompanyName", "TimeCalc" "\0"
+            VALUE "FileDescription", "TimeCalc 时间计算器" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "timecalc" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.timecalc. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 TimeCalc. All rights reserved." "\0"
             VALUE "OriginalFilename", "timecalc.exe" "\0"
-            VALUE "ProductName", "timecalc" "\0"
+            VALUE "ProductName", "TimeCalc 时间计算器" "\0"
+            VALUE "ProductVersion", VERSION_AS_STRING "\0"
+        END
+        BLOCK "080404b0"
+        BEGIN
+            VALUE "CompanyName", "TimeCalc" "\0"
+            VALUE "FileDescription", "TimeCalc 时间计算器" "\0"
+            VALUE "FileVersion", VERSION_AS_STRING "\0"
+            VALUE "InternalName", "timecalc" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 TimeCalc. All rights reserved." "\0"
+            VALUE "OriginalFilename", "timecalc.exe" "\0"
+            VALUE "ProductName", "TimeCalc 时间计算器" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
     BLOCK "VarFileInfo"
     BEGIN
         VALUE "Translation", 0x409, 1252
+        VALUE "Translation", 0x804, 1200
     END
 END
 

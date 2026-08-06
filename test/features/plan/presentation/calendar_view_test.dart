@@ -209,4 +209,50 @@ void main() {
     expect(find.text('1/1'), findsOneWidget);
     expect(find.text('超出30m'), findsNothing);
   });
+
+  testWidgets('FR-5.1：长按任务拖到另一天改期并记录原计划日期', (tester) async {
+    // 日历网格与选日面板在 800x600 视口下无法同时可见（间距 > 视口高），
+    // 放大测试表面使两者共存（真实窗口同理：拖动需目标格与任务同在可视区）。
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    final task = await tasks.create(
+      goalId: goal.id,
+      title: '拖动任务',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 30,
+    );
+
+    await pumpApp(tester);
+    await openCalendar(tester);
+
+    // 选日面板默认选中今天（08-05），任务出现在面板中。
+    expect(find.text('拖动任务'), findsOneWidget);
+
+    // 长按任务条目激活 LongPressDraggable，再移动到网格中「6」日格放置。
+    final start = tester.getCenter(find.text('拖动任务'));
+    final target = tester.getCenter(find.text('6')); // 08-06 日格
+    expect(target.dy, greaterThan(0), reason: '目标日格应在可视区域内');
+
+    final gesture = await tester.startGesture(start);
+    await tester.pump(const Duration(milliseconds: 700)); // 长按阈值
+    // 分段移动，让 DragTarget 正确进入候选区并命中放置。
+    const steps = 10;
+    for (var i = 1; i <= steps; i++) {
+      await gesture.moveTo(Offset.lerp(start, target, i / steps)!);
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    // 改期成功：原计划日期已记录，计划日期为新日期（FR-3.3 验收）。
+    final fetched = await tasks.byId(task.id);
+    expect(fetched?.plannedDate, '2026-08-06');
+    expect(fetched?.originalPlannedDate, '2026-08-05');
+    expect(fetched?.title, '拖动任务');
+    expect(fetched?.estimatedMinutes, 30);
+  });
 }

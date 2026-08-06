@@ -6,6 +6,7 @@ import '../../../core/database/database.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../services/duration_format.dart';
 import '../../../services/statistics_service.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
 
@@ -48,16 +49,28 @@ class ProgressPage extends ConsumerWidget {
       appBar: AppBar(title: const Text('进度')),
       body: goalsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('加载失败：$error')),
+        error: (error, _) => AppErrorView(
+          error: error,
+          onRetry: () => ref.invalidate(goalListProvider),
+        ),
         data: (goals) => todayTasksAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => Center(child: Text('加载失败：$error')),
+          error: (error, _) => AppErrorView(
+            error: error,
+            onRetry: () => ref.invalidate(tasksByDateProvider),
+          ),
           data: (todayTasks) => completedAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => Center(child: Text('加载失败：$error')),
+            error: (error, _) => AppErrorView(
+              error: error,
+              onRetry: () => ref.invalidate(completedTasksProvider),
+            ),
             data: (completed) => todoAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => Center(child: Text('加载失败：$error')),
+              error: (error, _) => AppErrorView(
+                error: error,
+                onRetry: () => ref.invalidate(allTodoTasksProvider),
+              ),
               data: (todo) => _buildBody(
                 context,
                 goals: goals,
@@ -429,14 +442,18 @@ class _HeatmapGrid extends StatelessWidget {
 
     return Tooltip(
       message: '$dateStr：完成 $count 项',
-      child: Container(
-        width: 12,
-        height: 12,
-        margin: const EdgeInsets.only(top: 2),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(3),
-          border: isToday ? Border.all(color: scheme.onSurface, width: 1.5) : null,
+      child: Semantics(
+        // 屏幕阅读器可读（NFR-4）：日期 + 完成项数，状态不只依赖颜色。
+        label: '$dateStr：完成 $count 项',
+        child: Container(
+          width: 12,
+          height: 12,
+          margin: const EdgeInsets.only(top: 2),
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3),
+            border: isToday ? Border.all(color: scheme.onSurface, width: 1.5) : null,
+          ),
         ),
       ),
     );
@@ -717,12 +734,16 @@ class _GoalBarRow extends StatelessWidget {
       padding: const EdgeInsets.only(right: 3),
       child: Tooltip(
         message: _tooltipText(dateStr, planned, completed),
-        child: SizedBox(
-          height: _GanttGrid._maxBarHeight,
-          width: _GanttGrid._barWidth,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: segments,
+        child: Semantics(
+          // 屏幕阅读器可读（NFR-4）：周起始 + 计划/完成时长，不依赖颜色。
+          label: _tooltipText(dateStr, planned, completed),
+          child: SizedBox(
+            height: _GanttGrid._maxBarHeight,
+            width: _GanttGrid._barWidth,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: segments,
+            ),
           ),
         ),
       ),

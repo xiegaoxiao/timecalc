@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/database/database.dart';
+import '../../../core/database/tables.dart';
+import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../services/load_service.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../../settings/data/settings_repository.dart';
 import '../../settings/data/settings_repository_provider.dart';
@@ -52,29 +56,30 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
 
     return goalsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(child: Text('加载失败：$error')),
+      error: (error, _) => AppErrorView(
+        error: error,
+        onRetry: () => ref.invalidate(goalListProvider),
+      ),
       data: (goals) => settingsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('加载失败：$error')),
+        error: (error, _) => AppErrorView(
+          error: error,
+          onRetry: () => ref.invalidate(settingsProvider),
+        ),
         data: (settings) => tasksAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => Center(child: Text('加载失败：$error')),
+          error: (error, _) => AppErrorView(
+            error: error,
+            onRetry: () => ref.invalidate(tasksByMonthProvider),
+          ),
           data: (monthTasks) => selectedTasksAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => Center(child: Text('加载失败：$error')),
+            error: (error, _) => AppErrorView(
+              error: error,
+              onRetry: () => ref.invalidate(tasksByDateProvider),
+            ),
             data: (selectedTasks) {
-              void onChanged() {
-                // 日历月视图、选日列表、今日页与目标详情统一刷新，保证
-                // 跨页数据一致（FR-3 验收）。family 级 invalidate 覆盖
-                // 所有日期/月份实例。
-                ref.invalidate(tasksByMonthProvider);
-                ref.invalidate(tasksByDateProvider);
-                ref.invalidate(taskListProvider);
-                ref.invalidate(unfinishedBeforeProvider);
-                ref.invalidate(goalListProvider);
-                ref.invalidate(completedTasksProvider);
-                ref.invalidate(allTodoTasksProvider);
-              }
+              void onChanged() => _invalidateAll();
 
               final activeGoals = goals
                   .where((g) =>
@@ -123,6 +128,8 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
                     aggregate: aggregate,
                     onSelect: (dateStr) =>
                         setState(() => _selectedDate = dateStr),
+                    // FR-5.1：把任务拖到某一天改期。
+                    onDropTask: (task, date) => _handleTaskDropped(task, date),
                   ),
                   const Divider(height: 32),
                   Row(
@@ -157,10 +164,33 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
                     )
                   else
                     for (final task in selectedTasks)
-                      TaskTile(
-                        task: task,
-                        goalTitle: goalsById[task.goalId]?.title,
-                        onChanged: onChanged,
+                      // FR-5.1：长按任务条目即可拖动到网格中的目标日期改期。
+                      LongPressDraggable<Task>(
+                        data: task,
+                        feedback: Material(
+                          elevation: 4,
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Text(
+                              task.title,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ),
+                        childWhenDragging: Opacity(
+                          opacity: 0.4,
+                          child: TaskTile(
+                            task: task,
+                            goalTitle: goalsById[task.goalId]?.title,
+                            onChanged: onChanged,
+                          ),
+                        ),
+                        child: TaskTile(
+                          task: task,
+                          goalTitle: goalsById[task.goalId]?.title,
+                          onChanged: onChanged,
+                        ),
                       ),
                   ],
                 ),
@@ -175,6 +205,36 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
   static DateTime _parseDate(String yyyyMMdd) {
     final parts = yyyyMMdd.split('-');
     return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+  }
+
+  /// 数据变更后的统一刷新（FR-3 验收：日历月视图、选日列表、今日页与
+  /// 目标详情在同一操作周期内同步更新）。family 级 invalidate 覆盖所有
+  /// 日期/月份实例。
+  void _invalidateAll() {
+    ref.invalidate(tasksByMonthProvider);
+    ref.invalidate(tasksByDateProvider);
+    ref.invalidate(taskListProvider);
+    ref.invalidate(unfinishedBeforeProvider);
+    ref.invalidate(goalListProvider);
+    ref.invalidate(completedTasksProvider);
+    ref.invalidate(allTodoTasksProvider);
+  }
+
+  /// FR-5.1：任务被拖到某一天（网格 DragTarget 命中）时改期。
+  ///
+  /// - 已完成任务不拖动改期（拖动语义为「重新安排未完成任务」）；
+  /// - 复用 [TaskRepository.defer] 改期并记录原计划日期（FR-3.3 验收）；
+  /// - 写入失败（数据库异常）时弹错误对话框，任务保持原日期；
+  /// - 成功后在 [onChanged] 中统一刷新跨页缓存。
+  Future<void> _handleTaskDropped(Task task, String date) async {
+    if (task.status == TaskStatus.done) return;
+    if (task.plannedDate == date) return; // 同一天：无操作
+    final ok = await runDbAction(
+      context,
+      action: () => ref.read(taskRepositoryProvider).defer(task.id, date),
+    );
+    if (!ok) return;
+    _invalidateAll();
   }
 }
 
@@ -231,6 +291,7 @@ class _MonthGrid extends StatelessWidget {
     required this.weekdays,
     required this.aggregate,
     required this.onSelect,
+    this.onDropTask,
   });
 
   final DateTime month;
@@ -239,6 +300,9 @@ class _MonthGrid extends StatelessWidget {
   final Set<int> weekdays;
   final Map<String, DayAggregate> aggregate;
   final ValueChanged<String> onSelect;
+
+  /// FR-5.1：任务拖到某一天改期（为空则不接受放置）。
+  final void Function(Task task, String date)? onDropTask;
 
   static const _weekdayLabels = ['一', '二', '三', '四', '五', '六', '日'];
 
@@ -311,53 +375,96 @@ class _MonthGrid extends StatelessWidget {
         ? scheme.secondaryContainer
         : (isToday ? scheme.primaryContainer : scheme.surfaceContainerLow);
 
-    return InkWell(
-      onTap: () => onSelect(dateStr),
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        height: 80,
-        decoration: BoxDecoration(
-          color: background,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        padding: const EdgeInsets.all(4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '$day',
-              style: TextStyle(
-                color: isToday ? scheme.primary : textColor,
-                fontWeight: isToday ? FontWeight.bold : null,
-              ),
-            ),
-            if (agg.totalCount > 0) ...[
+    // 屏幕阅读器可读的单元格描述（NFR-4）：日期 + 完成数/总数 + 时长，
+    // 超载时带「超出」文本，状态不只依赖颜色。
+    final label = StringBuffer('$dateStr，完成 ${agg.doneCount}/${agg.totalCount}');
+    if (agg.loadMinutes > 0) {
+      label.write('，时长 ${_compactDuration(agg.loadMinutes)}');
+    }
+    if (agg.overMinutes > 0) {
+      label.write('，超出 ${_compactDuration(agg.overMinutes)}');
+    }
+
+    final cell = Semantics(
+      label: label.toString(),
+      button: true,
+      child: InkWell(
+        onTap: () => onSelect(dateStr),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          height: 80,
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          padding: const EdgeInsets.all(4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Text(
-                '${agg.doneCount}/${agg.totalCount}',
-                style: TextStyle(fontSize: 11, color: textColor),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                '$day',
+                style: TextStyle(
+                  color: isToday ? scheme.primary : textColor,
+                  fontWeight: isToday ? FontWeight.bold : null,
+                ),
               ),
-              Text(
-                _compactDuration(agg.loadMinutes),
-                style: TextStyle(fontSize: 11, color: textColor),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              if (agg.overMinutes > 0)
+              if (agg.totalCount > 0) ...[
                 Text(
-                  '超出${_compactDuration(agg.overMinutes)}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: scheme.error,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  '${agg.doneCount}/${agg.totalCount}',
+                  style: TextStyle(fontSize: 11, color: textColor),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
+                Text(
+                  _compactDuration(agg.loadMinutes),
+                  style: TextStyle(fontSize: 11, color: textColor),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (agg.overMinutes > 0)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // 非颜色状态（NFR-4）：超载格在红色文本外附警告图标。
+                      Icon(Icons.warning_amber_rounded,
+                          size: 11, color: scheme.error),
+                      const SizedBox(width: 2),
+                      Flexible(
+                        child: Text(
+                          '超出${_compactDuration(agg.overMinutes)}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: scheme.error,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
             ],
-          ],
+          ),
         ),
+      ),
+    );
+
+    final drop = onDropTask;
+    if (drop == null) return cell;
+    // FR-5.1：网格格作为 DragTarget，接受从选日面板拖来的任务改期。
+    // 拖动悬停时高亮边框；放置失败（数据库异常）时任务保持原日期。
+    return DragTarget<Task>(
+      onWillAcceptWithDetails: (details) => details.data.status != TaskStatus.done,
+      onAcceptWithDetails: (details) => drop(details.data, dateStr),
+      builder: (context, candidate, rejected) => DecoratedBox(
+        decoration: candidate.isNotEmpty
+            ? BoxDecoration(
+                border: Border.all(color: scheme.primary, width: 2),
+                borderRadius: BorderRadius.circular(8),
+              )
+            : const BoxDecoration(),
+        child: cell,
       ),
     );
   }
