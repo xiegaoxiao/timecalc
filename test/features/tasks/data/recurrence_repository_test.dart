@@ -306,6 +306,53 @@ void main() {
     });
   });
 
+  group('deleteWithInstances（删除模板及其全部实例）', () {
+    test('模板与全部实例一并删除，不留普通任务', () async {
+      final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+      final template = await recurrence.create(
+        goalId: goal.id,
+        title: '背单词',
+        rule: rule('daily', const {}),
+        startDate: '2026-08-05',
+        today: fixedToday,
+      );
+      final instanceCount = (await tasks.byGoal(goal.id)).length;
+      expect(instanceCount, greaterThanOrEqualTo(2));
+
+      await recurrence.deleteWithInstances(template.id);
+
+      expect(await recurrence.byId(template.id), isNull);
+      expect(await tasks.byGoal(goal.id), isEmpty);
+      expect(await tasks.allTodoTasks(), isEmpty);
+    });
+
+    test('其他模板的实例不受影响', () async {
+      final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+      final keep = await recurrence.create(
+        goalId: goal.id,
+        title: '保留的重复',
+        rule: rule('daily', const {}),
+        startDate: '2026-08-05',
+        today: fixedToday,
+      );
+      final remove = await recurrence.create(
+        goalId: goal.id,
+        title: '要删除的重复',
+        rule: rule('daily', const {}),
+        startDate: '2026-08-05',
+        today: fixedToday,
+      );
+
+      await recurrence.deleteWithInstances(remove.id);
+
+      expect(await recurrence.byId(remove.id), isNull);
+      expect((await recurrence.byId(keep.id))?.title, '保留的重复');
+      final instances = await tasks.byGoal(goal.id);
+      expect(instances, isNotEmpty);
+      expect(instances.every((t) => t.recurrenceTemplateId == keep.id), isTrue);
+    });
+  });
+
   group('科目删除联动（subject_id 外键，回归）', () {
     test('科目被重复模板引用时删除成功：模板与任务解除归属', () async {
       final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');

@@ -327,6 +327,21 @@ class RecurrenceRepository {
     });
   }
 
+  /// 删除模板及其全部实例（折叠列表父卡片「删除整个重复」语义）。
+  ///
+  /// 与 [delete] 不同：不保留历史实例，而是连同所有实例一起删除。
+  /// 跨多表删除在单个事务内完成（NFR-2），中途失败回滚不留半删除数据。
+  Future<void> deleteWithInstances(int templateId) {
+    return _db.transaction(() async {
+      await (_db.delete(_db.tasks)
+            ..where((t) => t.recurrenceTemplateId.equals(templateId)))
+          .go();
+      await (_db.delete(_db.recurrenceTemplates)
+            ..where((t) => t.id.equals(templateId)))
+          .go();
+    });
+  }
+
   Future<List<RecurrenceTemplate>> _activeTemplates(int? goalId) {
     final query = _db.select(_db.recurrenceTemplates)
       ..where((t) => t.active.equals(true));
