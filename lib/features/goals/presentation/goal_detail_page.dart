@@ -144,6 +144,8 @@ class GoalDetailBody extends ConsumerWidget {
         ),
         const SliverToBoxAdapter(child: Divider(height: 32)),
         // 历史任务区：JSON 导入替换时归档保留的旧任务，可手动恢复。
+        // 以懒加载 sliver 展示：归档任务可能很多（如替换导入遗留），
+        // 全量渲染会导致进入详情页卡顿（性能回归见 CHANGELOG）。
         ...archivedAsync.when(
           loading: () => const <Widget>[],
           error: (error, _) => [
@@ -158,9 +160,16 @@ class GoalDetailBody extends ConsumerWidget {
               SliverPadding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 sliver: SliverToBoxAdapter(
-                  child: _ArchivedSection(
+                  child: _ArchivedSection(archivedCount: archived.length),
+                ),
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                sliver: SliverList.builder(
+                  itemCount: archived.length,
+                  itemBuilder: (context, index) => _ArchivedTaskRow(
                     goalId: goal.id,
-                    archived: archived,
+                    task: archived[index],
                   ),
                 ),
               ),
@@ -258,22 +267,24 @@ class _LoadSection extends ConsumerWidget {
   }
 }
 
-/// 历史任务区（JSON 导入替换时归档保留的旧任务）。
+/// 历史任务区标题（JSON 导入替换时归档保留的旧任务）。
 ///
-/// 展示已归档任务清单并提供「恢复」操作：恢复后重新进入当前计划，
-/// 参与负载/日历统计与常规列表。
-class _ArchivedSection extends ConsumerWidget {
-  const _ArchivedSection({required this.goalId, required this.archived});
+/// 归档任务以懒加载 [SliverList] 逐行展示（见 [_ArchivedTaskRow]），
+/// 避免归档任务过多时全量实例化导致进入详情页卡顿。
+class _ArchivedSection extends StatelessWidget {
+  const _ArchivedSection({required this.archivedCount});
 
-  final int goalId;
-  final List<Task> archived;
+  final int archivedCount;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('历史任务（${archived.length}）', style: Theme.of(context).textTheme.titleMedium),
+        Text(
+          '历史任务（$archivedCount）',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
         const SizedBox(height: 4),
         Text(
           'JSON 导入替换时归档保留，可手动恢复回当前计划',
@@ -282,36 +293,47 @@ class _ArchivedSection extends ConsumerWidget {
               ),
         ),
         const SizedBox(height: 8),
-        for (final task in archived)
-          Card(
-            margin: const EdgeInsets.only(bottom: 8),
-            child: ListTile(
-              dense: true,
-              title: Text(task.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-              subtitle: Text(
-                [
-                  task.plannedDate,
-                  if (task.estimatedMinutes != null)
-                    DurationFormat.minutes(task.estimatedMinutes!),
-                ].join(' · '),
-              ),
-              trailing: TextButton.icon(
-                onPressed: () async {
-                  final repo = ref.read(taskRepositoryProvider);
-                  final ok = await runDbAction(
-                    context,
-                    action: () => repo.restoreArchived(task.id),
-                  );
-                  if (!ok) return;
-                  ref.invalidate(archivedTaskListProvider(goalId));
-                  ref.invalidate(taskListProvider(goalId));
-                },
-                icon: const Icon(Icons.restore, size: 16),
-                label: const Text('恢复'),
-              ),
-            ),
-          ),
       ],
+    );
+  }
+}
+
+/// 单条归档任务行（历史任务区，懒加载 SliverList 的 item）。
+class _ArchivedTaskRow extends ConsumerWidget {
+  const _ArchivedTaskRow({required this.goalId, required this.task});
+
+  final int goalId;
+  final Task task;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        dense: true,
+        title: Text(task.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text(
+          [
+            task.plannedDate,
+            if (task.estimatedMinutes != null)
+              DurationFormat.minutes(task.estimatedMinutes!),
+          ].join(' · '),
+        ),
+        trailing: TextButton.icon(
+          onPressed: () async {
+            final repo = ref.read(taskRepositoryProvider);
+            final ok = await runDbAction(
+              context,
+              action: () => repo.restoreArchived(task.id),
+            );
+            if (!ok) return;
+            ref.invalidate(archivedTaskListProvider(goalId));
+            ref.invalidate(taskListProvider(goalId));
+          },
+          icon: const Icon(Icons.restore, size: 16),
+          label: const Text('恢复'),
+        ),
+      ),
     );
   }
 }
