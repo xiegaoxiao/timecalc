@@ -102,7 +102,8 @@ void main() {
     // 完成 1/2 · 已完成 1 小时 · 目标剩余 2 小时
     expect(find.text('1/2'), findsOneWidget);
     expect(find.text('1 小时'), findsOneWidget);
-    expect(find.text('目标剩余工作量 2 小时'), findsOneWidget);
+    expect(find.text('目标剩余工作量'), findsOneWidget);
+    expect(find.text('2 小时'), findsOneWidget);
   });
 
   testWidgets('热力图 LeetCode 配色：图例文本与 tooltip（FR-7.2）', (tester) async {
@@ -196,13 +197,10 @@ void main() {
     await openProgress(tester);
 
     expect(find.text('还没有完成记录'), findsOneWidget);
-    // 甘特图空态在下方，滚动后再断言。
-    await tester.drag(find.byType(ListView).first, const Offset(0, -300));
-    await tester.pumpAndSettle();
+    // 甘特图空态在下方固定区（Expanded），说明文字固定页面底部，
+    // 无需滚动即可断言（进度页改为「上半滚动 + 甘特图固定拉伸」布局）。
     expect(find.text('还没有带预估时长的任务安排'), findsOneWidget);
     // FR-7.4 说明文本。
-    await tester.drag(find.byType(ListView).first, const Offset(0, -200));
-    await tester.pumpAndSettle();
     expect(
       find.textContaining('无预估时长的任务只计入任务数'),
       findsOneWidget,
@@ -237,5 +235,77 @@ void main() {
     // RenderFlex overflow。pump 后无未处理异常即视为通过。
     expect(tester.takeException(), isNull);
     expect(find.text('任务耗时甘特图'), findsOneWidget);
+  });
+
+  testWidgets('宽屏下卡片随窗口宽度拉伸，甘特图/热力图消除右侧留白（布局回归）',
+      (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    await tasks.create(
+      goalId: goal.id,
+      title: '计划任务',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 120,
+    );
+
+    // 模拟宽屏（1600×900 桌面窗口）。
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await pumpApp(tester);
+    await openProgress(tester);
+
+    // 今日概览三项数据同一行横向排布（宽屏下不换行）。
+    final overviewCard = find.widgetWithText(Card, '今日概览');
+    expect(overviewCard, findsOneWidget);
+    final overviewBox = tester.getRect(overviewCard);
+    // 卡片宽度铺满容器（两侧仅约 5% 边距），即约 95% 屏宽以上。
+    expect(overviewBox.width, greaterThan(1600 * 0.9));
+
+    // 热力图卡片同样铺满，且色块随宽度放大（工具提示存在即已渲染）。
+    final heatCard = find.widgetWithText(Card, '完成热力图');
+    final heatBox = tester.getRect(heatCard);
+    expect(heatBox.width, greaterThan(1600 * 0.9));
+
+    // 甘特图无 RenderFlex overflow（宽屏等分拉伸）。
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('窗口高度增大时甘特图行随纵向拉伸，且整页可滚动查看底部（布局回归）',
+      (tester) async {
+    // 4 个目标（各带计划任务）：行高 = 窗口高度×45%/4，未达上限时
+    // 窗口拉高 → 行高/卡高增大。
+    for (final name in ['考研', '论文', '雅思', '驾照']) {
+      final goal = await goals.create(title: name, deadlineDate: '2026-12-31');
+      await tasks.create(
+        goalId: goal.id,
+        title: '$name 任务',
+        plannedDate: '2026-08-05',
+        estimatedMinutes: 120,
+      );
+    }
+
+    await tester.binding.setSurfaceSize(const Size(900, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await pumpApp(tester);
+    await openProgress(tester);
+    final shortHeight =
+        tester.getRect(find.widgetWithText(Card, '任务耗时甘特图')).height;
+
+    // 拉高窗口 → 甘特图行高随窗口增大（卡高增大），不再是固定小尺寸。
+    await tester.binding.setSurfaceSize(const Size(900, 900));
+    await tester.pumpAndSettle();
+    final tallHeight =
+        tester.getRect(find.widgetWithText(Card, '任务耗时甘特图')).height;
+    expect(tallHeight, greaterThan(shortHeight + 80));
+
+    // 整页纵向滚动可达底部说明文字（甘特图未被固定/截断）。
+    final caption = find.textContaining('无预估时长的任务只计入任务数');
+    await tester.ensureVisible(caption);
+    await tester.pumpAndSettle();
+    expect(caption, findsOneWidget);
+
+    // 无布局溢出。
+    expect(tester.takeException(), isNull);
   });
 }
