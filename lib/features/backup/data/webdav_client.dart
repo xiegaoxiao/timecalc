@@ -2,15 +2,18 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-/// WebDAV 交互异常：携带用户可读的原因。
+/// WebDAV 交互异常：携带用户可读的原因与可选 HTTP 状态码。
 ///
 /// 网络层 / 协议层错误统一转换为 [WebDavException]，UI 用 `on Exception`
 /// 即可捕获并展示，不会泄漏原始 socket/HttpException 细节（NFR-3 隐私：
 /// 错误文案不含 URL 与凭据）。
 class WebDavException implements Exception {
-  const WebDavException(this.message);
+  const WebDavException(this.message, {this.statusCode});
 
   final String message;
+
+  /// HTTP 状态码；网络错误/解析错误时为 null。
+  final int? statusCode;
 
   @override
   String toString() => message;
@@ -89,18 +92,22 @@ class WebDavClient {
         response.statusCode == 409) {
       return;
     }
-    throw WebDavException(_friendly('创建目录失败', response));
+    throw _friendly('创建目录失败', response);
   }
 
   /// 上传文件（PUT）。
   Future<void> upload(String path, List<int> bytes) async {
     final response = await _send('PUT', path, bodyBytes: bytes);
     if (!_isOk(response)) {
-      throw WebDavException(_friendly('上传失败', response));
+      throw _friendly('上传失败', response);
     }
   }
 
   /// 列目录（PROPFIND depth:1），返回目录项（不含目录本身）。
+  ///
+  /// 目录状态未就绪（服务器对不存在/刚创建的目录返回 409）时自动
+  /// [ensureFolder] 后重试一次：这比直接报错对用户更友好，且最终仍以
+  /// 真实 PROPFIND 结果为准（NFR-2：不掩盖真实错误）。
   Future<List<WebDavFileInfo>> list(String path) async {
     const body = '<?xml version="1.0" encoding="utf-8"?>'
         '<D:propfind xmlns:D="DAV:">'
@@ -110,7 +117,7 @@ class WebDavClient {
         '<D:getlastmodified/>'
         '</D:prop>'
         '</D:propfind>';
-    final response = await _send(
+    var response = await _send(
       'PROPFIND',
       path,
       bodyBytes: utf8.encode(body),
@@ -119,8 +126,22 @@ class WebDavClient {
         'Content-Type': 'application/xml; charset=utf-8',
       },
     );
+    // 409 = 目标状态冲突（部分服务器对「不存在的路径」或「刚创建但尚未
+    // 就绪的目录」如此响应）：建目录后再查一次，避免把可用场景误判失败。
+    if (response.statusCode == 409 && path.isNotEmpty) {
+      await ensureFolder(path);
+      response = await _send(
+        'PROPFIND',
+        path,
+        bodyBytes: utf8.encode(body),
+        extraHeaders: const {
+          'Depth': '1',
+          'Content-Type': 'application/xml; charset=utf-8',
+        },
+      );
+    }
     if (!_isOk(response) && response.statusCode != 207) {
-      throw WebDavException(_friendly('读取目录失败', response));
+      throw _friendly('读取目录失败', response);
     }
     return _parseMultistatus(utf8.decode(response.bodyBytes), basePath: path);
   }
@@ -129,7 +150,7 @@ class WebDavClient {
   Future<List<int>> download(String path) async {
     final response = await _send('GET', path);
     if (!_isOk(response)) {
-      throw WebDavException(_friendly('下载失败', response));
+      throw _friendly('下载失败', response);
     }
     return response.bodyBytes;
   }
@@ -138,7 +159,7 @@ class WebDavClient {
   Future<void> delete(String path) async {
     final response = await _send('DELETE', path);
     if (_isOk(response) || response.statusCode == 404) return;
-    throw WebDavException(_friendly('删除失败', response));
+    throw _friendly('删除失败', response);
   }
 
   Future<http.Response> _send(
@@ -172,21 +193,24 @@ class WebDavClient {
       response.statusCode >= 200 && response.statusCode < 300;
 
   /// 给 HTTP 错误码配一句可读原因（不含 URL/凭据，NFR-3）。
-  static String _friendly(String action, http.Response response) {
-    switch (response.statusCode) {
+  static WebDavException _friendly(String action, http.Response response) {
+    final code = response.statusCode;
+    final String reason;
+    switch (code) {
       case 401:
-        return '$action：认证失败（401），请检查用户名与密码';
+        reason = '$action：认证失败（401），请检查用户名与密码';
       case 403:
-        return '$action：无权限（403），请检查目录写权限';
+        reason = '$action：无权限（403），请检查目录写权限';
       case 404:
-        return '$action：路径不存在（404）';
+        reason = '$action：路径不存在（404）';
       case 409:
-        return '$action：目标已存在冲突（409）';
+        reason = '$action：目标已存在冲突（409）';
       case 507:
-        return '$action：存储空间不足（507）';
+        reason = '$action：存储空间不足（507）';
       default:
-        return '$action（HTTP ${response.statusCode}）';
+        reason = '$action（HTTP $code）';
     }
+    return WebDavException(reason, statusCode: code);
   }
 
   /// 解析 PROPFIND 的 `multistatus` XML。

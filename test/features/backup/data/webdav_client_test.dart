@@ -165,6 +165,44 @@ void main() {
         throwsA(isA<WebDavException>()),
       );
     });
+
+    test('PROPFIND 409 自动建目录后重试成功（回归）', () async {
+      // 部分服务器对「刚创建但尚未就绪/不存在的目录」返回 409。
+      var propfinds = 0;
+      final client = clientWith(MockClient((req) async {
+        if (req.method == 'MKCOL') return http.Response('', 201);
+        propfinds++;
+        if (propfinds == 1) return http.Response('', 409); // 首次 409
+        return http.Response.bytes(
+          utf8.encode('<D:multistatus xmlns:D="DAV:"/>'),
+          207,
+          headers: {'content-type': 'application/xml'},
+        );
+      }));
+      final files = await client.list('webdav_auto');
+      expect(propfinds, 2); // 一次失败 + 一次重试
+      expect(files, isEmpty);
+    });
+
+    test('PROPFIND 重试仍 409 时抛异常（不掩盖真实错误）', () async {
+      var propfinds = 0;
+      final client = clientWith(MockClient((req) async {
+        if (req.method == 'MKCOL') return http.Response('', 201);
+        propfinds++;
+        return http.Response('', 409);
+      }));
+      await expectLater(
+        client.list('webdav_auto'),
+        throwsA(
+          isA<WebDavException>().having(
+            (e) => e.statusCode,
+            'statusCode',
+            409,
+          ),
+        ),
+      );
+      expect(propfinds, 2);
+    });
   });
 
   group('download / delete', () {
