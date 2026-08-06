@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/database/tables.dart';
 import '../../../shared/widgets/duration_step_input.dart';
+import '../../backup/presentation/backup_section.dart';
 import '../data/settings_repository.dart';
 import '../data/settings_repository_provider.dart';
 
 /// 设置页：M2 交付「计划偏好」（PRD §5.1 / §9 Settings）；
-/// 其余设置项（外观、备份、快捷键）随后续里程碑提供。
+/// M3 交付「备份与恢复」（FR-9）与「关闭行为」（FR-8.1）。
+/// 其余设置项（外观、快捷键）随后续里程碑提供。
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
 
@@ -24,16 +27,14 @@ class SettingsPage extends ConsumerWidget {
           children: [
             _PlanPreferenceSection(settings: settings),
             const Divider(height: 32),
+            _CloseBehaviorSection(settings: settings),
+            const Divider(height: 32),
+            const BackupSection(),
+            const Divider(height: 32),
             const _PlaceholderTile(
               icon: Icons.palette_outlined,
               title: '外观',
-              note: 'M3 起提供主题切换',
-            ),
-            const Divider(height: 8),
-            const _PlaceholderTile(
-              icon: Icons.backup_outlined,
-              title: '备份与恢复',
-              note: 'M3 起提供手动备份/恢复',
+              note: '后续里程碑提供主题切换',
             ),
             const Divider(height: 8),
             const _PlaceholderTile(
@@ -176,6 +177,91 @@ class _PlanPreferenceSectionState extends ConsumerState<_PlanPreferenceSection> 
       7 => '周日',
       _ => '未知',
     };
+  }
+}
+
+/// 关闭按钮行为（FR-8.1）：退出 / 最小化到托盘。
+///
+/// 存储于 schema v6 `Settings.close_behavior`；桌面层（DesktopController）
+/// 在 M3 据此决定关闭按钮的拦截行为。首次触发最小化到托盘时由桌面层
+/// 说明当前选择。
+class _CloseBehaviorSection extends ConsumerStatefulWidget {
+  const _CloseBehaviorSection({required this.settings});
+
+  final Setting settings;
+
+  @override
+  ConsumerState<_CloseBehaviorSection> createState() =>
+      _CloseBehaviorSectionState();
+}
+
+class _CloseBehaviorSectionState extends ConsumerState<_CloseBehaviorSection> {
+  late String _behavior;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _behavior = widget.settings.closeBehavior;
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await ref
+          .read(settingsRepositoryProvider)
+          .updateCloseBehavior(_behavior);
+      ref.invalidate(settingsProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('关闭行为已保存')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('关闭行为', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        Text(
+          '点击窗口关闭按钮时的行为；最小化到托盘后可随时从托盘菜单恢复（FR-8.1/8.2）。',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 12),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(
+              value: CloseBehavior.exit,
+              label: Text('直接退出'),
+              icon: Icon(Icons.close),
+            ),
+            ButtonSegment(
+              value: CloseBehavior.minimizeToTray,
+              label: Text('最小化到托盘'),
+              icon: Icon(Icons.minimize),
+            ),
+          ],
+          selected: {_behavior},
+          onSelectionChanged: (selection) =>
+              setState(() => _behavior = selection.first),
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.icon(
+            onPressed: _saving ? null : _save,
+            icon: const Icon(Icons.save_outlined, size: 18),
+            label: const Text('保存'),
+          ),
+        ),
+      ],
+    );
   }
 }
 

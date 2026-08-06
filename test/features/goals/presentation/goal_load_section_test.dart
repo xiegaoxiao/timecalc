@@ -117,7 +117,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('当前共 3 小时'), findsOneWidget);
 
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text('保存').first);
     await tester.pumpAndSettle();
     expect(find.text('计划偏好已保存'), findsOneWidget);
 
@@ -170,7 +170,7 @@ void main() {
     expect(find.text('当前共 0 分'), findsOneWidget);
 
     // 每日可用时长为 0 时保存被阻止。
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text('保存').first);
     await tester.pumpAndSettle();
     expect(find.text('每日可用时长至少 1 分钟'), findsOneWidget);
     expect(find.text('计划偏好已保存'), findsNothing);
@@ -224,7 +224,7 @@ void main() {
     expect(find.text('当前共 5 小时'), findsOneWidget);
 
     // 保存后今天页可用时长变为 5 小时。
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text('保存').first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('今天'));
     await tester.pumpAndSettle();
