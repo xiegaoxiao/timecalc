@@ -206,14 +206,20 @@ class BackupCodec {
     );
   }
 
-  /// JSON → SettingsCompanion（仅计划偏好；[closeBehavior] 默认 null）。
+  /// JSON → SettingsCompanion（仅计划偏好；运行时配置默认 null）。
   ///
-  /// 备份文件按 FR-9.5 不包含 close_behavior（桌面层状态不进业务备份），
-  /// 因此恢复时该字段由调用方决定：null 表示按「覆盖恢复保留当前值」
-  /// 处理（见 BackupService._overwriteRestore）。
+  /// 备份文件按 FR-9.5 不包含运行时配置（close_behavior、自动备份配置），
+  /// 因此恢复时这些字段由调用方决定：null 表示「覆盖恢复保留当前值」
+  /// （见 BackupService._overwriteRestore）。
   SettingsCompanion settingsFromJson(
     Map<String, Object?> json, {
     String? closeBehavior,
+    bool? autoBackupEnabled,
+    String? localBackupFolder,
+    String? webdavUrl,
+    String? webdavUsername,
+    bool? webdavPasswordSaved,
+    DateTime? lastAutoBackupAt,
   }) {
     final now = DateTime.now().toUtc();
     return SettingsCompanion.insert(
@@ -226,6 +232,24 @@ class BackupCodec {
       closeBehavior: closeBehavior == null
           ? const Value.absent()
           : Value(closeBehavior),
+      autoBackupEnabled: autoBackupEnabled == null
+          ? const Value.absent()
+          : Value(autoBackupEnabled),
+      localBackupFolder: localBackupFolder == null
+          ? const Value.absent()
+          : Value(localBackupFolder),
+      webdavUrl: webdavUrl == null
+          ? const Value.absent()
+          : Value(webdavUrl),
+      webdavUsername: webdavUsername == null
+          ? const Value.absent()
+          : Value(webdavUsername),
+      webdavPasswordSaved: webdavPasswordSaved == null
+          ? const Value.absent()
+          : Value(webdavPasswordSaved),
+      lastAutoBackupAt: lastAutoBackupAt == null
+          ? const Value.absent()
+          : Value(lastAutoBackupAt),
       createdAt: now,
       updatedAt: now,
     );

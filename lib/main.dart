@@ -11,6 +11,10 @@ import 'core/desktop/window_state_store.dart';
 import 'core/errors/diagnostics_service.dart';
 import 'core/errors/global_error_handlers.dart';
 import 'core/errors/startup_error_screen.dart';
+import 'features/backup/data/auto_backup_scheduler.dart';
+import 'features/backup/data/auto_backup_service.dart';
+import 'features/backup/data/backup_service.dart';
+import 'features/backup/data/credential_store.dart';
 import 'features/settings/data/settings_repository.dart';
 
 Future<void> main() async {
@@ -41,6 +45,11 @@ Future<void> main() async {
 
   final controller = await _createDesktopController(db);
 
+  // 每日自动备份调度（FR-9.4，M8）：启动即检查一次 + 每小时复查。
+  // 应用运行期间语义（进程只在窗口/托盘存活时存在）；失败经全局
+  // ScaffoldMessenger 弹 SnackBar（未挂载时静默，下一次复查继续）。
+  _startAutoBackupScheduler(db);
+
   runApp(ProviderScope(
     overrides: [
       databaseProvider.overrideWithValue(db),
@@ -49,6 +58,32 @@ Future<void> main() async {
     ],
     child: const TimeCalcApp(),
   ));
+}
+
+/// 创建并启动自动备份调度器（幂等）。
+void _startAutoBackupScheduler(AppDatabase db) {
+  final scheduler = AutoBackupScheduler(
+    service: AutoBackupService(
+      settingsRepository: SettingsRepository(db),
+      backupService: BackupService(db),
+      credentialStore: SecureCredentialStore(),
+    ),
+    onFailure: (message) async {
+      final messenger = DesktopController.scaffoldMessengerKey.currentContext;
+      if (messenger == null) return;
+      // SnackBar 在下一帧展示：runApp 前启动的首查失败时 key 尚未挂载，
+      // 此处静默跳过（调度器自身已按日去重）。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ScaffoldMessenger.of(messenger).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      });
+    },
+  );
+  scheduler.start();
 }
 
 /// 创建并初始化桌面控制器；失败时返回 null（桌面能力禁用，应用仍可用）。

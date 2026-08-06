@@ -373,19 +373,41 @@ class BackupService {
 
       // 计划偏好：覆盖模式下随备份一并恢复（FR-9.2 覆盖语义）。
       if (payload.settings.isNotEmpty) {
-        // 关闭行为（close_behavior）不进备份文件（FR-9.5）；备份 JSON 中
-        // 无该字段。覆盖清空 settings 行会把它重置为默认值 exit，故在
-        // 恢复前读取当前值并保留——桌面行为不该被「数据恢复」意外改变。
-        final previousCloseBehavior = (await _db.select(_db.settings).getSingleOrNull())
-            ?.closeBehavior;
+        // 运行时配置不进备份文件（FR-9.5：关闭行为、自动备份配置），
+        // 备份 JSON 中无这些字段。覆盖清空 settings 行会把它们重置为
+        // 默认值，故在恢复前读取当前值并保留——桌面/备份行为不该被
+        // 「数据恢复」意外改变。
+        final previous = await _db.select(_db.settings).getSingleOrNull();
+        final previousCloseBehavior = previous?.closeBehavior;
+        final previousAutoBackupEnabled = previous?.autoBackupEnabled;
+        final previousLocalBackupFolder = previous?.localBackupFolder;
+        final previousWebdavUrl = previous?.webdavUrl;
+        final previousWebdavUsername = previous?.webdavUsername;
+        final previousWebdavPasswordSaved = previous?.webdavPasswordSaved;
+        final previousLastAutoBackupAt = previous?.lastAutoBackupAt;
         await _db.delete(_db.settings).go();
         await _db.into(_db.settings).insert(
               _codec.settingsFromJson(
                 payload.settings.first,
-                // 若备份 JSON 里恰好携带了 close_behavior（手工构造），
+                // 若备份 JSON 里恰好携带了这些运行时字段（手工构造），
                 // 优先用它，否则保留恢复前的当前值。
                 closeBehavior: payload.settings.first['closeBehavior'] as String? ??
                     previousCloseBehavior,
+                autoBackupEnabled: payload.settings.first['autoBackupEnabled'] as bool? ??
+                    previousAutoBackupEnabled,
+                localBackupFolder: payload.settings.first['localBackupFolder'] as String? ??
+                    previousLocalBackupFolder,
+                webdavUrl: payload.settings.first['webdavUrl'] as String? ??
+                    previousWebdavUrl,
+                webdavUsername: payload.settings.first['webdavUsername'] as String? ??
+                    previousWebdavUsername,
+                webdavPasswordSaved: payload.settings.first['webdavPasswordSaved'] as bool? ??
+                    previousWebdavPasswordSaved,
+                lastAutoBackupAt: payload.settings.first['lastAutoBackupAt'] == null
+                    ? previousLastAutoBackupAt
+                    : DateTime.tryParse(
+                        payload.settings.first['lastAutoBackupAt'] as String,
+                      ),
               ),
             );
       }

@@ -440,5 +440,35 @@ void main() {
       final settings = await db.select(db.settings).getSingle();
       expect(settings.closeBehavior, CloseBehavior.minimizeToTray);
     });
+
+    test('覆盖恢复后自动备份运行时配置被保留（M8 回归，FR-9.4/9.5）', () async {
+      await seedBaseData();
+      // 当前自动备份配置（运行时状态，FR-9.5 不进备份文件）。
+      await db.into(db.settings).insertOnConflictUpdate(
+            SettingsCompanion.insert(
+              id: const Value(1),
+              autoBackupEnabled: const Value(true),
+              localBackupFolder: const Value(r'C:\Backups'),
+              webdavUrl: const Value('https://dav.example.com/dav'),
+              webdavUsername: const Value('alice'),
+              webdavPasswordSaved: const Value(true),
+              lastAutoBackupAt: Value(DateTime.utc(2026, 8, 6, 1, 0, 0)),
+              createdAt: DateTime.utc(2026, 1, 1),
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+      final file = tempFile('backup.timecalc');
+      await backup.exportBackup(file);
+
+      // 覆盖恢复：业务数据被替换，自动备份配置不被重置回默认。
+      await backup.restoreBackup(file, mode: RestoreMode.overwrite);
+      final settings = await db.select(db.settings).getSingle();
+      expect(settings.autoBackupEnabled, isTrue);
+      expect(settings.localBackupFolder, r'C:\Backups');
+      expect(settings.webdavUrl, 'https://dav.example.com/dav');
+      expect(settings.webdavUsername, 'alice');
+      expect(settings.webdavPasswordSaved, isTrue);
+      expect(settings.lastAutoBackupAt?.toUtc(), DateTime.utc(2026, 8, 6, 1, 0, 0));
+    });
   });
 }
