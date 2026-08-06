@@ -340,6 +340,57 @@ void main() {
     schema.close();
   });
 
+  test('半迁移状态：v4 版本号但 v5 列已存在时迁移可重复成功（幂等回归）', () async {
+    // 复现真实缺陷：开发库 user_version=4，但 recurrence_templates 已含
+    // deleted_instance_dates（drift v5 迁移已执行过，版本号却落后）。
+    // 旧实现 from4To5 再次 addColumn 抛「duplicate column name」。
+    //
+    // 用 drift 自己的 v5 快照建库（列定义与 v5 完全一致），再把版本号
+    // 重置为 4，精确模拟该半迁移状态。
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(5);
+    final raw = schema.rawDatabase;
+    raw.execute('PRAGMA user_version = 4'); // 模拟版本号落后
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['半迁移目标', '2026-08-05', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO tasks (goal_id, title, planned_date, created_at, updated_at) '
+      'VALUES (1, ?, ?, ?, ?)',
+      ['半迁移任务', '2026-08-06', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO settings (id, created_at, updated_at) VALUES (1, ?, ?)',
+      [1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO recurrence_templates '
+      '(goal_id, title, rule_type, rule_json, start_date, generated_through_date, created_at, updated_at) '
+      'VALUES (1, ?, ?, ?, ?, ?, ?, ?)',
+      ['半迁移模板', 'daily', '{}', '2026-08-06', '2026-09-04', 1750000000, 1750000000],
+    );
+
+    // 旧实现在此抛 SqliteException(duplicate column name)；幂等实现应成功。
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 6);
+
+    // 迁移成功且数据保留；既有 v5 列未被重建破坏，v6 新列正确补上。
+    final goal = await (upgraded.select(upgraded.goals)..where((g) => g.id.equals(1))).getSingle();
+    expect(goal.title, '半迁移目标');
+    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    expect(task.title, '半迁移任务');
+    final template = await upgraded.select(upgraded.recurrenceTemplates).getSingle();
+    expect(template.title, '半迁移模板');
+    expect(template.deletedInstanceDates, isNull); // 既有列保留
+    final settings = await upgraded.select(upgraded.settings).getSingle();
+    expect(settings.closeBehavior, 'exit'); // v6 新列补上
+
+    await upgraded.close();
+    schema.close();
+  });
+
   test('schema v3 -> v6：迁移失败时原 v3 数据保持可用，修复后可重试成功', () async {
     final verifier = SchemaVerifier(GeneratedHelper());
     final schema = await verifier.schemaAt(3);
