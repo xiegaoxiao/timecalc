@@ -486,32 +486,32 @@ class _RecurrenceGroupTileState extends ConsumerState<RecurrenceGroupTile> {
           ),
         ),
         // 展开的子任务列表：内缩 + 左缘竖引导线，表明隶属于父卡片。
-        AnimatedSize(
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeInOut,
-          alignment: Alignment.topCenter,
-          child: _expanded
-              ? Container(
-                  margin: const EdgeInsets.only(left: 24, bottom: 8),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      left: BorderSide(color: scheme.outlineVariant, width: 2),
-                    ),
+        //
+        // 性能说明：此处不使用 AnimatedSize 包裹。AnimatedSize 在动画期间
+        // 对子节点逐帧重新测量/布局——含几十个实例的子列表会导致展开/收起
+        // 明显卡顿（且外层页面 ListView 随高度变化每帧重算 extent）。
+        // 改为条件渲染瞬时切换，只在展开/收起时布局一次；状态变化仍由
+        // 图标旋转（AnimatedRotation）提供视觉反馈。
+        if (_expanded)
+          Container(
+            margin: const EdgeInsets.only(left: 24, bottom: 8),
+            decoration: BoxDecoration(
+              border: Border(
+                left: BorderSide(color: scheme.outlineVariant, width: 2),
+              ),
+            ),
+            child: Column(
+              children: [
+                for (final task in instances)
+                  _TaskTile(
+                    goalId: widget.goalId,
+                    task: task,
+                    subjects: widget.subjects,
+                    onChanged: widget.onChanged,
                   ),
-                  child: Column(
-                    children: [
-                      for (final task in instances)
-                        _TaskTile(
-                          goalId: widget.goalId,
-                          task: task,
-                          subjects: widget.subjects,
-                          onChanged: widget.onChanged,
-                        ),
-                    ],
-                  ),
-                )
-              : const SizedBox(width: double.infinity),
-        ),
+              ],
+            ),
+          ),
       ],
     );
   }
