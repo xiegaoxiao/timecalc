@@ -99,10 +99,12 @@ class Tasks extends Table {
   /// 用于审计与后续恢复/统计。未延期过的任务为 null。
   TextColumn get originalPlannedDate => text().nullable()();
 
-  /// 归档时间（JSON 导入替换时保留的历史记录，schema v3 引入）。
+  /// 归档时间（JSON 替换导入时保留的已完成旧任务，schema v3 引入）。
   ///
-  /// 非 null 表示该任务已被归档：不参与负载/日历统计与常规列表，仅出现在
-  /// 目标详情的「历史任务」区，可手动恢复。未归档任务为 null。
+  /// 非 null 表示该任务已被归档：不参与负载/日历统计与常规列表，仅在
+  /// 设置页「备份与恢复」的已归档任务区展示，可手动恢复回当前计划。
+  /// 替换导入时未完成旧任务直接删除、不归档；已完成的归档保留。未归档
+  /// 任务为 null。
   DateTimeColumn get archivedAt => dateTime().nullable()();
 
   /// 所属重复模板（FR-4，schema v4 引入）。

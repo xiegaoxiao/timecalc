@@ -391,15 +391,18 @@ void main() {
       expect(await subjects.byGoal(goal.id), isEmpty);
     });
 
-    test('replaceExisting 替换：旧任务归档保留，新任务写入（导入替换语义）', () async {
+    test('replaceExisting 替换：已完成归档保留、未完成删除，新任务写入（替换语义）', () async {
       final goal = await goals.create(title: '目标', deadlineDate: '2026-09-01');
-      final oldTask = await tasks.create(
+      // 已完成旧任务：替换时归档保留。
+      final doneTask = await tasks.create(
         goalId: goal.id,
-        title: '旧任务',
+        title: '已完成旧任务',
         plannedDate: '2026-08-06',
         estimatedMinutes: 60,
       );
-      await tasks.create(goalId: goal.id, title: '旧任务2', plannedDate: '2026-08-07');
+      await tasks.setDone(doneTask.id, true);
+      // 未完成旧任务：替换时直接删除，不保留。
+      await tasks.create(goalId: goal.id, title: '未完成旧任务', plannedDate: '2026-08-07');
 
       const json = '{"unclassified": [{"title":"新任务","date":"2026-08-10"}]}';
       final plan = parser.parse(json, today: today).plan!;
@@ -411,23 +414,47 @@ void main() {
       );
       expect(stats.createdTasks, 1);
       expect(stats.replacedTasks, 2);
+      expect(stats.deletedTasks, 1);
+      expect(stats.archivedTasks, 1);
 
-      // 当前列表只剩新任务；旧任务进入归档（历史保留）。
+      // 当前列表只剩新任务；归档区只保留已完成旧任务，未完成的已删除。
       final active = await tasks.byGoal(goal.id);
       expect(active.map((t) => t.title).toList(), ['新任务']);
       final archived = await tasks.archivedByGoal(goal.id);
-      expect(archived.map((t) => t.title).toSet(), {'旧任务', '旧任务2'});
+      expect(archived.map((t) => t.title).toSet(), {'已完成旧任务'});
+      expect(archived.single.status, 'done');
 
-      // 归档任务不进入常规查询（今日/日历/未完成）。
+      // 归档任务不进入常规查询（今日/日历/未完成）；未完成旧任务已物理删除。
       expect(await tasks.byDate('2026-08-06'), isEmpty);
+      expect(await tasks.byDate('2026-08-07'), isEmpty);
       expect(await tasks.byDateRange('2026-08-01', '2026-08-31'), hasLength(1));
       expect(await tasks.unfinishedBefore('2026-08-10'), isEmpty);
 
-      // 恢复归档任务后重新进入当前计划。
-      await tasks.restoreArchived(oldTask.id);
+      // 恢复归档的已完成任务后重新进入当前计划（以完成态出现，可取消勾选）。
+      await tasks.restoreArchived(doneTask.id);
       final afterRestore = await tasks.byGoal(goal.id);
-      expect(afterRestore.map((t) => t.title).toSet(), {'新任务', '旧任务'});
+      expect(afterRestore.map((t) => t.title).toSet(), {'新任务', '已完成旧任务'});
+      expect(afterRestore.firstWhere((t) => t.title == '已完成旧任务').status, 'done');
       expect(await tasks.byDate('2026-08-06'), hasLength(1));
+    });
+
+    test('replaceExisting 替换：全部未完成时归档区为空', () async {
+      final goal = await goals.create(title: '目标', deadlineDate: '2026-09-01');
+      await tasks.create(goalId: goal.id, title: '旧1', plannedDate: '2026-08-06');
+      await tasks.create(goalId: goal.id, title: '旧2', plannedDate: '2026-08-07');
+
+      const json = '{"unclassified": [{"title":"新任务","date":"2026-08-10"}]}';
+      final plan = parser.parse(json, today: today).plan!;
+
+      final stats = await tasks.importPlan(
+        goalId: goal.id,
+        items: plan.items,
+        replaceExisting: true,
+      );
+      expect(stats.deletedTasks, 2);
+      expect(stats.archivedTasks, 0);
+      expect(await tasks.byGoal(goal.id), hasLength(1));
+      expect(await tasks.archivedByGoal(goal.id), isEmpty);
     });
   });
 

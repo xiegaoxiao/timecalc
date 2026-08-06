@@ -47,6 +47,11 @@ final archivedTaskListProvider =
   return ref.watch(taskRepositoryProvider).archivedByGoal(goalId);
 });
 
+/// 全部归档任务（跨目标，设置页数据管理区用，按归档时间倒序）。
+final allArchivedTasksProvider = FutureProvider<List<Task>>((ref) {
+  return ref.watch(taskRepositoryProvider).allArchived();
+});
+
 /// 最近 26 周内完成的任务（FR-7.2 热力图数据源，按完成日期统计）。
 ///
 /// 查询时间窗为 UTC，实际归日换算在 StatisticsService 中按本地日期完成。

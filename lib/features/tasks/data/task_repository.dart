@@ -83,6 +83,18 @@ class TaskRepository {
     return query.get();
   }
 
+  /// 返回全部归档任务（跨目标，设置页数据管理区用，按归档时间倒序）。
+  Future<List<Task>> allArchived() {
+    final query = _db.select(_db.tasks)
+      ..where((t) => t.archivedAt.isNotNull())
+      ..orderBy([
+        (t) => OrderingTerm.desc(t.archivedAt),
+        (t) => OrderingTerm.asc(t.plannedDate),
+        (t) => OrderingTerm.asc(t.id),
+      ]);
+    return query.get();
+  }
+
   /// 返回在 [fromUtc]（含）～[toUtc]（含）之间完成、未归档的任务（FR-7.2）。
   ///
   /// 供热力图按「完成日期」统计：completedAt 为 UTC 时间戳，调用方换算为
@@ -196,8 +208,9 @@ class TaskRepository {
   /// 无半写入。日期与时长已在解析层校验，本方法不重复业务校验。
   ///
   /// [replaceExisting] 为 true 时执行「替换」语义（JSON 导入默认行为）：
-  /// 先把目标下当前全部未归档任务标记为归档（保留历史记录，不物理删除），
-  /// 再写入 JSON 任务。替换与写入在同一事务内完成。
+  /// 未完成旧任务直接删除，已完成旧任务归档保留（历史语义重构：归档区
+  /// 只保留已完成任务，未完成的旧计划不保留），再写入 JSON 任务。
+  /// 删除/归档与写入在同一事务内完成。
   Future<ImportStats> importPlan({
     required int goalId,
     required List<ImportedTaskItem> items,
@@ -205,16 +218,37 @@ class TaskRepository {
   }) {
     return _db.transaction(() async {
       final now = DateTime.now().toUtc();
-      var replacedTasks = 0;
+      var deletedTasks = 0;
+      var archivedTasks = 0;
       if (replaceExisting) {
-        replacedTasks = await (_db.update(_db.tasks)
+        final current = await (_db.select(_db.tasks)
               ..where((t) => t.goalId.equals(goalId) & t.archivedAt.isNull()))
-            .write(
-              TasksCompanion(
-                archivedAt: Value(now),
-                updatedAt: Value(now),
-              ),
-            );
+            .get();
+        final todoIds = current
+            .where((t) => t.status == TaskStatus.todo)
+            .map((t) => t.id)
+            .toList();
+        final doneIds = current
+            .where((t) => t.status == TaskStatus.done)
+            .map((t) => t.id)
+            .toList();
+        if (todoIds.isNotEmpty) {
+          // 未完成的旧任务不保留：替换即弃旧，直接物理删除。
+          deletedTasks = await (_db.delete(_db.tasks)
+                ..where((t) => t.id.isIn(todoIds)))
+              .go();
+        }
+        if (doneIds.isNotEmpty) {
+          // 已完成的旧任务归档保留，供设置页数据管理区回看/恢复。
+          archivedTasks = await (_db.update(_db.tasks)
+                ..where((t) => t.id.isIn(doneIds)))
+              .write(
+                TasksCompanion(
+                  archivedAt: Value(now),
+                  updatedAt: Value(now),
+                ),
+              );
+        }
         // 替换语义下停用该目标的重复模板，避免替换后模板继续生成实例。
         await (_db.update(_db.recurrenceTemplates)
               ..where((t) => t.goalId.equals(goalId) & t.active.equals(true)))
@@ -269,12 +303,15 @@ class TaskRepository {
       return ImportStats(
         createdSubjects: createdSubjects,
         createdTasks: items.length,
-        replacedTasks: replacedTasks,
+        replacedTasks: deletedTasks + archivedTasks,
+        deletedTasks: deletedTasks,
+        archivedTasks: archivedTasks,
       );
     });
   }
 
-  /// 归档目标下全部未归档任务（JSON 导入替换时保留历史）。
+  /// 归档目标下全部未归档任务（历史语义重构后仅用于测试/兼容；替换导入
+  /// 已在 importPlan 内按完成状态分流处理）。
   Future<int> archiveAllActive(int goalId) {
     return _db.transaction(() async {
       final now = DateTime.now().toUtc();

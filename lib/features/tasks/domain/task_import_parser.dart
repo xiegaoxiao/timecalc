@@ -35,13 +35,21 @@ class ImportStats {
     required this.createdSubjects,
     required this.createdTasks,
     this.replacedTasks = 0,
+    this.deletedTasks = 0,
+    this.archivedTasks = 0,
   });
 
   final int createdSubjects;
   final int createdTasks;
 
-  /// 替换模式下被归档的原有任务数（保留历史记录）。
+  /// 替换模式下处理的旧任务总数（未完成删除 + 已完成归档，兼容字段）。
   final int replacedTasks;
+
+  /// 替换模式下被删除的未完成任务数（未完成旧任务不保留）。
+  final int deletedTasks;
+
+  /// 替换模式下被归档保留的已完成任务数。
+  final int archivedTasks;
 }
 
 /// 单个校验问题。
