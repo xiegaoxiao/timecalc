@@ -181,6 +181,8 @@ void main() {
     await pumpApp(tester);
 
     expect(find.text('背单词'), findsOneWidget);
+    // 列表较长时第二个任务在视口外，滚动后再断言。
+    await tester.scrollUntilVisible(find.text('写引言'), 100);
     expect(find.text('写引言'), findsOneWidget);
     // 副标题标注目标名（考研卡片标题外，任务条目中也出现）。
     expect(find.textContaining('考研 · 1 小时 30 分'), findsOneWidget);

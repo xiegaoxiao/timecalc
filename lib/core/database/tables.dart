@@ -16,6 +16,12 @@ class GoalStatus {
   static const String archived = 'archived';
 }
 
+/// 关闭按钮行为（FR-8.1，schema v6 引入）。
+class CloseBehavior {
+  static const String exit = 'exit';
+  static const String minimizeToTray = 'minimize_to_tray';
+}
+
 /// 任务状态。
 class TaskStatus {
   static const String todo = 'todo';
@@ -114,7 +120,7 @@ class RecurrenceTemplates extends Table {
   TextColumn get deletedInstanceDates => text().nullable()();
 }
 
-/// 计划偏好（单行表，PRD §9 Settings 的 M2 子集）。
+/// 计划偏好（单行表，PRD §9 Settings 的 M2 子集 + M3 关闭行为）。
 ///
 /// schema v2 引入。默认行不写死在迁移里，由 SettingsRepository.get()
 /// 惰性 seed（insertOrIgnore），保证迁移库与全新安装行为一致。
@@ -129,6 +135,14 @@ class Settings extends Table {
   /// 每周可用日，逗号分隔的 ISO 星期（1=周一…7=周日），如 `1,2,3,4,5,6,7`。
   TextColumn get availableWeekdays =>
       text().withDefault(const Constant('1,2,3,4,5,6,7'))();
+
+  /// 关闭按钮行为（FR-8.1，schema v6 引入）。
+  ///
+  /// 取值见 [CloseBehavior]：`exit`（默认，直接退出）或
+  /// `minimize_to_tray`（最小化到托盘）。窗口状态属于桌面层状态，
+  /// 不进入业务数据备份（FR-9.5）。
+  TextColumn get closeBehavior =>
+      text().withDefault(const Constant('exit'))();
 
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();

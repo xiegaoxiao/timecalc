@@ -2735,6 +2735,18 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
         requiredDuringInsert: false,
         defaultValue: const Constant('1,2,3,4,5,6,7'),
       );
+  static const VerificationMeta _closeBehaviorMeta = const VerificationMeta(
+    'closeBehavior',
+  );
+  @override
+  late final GeneratedColumn<String> closeBehavior = GeneratedColumn<String>(
+    'close_behavior',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('exit'),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -2762,6 +2774,7 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
     id,
     dailyAvailableMinutes,
     availableWeekdays,
+    closeBehavior,
     createdAt,
     updatedAt,
   ];
@@ -2795,6 +2808,15 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
         availableWeekdays.isAcceptableOrUnknown(
           data['available_weekdays']!,
           _availableWeekdaysMeta,
+        ),
+      );
+    }
+    if (data.containsKey('close_behavior')) {
+      context.handle(
+        _closeBehaviorMeta,
+        closeBehavior.isAcceptableOrUnknown(
+          data['close_behavior']!,
+          _closeBehaviorMeta,
         ),
       );
     }
@@ -2835,6 +2857,10 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
         DriftSqlType.string,
         data['${effectivePrefix}available_weekdays'],
       )!,
+      closeBehavior: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}close_behavior'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -2861,12 +2887,20 @@ class Setting extends DataClass implements Insertable<Setting> {
 
   /// 每周可用日，逗号分隔的 ISO 星期（1=周一…7=周日），如 `1,2,3,4,5,6,7`。
   final String availableWeekdays;
+
+  /// 关闭按钮行为（FR-8.1，schema v6 引入）。
+  ///
+  /// 取值见 [CloseBehavior]：`exit`（默认，直接退出）或
+  /// `minimize_to_tray`（最小化到托盘）。窗口状态属于桌面层状态，
+  /// 不进入业务数据备份（FR-9.5）。
+  final String closeBehavior;
   final DateTime createdAt;
   final DateTime updatedAt;
   const Setting({
     required this.id,
     required this.dailyAvailableMinutes,
     required this.availableWeekdays,
+    required this.closeBehavior,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -2876,6 +2910,7 @@ class Setting extends DataClass implements Insertable<Setting> {
     map['id'] = Variable<int>(id);
     map['daily_available_minutes'] = Variable<int>(dailyAvailableMinutes);
     map['available_weekdays'] = Variable<String>(availableWeekdays);
+    map['close_behavior'] = Variable<String>(closeBehavior);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -2886,6 +2921,7 @@ class Setting extends DataClass implements Insertable<Setting> {
       id: Value(id),
       dailyAvailableMinutes: Value(dailyAvailableMinutes),
       availableWeekdays: Value(availableWeekdays),
+      closeBehavior: Value(closeBehavior),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -2902,6 +2938,7 @@ class Setting extends DataClass implements Insertable<Setting> {
         json['dailyAvailableMinutes'],
       ),
       availableWeekdays: serializer.fromJson<String>(json['availableWeekdays']),
+      closeBehavior: serializer.fromJson<String>(json['closeBehavior']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -2913,6 +2950,7 @@ class Setting extends DataClass implements Insertable<Setting> {
       'id': serializer.toJson<int>(id),
       'dailyAvailableMinutes': serializer.toJson<int>(dailyAvailableMinutes),
       'availableWeekdays': serializer.toJson<String>(availableWeekdays),
+      'closeBehavior': serializer.toJson<String>(closeBehavior),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -2922,12 +2960,14 @@ class Setting extends DataClass implements Insertable<Setting> {
     int? id,
     int? dailyAvailableMinutes,
     String? availableWeekdays,
+    String? closeBehavior,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => Setting(
     id: id ?? this.id,
     dailyAvailableMinutes: dailyAvailableMinutes ?? this.dailyAvailableMinutes,
     availableWeekdays: availableWeekdays ?? this.availableWeekdays,
+    closeBehavior: closeBehavior ?? this.closeBehavior,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -2940,6 +2980,9 @@ class Setting extends DataClass implements Insertable<Setting> {
       availableWeekdays: data.availableWeekdays.present
           ? data.availableWeekdays.value
           : this.availableWeekdays,
+      closeBehavior: data.closeBehavior.present
+          ? data.closeBehavior.value
+          : this.closeBehavior,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -2951,6 +2994,7 @@ class Setting extends DataClass implements Insertable<Setting> {
           ..write('id: $id, ')
           ..write('dailyAvailableMinutes: $dailyAvailableMinutes, ')
           ..write('availableWeekdays: $availableWeekdays, ')
+          ..write('closeBehavior: $closeBehavior, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -2962,6 +3006,7 @@ class Setting extends DataClass implements Insertable<Setting> {
     id,
     dailyAvailableMinutes,
     availableWeekdays,
+    closeBehavior,
     createdAt,
     updatedAt,
   );
@@ -2972,6 +3017,7 @@ class Setting extends DataClass implements Insertable<Setting> {
           other.id == this.id &&
           other.dailyAvailableMinutes == this.dailyAvailableMinutes &&
           other.availableWeekdays == this.availableWeekdays &&
+          other.closeBehavior == this.closeBehavior &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -2980,12 +3026,14 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
   final Value<int> id;
   final Value<int> dailyAvailableMinutes;
   final Value<String> availableWeekdays;
+  final Value<String> closeBehavior;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   const SettingsCompanion({
     this.id = const Value.absent(),
     this.dailyAvailableMinutes = const Value.absent(),
     this.availableWeekdays = const Value.absent(),
+    this.closeBehavior = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
@@ -2993,6 +3041,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     this.id = const Value.absent(),
     this.dailyAvailableMinutes = const Value.absent(),
     this.availableWeekdays = const Value.absent(),
+    this.closeBehavior = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
   }) : createdAt = Value(createdAt),
@@ -3001,6 +3050,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     Expression<int>? id,
     Expression<int>? dailyAvailableMinutes,
     Expression<String>? availableWeekdays,
+    Expression<String>? closeBehavior,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
   }) {
@@ -3009,6 +3059,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
       if (dailyAvailableMinutes != null)
         'daily_available_minutes': dailyAvailableMinutes,
       if (availableWeekdays != null) 'available_weekdays': availableWeekdays,
+      if (closeBehavior != null) 'close_behavior': closeBehavior,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
@@ -3018,6 +3069,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     Value<int>? id,
     Value<int>? dailyAvailableMinutes,
     Value<String>? availableWeekdays,
+    Value<String>? closeBehavior,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
   }) {
@@ -3026,6 +3078,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
       dailyAvailableMinutes:
           dailyAvailableMinutes ?? this.dailyAvailableMinutes,
       availableWeekdays: availableWeekdays ?? this.availableWeekdays,
+      closeBehavior: closeBehavior ?? this.closeBehavior,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -3045,6 +3098,9 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     if (availableWeekdays.present) {
       map['available_weekdays'] = Variable<String>(availableWeekdays.value);
     }
+    if (closeBehavior.present) {
+      map['close_behavior'] = Variable<String>(closeBehavior.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -3060,6 +3116,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
           ..write('id: $id, ')
           ..write('dailyAvailableMinutes: $dailyAvailableMinutes, ')
           ..write('availableWeekdays: $availableWeekdays, ')
+          ..write('closeBehavior: $closeBehavior, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -5581,6 +5638,7 @@ typedef $$SettingsTableCreateCompanionBuilder =
       Value<int> id,
       Value<int> dailyAvailableMinutes,
       Value<String> availableWeekdays,
+      Value<String> closeBehavior,
       required DateTime createdAt,
       required DateTime updatedAt,
     });
@@ -5589,6 +5647,7 @@ typedef $$SettingsTableUpdateCompanionBuilder =
       Value<int> id,
       Value<int> dailyAvailableMinutes,
       Value<String> availableWeekdays,
+      Value<String> closeBehavior,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
     });
@@ -5614,6 +5673,11 @@ class $$SettingsTableFilterComposer
 
   ColumnFilters<String> get availableWeekdays => $composableBuilder(
     column: $table.availableWeekdays,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get closeBehavior => $composableBuilder(
+    column: $table.closeBehavior,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5652,6 +5716,11 @@ class $$SettingsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get closeBehavior => $composableBuilder(
+    column: $table.closeBehavior,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -5682,6 +5751,11 @@ class $$SettingsTableAnnotationComposer
 
   GeneratedColumn<String> get availableWeekdays => $composableBuilder(
     column: $table.availableWeekdays,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get closeBehavior => $composableBuilder(
+    column: $table.closeBehavior,
     builder: (column) => column,
   );
 
@@ -5723,12 +5797,14 @@ class $$SettingsTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<int> dailyAvailableMinutes = const Value.absent(),
                 Value<String> availableWeekdays = const Value.absent(),
+                Value<String> closeBehavior = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => SettingsCompanion(
                 id: id,
                 dailyAvailableMinutes: dailyAvailableMinutes,
                 availableWeekdays: availableWeekdays,
+                closeBehavior: closeBehavior,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),
@@ -5737,12 +5813,14 @@ class $$SettingsTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<int> dailyAvailableMinutes = const Value.absent(),
                 Value<String> availableWeekdays = const Value.absent(),
+                Value<String> closeBehavior = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
               }) => SettingsCompanion.insert(
                 id: id,
                 dailyAvailableMinutes: dailyAvailableMinutes,
                 availableWeekdays: availableWeekdays,
+                closeBehavior: closeBehavior,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),

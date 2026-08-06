@@ -82,6 +82,35 @@ class TaskRepository {
     return query.get();
   }
 
+  /// 返回在 [fromUtc]（含）～[toUtc]（含）之间完成、未归档的任务（FR-7.2）。
+  ///
+  /// 供热力图按「完成日期」统计：completedAt 为 UTC 时间戳，调用方换算为
+  /// 本地日历日期后归入对应日期。
+  Future<List<Task>> completedBetween(DateTime fromUtc, DateTime toUtc) {
+    final query = _db.select(_db.tasks)
+      ..where((t) =>
+          t.status.equals(TaskStatus.done) &
+          t.completedAt.isNotNull() &
+          t.completedAt.isBetweenValues(fromUtc, toUtc) &
+          t.archivedAt.isNull())
+      ..orderBy([
+        (t) => OrderingTerm.asc(t.completedAt),
+        (t) => OrderingTerm.asc(t.id),
+      ]);
+    return query.get();
+  }
+
+  /// 返回全部未完成、未归档任务（跨目标，FR-7.1 目标剩余工作量汇总）。
+  Future<List<Task>> allTodoTasks() {
+    final query = _db.select(_db.tasks)
+      ..where((t) => t.status.equals(TaskStatus.todo) & t.archivedAt.isNull())
+      ..orderBy([
+        (t) => OrderingTerm.asc(t.plannedDate),
+        (t) => OrderingTerm.asc(t.id),
+      ]);
+    return query.get();
+  }
+
   /// 创建任务。plannedDate 为本地日历日期文本（yyyy-MM-dd）。
   ///
   /// [estimatedMinutes] 仅接受 1～1440 分钟整数（FR-3 验收），

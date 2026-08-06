@@ -6,7 +6,7 @@ import 'tables.dart';
 
 part 'database.g.dart';
 
-/// TimeCalc 本地数据库（schema v5）。
+/// TimeCalc 本地数据库（schema v6）。
 ///
 /// v1：目标/科目/任务三张表。
 /// v2：Tasks 增加 original_planned_date；新增 Settings 计划偏好表（M2）。
@@ -14,6 +14,7 @@ part 'database.g.dart';
 /// v4：Tasks 增加 recurrence_template_id；新增 RecurrenceTemplates 表（FR-4）。
 /// v5：RecurrenceTemplates 增加 deleted_instance_dates（删除实例墓碑，
 ///     滚动生成跳过已删除日期，防止被删实例复活）。
+/// v6：Settings 增加 close_behavior（FR-8.1 关闭按钮行为：退出/最小化到托盘）。
 /// 后续 schema 变更必须提供 migration 与 migration 测试（SOP S3、NFR-2）。
 @DriftDatabase(tables: [Goals, Subjects, Tasks, Settings, RecurrenceTemplates])
 class AppDatabase extends _$AppDatabase {
@@ -24,7 +25,7 @@ class AppDatabase extends _$AppDatabase {
       AppDatabase(driftDatabase(name: 'timecalc'));
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -56,6 +57,13 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(
               schema.recurrenceTemplates,
               schema.recurrenceTemplates.deletedInstanceDates,
+            );
+          },
+          from5To6: (m, schema) async {
+            // v5 -> v6：设置增加关闭按钮行为列（FR-8.1，退出/最小化到托盘）。
+            await m.addColumn(
+              schema.settings,
+              schema.settings.closeBehavior,
             );
           },
         ),

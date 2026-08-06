@@ -202,6 +202,47 @@ void main() {
     });
   });
 
+  group('统计查询（FR-7.1 / FR-7.2）', () {
+    test('completedBetween 返回完成时间在范围内的已完成任务', () async {
+      final goal = await goals.create(title: '目标', deadlineDate: '2026-03-01');
+      final t1 = await tasks.create(goalId: goal.id, title: '早完成', plannedDate: '2026-01-05');
+      final t2 = await tasks.create(goalId: goal.id, title: '晚完成', plannedDate: '2026-01-05');
+      await tasks.create(goalId: goal.id, title: '未完成', plannedDate: '2026-01-05');
+      await tasks.setDone(t1.id, true); // completedAt ≈ now
+      await tasks.setDone(t2.id, true);
+
+      // 全部已完成任务都在「过去一天～未来一天」窗口内。
+      final now = DateTime.now().toUtc();
+      final list = await tasks.completedBetween(
+        now.subtract(const Duration(days: 1)),
+        now.add(const Duration(days: 1)),
+      );
+      expect(list.map((t) => t.title).toSet(), {'早完成', '晚完成'});
+
+      // 只查过去（不含今天）则一条都没有。
+      final none = await tasks.completedBetween(
+        now.subtract(const Duration(days: 1)),
+        now.subtract(const Duration(hours: 1)),
+      );
+      expect(none, isEmpty);
+
+      // 未完成任务不进入结果。
+      expect(list.every((t) => t.status == 'done'), isTrue);
+    });
+
+    test('allTodoTasks 返回全部未完成任务（跨目标，含无预估时长）', () async {
+      final goalA = await goals.create(title: '目标A', deadlineDate: '2026-03-01');
+      final goalB = await goals.create(title: '目标B', deadlineDate: '2026-03-01');
+      final done = await tasks.create(goalId: goalA.id, title: '已完成', plannedDate: '2026-01-05');
+      await tasks.create(goalId: goalA.id, title: 'A未完成', plannedDate: '2026-01-06');
+      await tasks.create(goalId: goalB.id, title: 'B未完成', plannedDate: '2026-01-07');
+      await tasks.setDone(done.id, true);
+
+      final list = await tasks.allTodoTasks();
+      expect(list.map((t) => t.title).toSet(), {'A未完成', 'B未完成'});
+    });
+  });
+
   group('延期（FR-3.3）', () {
     test('defer 记录原计划日期一次，任务内容与归属保持不变', () async {
       final goal = await goals.create(title: '目标', deadlineDate: '2026-03-01');

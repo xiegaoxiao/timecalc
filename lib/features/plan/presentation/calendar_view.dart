@@ -72,6 +72,8 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
                 ref.invalidate(taskListProvider);
                 ref.invalidate(unfinishedBeforeProvider);
                 ref.invalidate(goalListProvider);
+                ref.invalidate(completedTasksProvider);
+                ref.invalidate(allTodoTasksProvider);
               }
 
               final activeGoals = goals

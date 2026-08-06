@@ -114,7 +114,25 @@ void main() {
     expect(columns, contains('deleted_instance_dates'));
   });
 
-  test('schema v1 -> v5：迁移成功保留数据，结构符合 v5 预期', () async {
+  test('schema v6：settings 含关闭按钮行为列（默认 exit）', () async {
+    final columns = await _columns(db, 'settings');
+    expect(columns, contains('close_behavior'));
+
+    // 默认值为 exit（FR-8.1：默认直接退出）。
+    final inserted = await db.into(db.settings).insert(
+      SettingsCompanion.insert(
+        id: const Value(1),
+        createdAt: DateTime.utc(2026, 1, 1),
+        updatedAt: DateTime.utc(2026, 1, 1),
+      ),
+    );
+    final settings = await (db.select(db.settings)
+          ..where((s) => s.id.equals(inserted)))
+        .getSingle();
+    expect(settings.closeBehavior, 'exit');
+  });
+
+  test('schema v1 -> v6：迁移成功保留数据，结构符合 v6 预期', () async {
     final verifier = SchemaVerifier(GeneratedHelper());
     // 以 v1 结构初始化数据库并写入数据。
     final schema = await verifier.schemaAt(1);
@@ -130,9 +148,9 @@ void main() {
       ['迁移任务', '2026-08-05', 1750000000, 1750000000],
     );
 
-    // 以真实 AppDatabase 打开并执行 v1 -> v5 迁移，再与 v5 预期结构比对。
+    // 以真实 AppDatabase 打开并执行 v1 -> v6 迁移，再与 v6 预期结构比对。
     final upgraded = AppDatabase(schema.newConnection());
-    await verifier.migrateAndValidate(upgraded, 5);
+    await verifier.migrateAndValidate(upgraded, 6);
 
     // 数据在升级后保留，新列默认 null。
     final goal = await (upgraded.select(upgraded.goals)..where((g) => g.id.equals(1))).getSingle();
@@ -156,7 +174,7 @@ void main() {
     schema.close();
   });
 
-  test('schema v2 -> v5：v2 数据保留，新列默认 null', () async {
+  test('schema v2 -> v6：v2 数据保留，新列默认 null', () async {
     final verifier = SchemaVerifier(GeneratedHelper());
     // 以 v2 结构初始化数据库并写入数据（含 settings 默认行）。
     final schema = await verifier.schemaAt(2);
@@ -177,7 +195,7 @@ void main() {
     );
 
     final upgraded = AppDatabase(schema.newConnection());
-    await verifier.migrateAndValidate(upgraded, 5);
+    await verifier.migrateAndValidate(upgraded, 6);
 
     final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
     expect(task.title, 'v2 任务');
@@ -188,12 +206,14 @@ void main() {
 
     final settings = await upgraded.select(upgraded.settings).getSingle();
     expect(settings.dailyAvailableMinutes, 120);
+    // v2 行升级后 close_behavior 取默认值 exit。
+    expect(settings.closeBehavior, 'exit');
 
     await upgraded.close();
     schema.close();
   });
 
-  test('schema v1 -> v5：迁移失败时原 v1 数据保持可用，修复后可重试成功', () async {
+  test('schema v1 -> v6：迁移失败时原 v1 数据保持可用，修复后可重试成功', () async {
     final verifier = SchemaVerifier(GeneratedHelper());
     final schema = await verifier.schemaAt(1);
     schema.rawDatabase.execute(
@@ -212,7 +232,7 @@ void main() {
 
     // 以正确迁移策略重新打开（新连接），迁移应成功且数据仍在。
     final repaired = AppDatabase(schema.newConnection());
-    await verifier.migrateAndValidate(repaired, 5);
+    await verifier.migrateAndValidate(repaired, 6);
 
     final goal = await (repaired.select(repaired.goals)..where((g) => g.id.equals(1))).getSingle();
     expect(goal.title, '失败恢复目标');
@@ -222,7 +242,7 @@ void main() {
     schema.close();
   });
 
-  test('schema v3 -> v5：v3 数据保留，重复列/表就绪', () async {
+  test('schema v3 -> v6：v3 数据保留，重复列/表就绪', () async {
     final verifier = SchemaVerifier(GeneratedHelper());
     final schema = await verifier.schemaAt(3);
     final raw = schema.rawDatabase;
@@ -242,7 +262,7 @@ void main() {
     );
 
     final upgraded = AppDatabase(schema.newConnection());
-    await verifier.migrateAndValidate(upgraded, 5);
+    await verifier.migrateAndValidate(upgraded, 6);
 
     final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
     expect(task.title, 'v3 任务');
@@ -257,7 +277,7 @@ void main() {
     schema.close();
   });
 
-  test('schema v4 -> v5：v4 数据保留，墓碑列默认 null', () async {
+  test('schema v4 -> v6：v4 数据保留，墓碑列默认 null', () async {
     final verifier = SchemaVerifier(GeneratedHelper());
     final schema = await verifier.schemaAt(4);
     final raw = schema.rawDatabase;
@@ -279,7 +299,7 @@ void main() {
     );
 
     final upgraded = AppDatabase(schema.newConnection());
-    await verifier.migrateAndValidate(upgraded, 5);
+    await verifier.migrateAndValidate(upgraded, 6);
 
     // 任务与模板数据保留；新墓碑列默认 null。
     final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
@@ -293,7 +313,34 @@ void main() {
     schema.close();
   });
 
-  test('schema v3 -> v5：迁移失败时原 v3 数据保持可用，修复后可重试成功', () async {
+  test('schema v5 -> v6：v5 数据保留，关闭行为列默认 exit', () async {
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(5);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['v5 目标', '2026-08-05', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO settings (id, created_at, updated_at) VALUES (1, ?, ?)',
+      [1750000000, 1750000000],
+    );
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 6);
+
+    final goal = await (upgraded.select(upgraded.goals)..where((g) => g.id.equals(1))).getSingle();
+    expect(goal.title, 'v5 目标');
+
+    final settings = await upgraded.select(upgraded.settings).getSingle();
+    expect(settings.closeBehavior, 'exit');
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('schema v3 -> v6：迁移失败时原 v3 数据保持可用，修复后可重试成功', () async {
     final verifier = SchemaVerifier(GeneratedHelper());
     final schema = await verifier.schemaAt(3);
     schema.rawDatabase.execute(
@@ -309,7 +356,7 @@ void main() {
     );
 
     final repaired = AppDatabase(schema.newConnection());
-    await verifier.migrateAndValidate(repaired, 5);
+    await verifier.migrateAndValidate(repaired, 6);
 
     final goal = await (repaired.select(repaired.goals)..where((g) => g.id.equals(1))).getSingle();
     expect(goal.title, '失败恢复目标');

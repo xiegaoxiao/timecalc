@@ -69,4 +69,23 @@ void main() {
     final rows = await db.select(db.settings).get();
     expect(rows.length, 1);
   });
+
+  test('默认关闭行为为 exit（FR-8.1 默认直接退出）', () async {
+    final settings = await repo.get();
+    expect(settings.closeBehavior, CloseBehavior.exit);
+  });
+
+  test('更新关闭行为为最小化到托盘并持久化', () async {
+    await repo.updateCloseBehavior(CloseBehavior.minimizeToTray);
+    final settings = await repo.get();
+    expect(settings.closeBehavior, CloseBehavior.minimizeToTray);
+  });
+
+  test('更新关闭行为不影响计划偏好', () async {
+    await repo.updateDailyAvailableMinutes(90);
+    await repo.updateCloseBehavior(CloseBehavior.minimizeToTray);
+    final settings = await repo.get();
+    expect(settings.dailyAvailableMinutes, 90);
+    expect(settings.closeBehavior, CloseBehavior.minimizeToTray);
+  });
 }

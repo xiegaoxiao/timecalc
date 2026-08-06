@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/database/database_provider.dart';
+import '../../../core/providers/clock_provider.dart';
 import '../data/task_repository.dart';
 
 /// 任务数据访问 Provider。
@@ -44,4 +45,19 @@ final unfinishedBeforeProvider =
 final archivedTaskListProvider =
     FutureProvider.family<List<Task>, int>((ref, goalId) {
   return ref.watch(taskRepositoryProvider).archivedByGoal(goalId);
+});
+
+/// 最近 26 周内完成的任务（FR-7.2 热力图数据源，按完成日期统计）。
+///
+/// 查询时间窗为 UTC，实际归日换算在 StatisticsService 中按本地日期完成。
+/// 时间取自 [clockProvider]（测试可注入固定时钟）。
+final completedTasksProvider = FutureProvider<List<Task>>((ref) {
+  final now = ref.watch(clockProvider)();
+  final fromUtc = now.toUtc().subtract(const Duration(days: 26 * 7 + 1));
+  return ref.watch(taskRepositoryProvider).completedBetween(fromUtc, now.toUtc());
+});
+
+/// 全部未完成任务（FR-7.1 目标剩余工作量汇总）。
+final allTodoTasksProvider = FutureProvider<List<Task>>((ref) {
+  return ref.watch(taskRepositoryProvider).allTodoTasks();
 });

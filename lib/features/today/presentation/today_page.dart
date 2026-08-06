@@ -9,6 +9,7 @@ import '../../../services/countdown_service.dart';
 import '../../../services/defer_service.dart';
 import '../../../services/duration_format.dart';
 import '../../../services/load_service.dart';
+import '../../../services/statistics_service.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../../goals/presentation/goal_form_dialog.dart';
 import '../../settings/data/settings_repository.dart';
@@ -35,6 +36,7 @@ class TodayPage extends ConsumerStatefulWidget {
 class _TodayPageState extends ConsumerState<TodayPage> {
   static const _defer = DeferService();
   static const _load = LoadService();
+  static const _stats = StatisticsService();
 
   /// FR-3.7 横幅的会话级关闭（「保留原日期」），不写库。
   bool _bannerDismissed = false;
@@ -48,6 +50,7 @@ class _TodayPageState extends ConsumerState<TodayPage> {
     final settingsAsync = ref.watch(settingsProvider);
     final tasksAsync = ref.watch(tasksByDateProvider(todayStr));
     final unfinishedAsync = ref.watch(unfinishedBeforeProvider(todayStr));
+    final todoAsync = ref.watch(allTodoTasksProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('今天')),
@@ -63,12 +66,17 @@ class _TodayPageState extends ConsumerState<TodayPage> {
             data: (tasks) => unfinishedAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (error, _) => Center(child: Text('加载失败：$error')),
-              data: (unfinished) => _buildBody(
-                goals: goals,
-                settings: settings,
-                today: today,
-                todayTasks: tasks,
-                unfinished: unfinished,
+              data: (unfinished) => todoAsync.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (error, _) => Center(child: Text('加载失败：$error')),
+                data: (todo) => _buildBody(
+                  goals: goals,
+                  settings: settings,
+                  today: today,
+                  todayTasks: tasks,
+                  unfinished: unfinished,
+                  todoTasks: todo,
+                ),
               ),
             ),
           ),
@@ -83,6 +91,7 @@ class _TodayPageState extends ConsumerState<TodayPage> {
     required DateTime today,
     required List<Task> todayTasks,
     required List<Task> unfinished,
+    required List<Task> todoTasks,
   }) {
     final activeGoals = goals
         .where((g) =>
@@ -99,6 +108,8 @@ class _TodayPageState extends ConsumerState<TodayPage> {
       ref.invalidate(taskListProvider);
       ref.invalidate(unfinishedBeforeProvider);
       ref.invalidate(goalListProvider);
+      ref.invalidate(completedTasksProvider);
+      ref.invalidate(allTodoTasksProvider);
     }
 
     // 空态：无进行中目标、今日无任务、且无逾期未完成任务时展示。
@@ -134,6 +145,8 @@ class _TodayPageState extends ConsumerState<TodayPage> {
             load: load,
             available: availableMinutes,
             over: over,
+            stats: _stats.completionStats(todayTasks),
+            remainingMinutes: _stats.remainingMinutes(todoTasks),
           ),
           const SizedBox(height: 8),
         ],
@@ -216,21 +229,26 @@ class _TodayPageState extends ConsumerState<TodayPage> {
   }
 }
 
-/// 今日负载概览（FR-3.5）。
+/// 今日负载概览（FR-3.5 / FR-7.1）。
 ///
 /// 标题展示「今日任务总计 X 小时 Y 分」（当日未完成任务预估时长之和）；
 /// 副标题展示可用时长，超出时追加「超出 X 分」文案与警告图标
-/// （状态不只依赖颜色表达）。
+/// （状态不只依赖颜色表达）。FR-7.1 展示今日完成数/总数、今日已完成
+/// 预估时长与目标剩余工作量。
 class _LoadOverviewCard extends StatelessWidget {
   const _LoadOverviewCard({
     required this.load,
     required this.available,
     required this.over,
+    required this.stats,
+    required this.remainingMinutes,
   });
 
   final int load;
   final int available;
   final int over;
+  final DayCompletionStats stats;
+  final int remainingMinutes;
 
   @override
   Widget build(BuildContext context) {
@@ -249,6 +267,11 @@ class _LoadOverviewCard extends StatelessWidget {
                 '超出 ${DurationFormat.minutes(over)}，请调整任务或可用时间',
                 style: TextStyle(color: scheme.error),
               ),
+            Text(
+              '完成 ${stats.doneCount}/${stats.totalCount} · '
+              '已完成 ${DurationFormat.minutes(stats.doneMinutes)} · '
+              '目标剩余 ${DurationFormat.minutes(remainingMinutes)}',
+            ),
           ],
         ),
         trailing: over > 0

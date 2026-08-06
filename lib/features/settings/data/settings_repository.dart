@@ -49,6 +49,13 @@ class SettingsRepository {
     ));
   }
 
+  /// 更新关闭按钮行为（FR-8.1：exit / minimize_to_tray）。
+  Future<void> updateCloseBehavior(String behavior) {
+    return _update(SettingsCompanion(
+      closeBehavior: Value(behavior),
+    ));
+  }
+
   Future<void> _update(SettingsCompanion companion) {
     return _db.transaction(() async {
       // 更新前确保默认行存在（极端场景：从未调用过 get 直接更新）。

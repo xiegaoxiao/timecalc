@@ -278,6 +278,9 @@ class _GoalCard extends ConsumerWidget {
     // 目标级联删除会连带删除其重复模板（recurrence_repository.deleteWithCascade），
     // 模板缓存必须同步失效，避免删除后残留陈旧模板数据。
     ref.invalidate(recurrenceTemplatesProvider);
+    // 进度页统计（完成热力图 / 目标剩余工作量）随任务变化同步刷新。
+    ref.invalidate(completedTasksProvider);
+    ref.invalidate(allTodoTasksProvider);
   }
 
   static DateTime _parseDate(String yyyyMMdd) {
