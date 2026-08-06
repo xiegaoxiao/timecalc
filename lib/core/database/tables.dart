@@ -160,7 +160,7 @@ class ChecklistItems extends Table {
   DateTimeColumn get updatedAt => dateTime()();
 }
 
-/// 计划偏好（单行表，PRD §9 Settings 的 M2 子集 + M3 关闭行为）。
+/// 计划偏好（单行表，PRD §9 Settings 的 M2 子集 + M3 关闭行为 + M8 自动备份）。
 ///
 /// schema v2 引入。默认行不写死在迁移里，由 SettingsRepository.get()
 /// 惰性 seed（insertOrIgnore），保证迁移库与全新安装行为一致。
@@ -183,6 +183,40 @@ class Settings extends Table {
   /// 不进入业务数据备份（FR-9.5）。
   TextColumn get closeBehavior =>
       text().withDefault(const Constant('exit'))();
+
+  /// 每日自动备份开关（FR-9.4，schema v9 引入）。
+  ///
+  /// 运行时配置，不进入业务数据备份（FR-9.5，同 close_behavior）。
+  BoolColumn get autoBackupEnabled =>
+      boolean().withDefault(const Constant(false))();
+
+  /// 本地自动备份目录（schema v9，可空）。
+  ///
+  /// 为空时本地目的地不启用；选择目录经原生对话框后写回（Windows 路径）。
+  TextColumn get localBackupFolder => text().nullable()();
+
+  /// WebDAV 服务器地址（schema v9，可空，如 `https://dav.example.com/dav`）。
+  ///
+  /// 为空时 WebDAV 目的地不启用。密码不存本表（NFR-3），存系统凭据存储
+  /// （Windows DPAPI，见 CredentialStore）；[webdavPasswordSaved] 仅作
+  /// 「是否已保存」标记。
+  TextColumn get webdavUrl => text().nullable()();
+
+  /// WebDAV 用户名（schema v9，可空；非敏感信息，密码不进本表）。
+  TextColumn get webdavUsername => text().nullable()();
+
+  /// 是否已在系统凭据存储中保存 WebDAV 密码（schema v9）。
+  ///
+  /// 供 UI 提示「已保存密码，可留空保持原密码」；清除该标记不会删除
+  /// 凭据存储中的密码。
+  BoolColumn get webdavPasswordSaved =>
+      boolean().withDefault(const Constant(false))();
+
+  /// 上次自动备份完成时间（schema v9，UTC，可空）。
+  ///
+  /// 调度判据：距离上次成功不足 1 天时跳过（FR-9.4「每日」语义）。
+  /// 失败不推进该时间戳，避免静默跳过。
+  DateTimeColumn get lastAutoBackupAt => dateTime().nullable()();
 
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();

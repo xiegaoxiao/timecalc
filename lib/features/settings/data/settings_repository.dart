@@ -56,6 +56,52 @@ class SettingsRepository {
     ));
   }
 
+  /// 更新每日自动备份开关（FR-9.4，schema v9）。
+  Future<void> updateAutoBackupEnabled(bool enabled) {
+    return _update(SettingsCompanion(
+      autoBackupEnabled: Value(enabled),
+    ));
+  }
+
+  /// 更新本地自动备份目录（FR-9.4，schema v9）。
+  ///
+  /// 传入 null 表示清空（禁用该目的地）。
+  Future<void> updateLocalBackupFolder(String? folder) {
+    return _update(SettingsCompanion(
+      localBackupFolder: Value(folder),
+    ));
+  }
+
+  /// 更新 WebDAV 服务器地址与用户名（FR-9.4，schema v9）。
+  ///
+  /// url/username 传入 null 表示清空（禁用该字段/目的地）；密码不存本表
+  /// （NFR-3），由调用方写入系统凭据存储并单独标记 [updateWebDavPasswordSaved]。
+  Future<void> updateWebDavConfig({String? url, String? username}) {
+    return _update(SettingsCompanion(
+      webdavUrl: Value(url),
+      webdavUsername: Value(username),
+    ));
+  }
+
+  /// 更新「WebDAV 密码是否已保存」标记（FR-9.4，schema v9）。
+  ///
+  /// 密码成功写入系统凭据存储后置 true；用户主动清除密码时置 false。
+  /// 清除标记不会删除凭据存储中的密码。
+  Future<void> updateWebDavPasswordSaved(bool saved) {
+    return _update(SettingsCompanion(
+      webdavPasswordSaved: Value(saved),
+    ));
+  }
+
+  /// 更新上次自动备份完成时间（FR-9.4，schema v9）。
+  ///
+  /// [utc] 传 null 表示「从未成功备份」（例如用户清除密码后重置）。
+  Future<void> updateLastAutoBackupAt(DateTime? utc) {
+    return _update(SettingsCompanion(
+      lastAutoBackupAt: Value(utc),
+    ));
+  }
+
   Future<void> _update(SettingsCompanion companion) {
     return _db.transaction(() async {
       // 更新前确保默认行存在（极端场景：从未调用过 get 直接更新）。

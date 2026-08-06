@@ -26,7 +26,7 @@ Future<void> addColumnIfMissing(
   await m.addColumn(table, column);
 }
 
-/// TimeCalc 本地数据库（schema v8）。
+/// TimeCalc 本地数据库（schema v9）。
 ///
 /// v1：目标/科目/任务三张表。
 /// v2：Tasks 增加 original_planned_date；新增 Settings 计划偏好表（M2）。
@@ -37,6 +37,9 @@ Future<void> addColumnIfMissing(
 /// v6：Settings 增加 close_behavior（FR-8.1 关闭按钮行为：退出/最小化到托盘）。
 /// v7：新增 Milestones 里程碑表（FR-2 目标下的阶段性节点）。
 /// v8：新增 ChecklistItems 检查项表（FR-4.1 任务可包含可排序检查项）。
+/// v9：Settings 增加自动备份配置（FR-9.4 每日自动备份：auto_backup_enabled/
+///     local_backup_folder/webdav_url/webdav_username/webdav_password_saved/
+///     last_auto_backup_at，均为运行时配置，不进入业务备份，FR-9.5）。
 /// 后续 schema 变更必须提供 migration 与 migration 测试（SOP S3、NFR-2）。
 @DriftDatabase(tables: [
   Goals,
@@ -55,7 +58,7 @@ class AppDatabase extends _$AppDatabase {
       AppDatabase(driftDatabase(name: 'timecalc'));
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -113,6 +116,41 @@ class AppDatabase extends _$AppDatabase {
             // v7 -> v8：新增检查项表（FR-4.1 任务可包含可排序检查项）。
             // createTable 自带 IF NOT EXISTS，重复升级/半迁移安全。
             await m.createTable(schema.checklistItems);
+          },
+          from8To9: (m, schema) async {
+            // v8 -> v9：设置增加自动备份配置（FR-9.4 每日自动备份，M8）。
+            // 6 个新列全部可空或带默认值，旧行免回填；加列用幂等 helper
+            // 防半迁移重复（与 v5->v6 close_behavior 同模式）。
+            await addColumnIfMissing(
+              m,
+              schema.settings,
+              schema.settings.autoBackupEnabled,
+            );
+            await addColumnIfMissing(
+              m,
+              schema.settings,
+              schema.settings.localBackupFolder,
+            );
+            await addColumnIfMissing(
+              m,
+              schema.settings,
+              schema.settings.webdavUrl,
+            );
+            await addColumnIfMissing(
+              m,
+              schema.settings,
+              schema.settings.webdavUsername,
+            );
+            await addColumnIfMissing(
+              m,
+              schema.settings,
+              schema.settings.webdavPasswordSaved,
+            );
+            await addColumnIfMissing(
+              m,
+              schema.settings,
+              schema.settings.lastAutoBackupAt,
+            );
           },
         ),
       );

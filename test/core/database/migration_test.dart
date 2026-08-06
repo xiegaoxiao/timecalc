@@ -204,10 +204,14 @@ void main() {
     expect(task.archivedAt, isNull);
     expect(task.recurrenceTemplateId, isNull);
 
-    final settings = await upgraded.select(upgraded.settings).getSingle();
-    expect(settings.dailyAvailableMinutes, 120);
+    // 用原始 SQL 读取 settings（中间版本库没有 v9 新增列，typed 读取会
+    // 因缺列 map 失败；这里只断言 v6 已存在的列）。
+    final settingsRow = await upgraded.customSelect(
+      'SELECT daily_available_minutes, close_behavior FROM settings WHERE id = 1',
+    ).getSingle();
+    expect(settingsRow.read<int>('daily_available_minutes'), 120);
     // v2 行升级后 close_behavior 取默认值 exit。
-    expect(settings.closeBehavior, 'exit');
+    expect(settingsRow.read<String>('close_behavior'), 'exit');
 
     await upgraded.close();
     schema.close();
@@ -333,8 +337,11 @@ void main() {
     final goal = await (upgraded.select(upgraded.goals)..where((g) => g.id.equals(1))).getSingle();
     expect(goal.title, 'v5 目标');
 
-    final settings = await upgraded.select(upgraded.settings).getSingle();
-    expect(settings.closeBehavior, 'exit');
+    // 原始 SQL 读取（中间版本库缺 v9 新列，见 v2 -> v6 用例注释）。
+    final settingsRow = await upgraded.customSelect(
+      'SELECT close_behavior FROM settings WHERE id = 1',
+    ).getSingle();
+    expect(settingsRow.read<String>('close_behavior'), 'exit');
 
     await upgraded.close();
     schema.close();
@@ -384,8 +391,11 @@ void main() {
     final template = await upgraded.select(upgraded.recurrenceTemplates).getSingle();
     expect(template.title, '半迁移模板');
     expect(template.deletedInstanceDates, isNull); // 既有列保留
-    final settings = await upgraded.select(upgraded.settings).getSingle();
-    expect(settings.closeBehavior, 'exit'); // v6 新列补上
+    // 原始 SQL 读取（中间版本库缺 v9 新列，见 v2 -> v6 用例注释）。
+    final settingsRow = await upgraded.customSelect(
+      'SELECT close_behavior FROM settings WHERE id = 1',
+    ).getSingle();
+    expect(settingsRow.read<String>('close_behavior'), 'exit'); // v6 新列补上
 
     await upgraded.close();
     schema.close();
@@ -624,6 +634,116 @@ void main() {
     ).get();
     final names = tables.map((row) => row.read<String>('name')).toSet();
     expect(names, contains('checklist_items'));
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('schema v8 -> v9：自动备份配置列补齐，v8 数据保留', () async {
+    final verifier = SchemaVerifier(GeneratedHelper());
+    // 以 v8 结构初始化数据库并写入数据（含 settings 默认行）。
+    final schema = await verifier.schemaAt(8);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['v8 目标', '2026-08-05', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO settings (id, created_at, updated_at) VALUES (1, ?, ?)',
+      [1750000000, 1750000000],
+    );
+
+    // 以真实 AppDatabase 打开并执行 v8 -> v9 迁移。
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 9);
+
+    // v8 数据保留。
+    final goal = await (upgraded.select(upgraded.goals)..where((g) => g.id.equals(1))).getSingle();
+    expect(goal.title, 'v8 目标');
+
+    // v9 新增 6 个自动备份配置列，旧行取默认值（FR-9.4）。
+    final settings = await upgraded.select(upgraded.settings).getSingle();
+    expect(settings.autoBackupEnabled, isFalse);
+    expect(settings.localBackupFolder, isNull);
+    expect(settings.webdavUrl, isNull);
+    expect(settings.webdavUsername, isNull);
+    expect(settings.webdavPasswordSaved, isFalse);
+    expect(settings.lastAutoBackupAt, isNull);
+    expect(settings.closeBehavior, 'exit'); // 既有列保留
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('schema v1 -> v9：迁移成功保留数据，自动备份配置列存在', () async {
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(1);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['迁移目标', '2026-08-05', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO tasks (goal_id, title, planned_date, created_at, updated_at) '
+      'VALUES (1, ?, ?, ?, ?)',
+      ['迁移任务', '2026-08-05', 1750000000, 1750000000],
+    );
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 9);
+
+    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    expect(task.title, '迁移任务');
+
+    final tables = await upgraded.customSelect(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+    ).get();
+    final names = tables.map((row) => row.read<String>('name')).toSet();
+    expect(
+      names,
+      containsAll(['settings', 'recurrence_templates', 'milestones', 'checklist_items']),
+    );
+
+    final columns = await upgraded.customSelect(
+      "SELECT name FROM pragma_table_info('settings')",
+    ).get();
+    final settingColumns = columns.map((row) => row.read<String>('name')).toSet();
+    expect(settingColumns, containsAll([
+      'auto_backup_enabled',
+      'local_backup_folder',
+      'webdav_url',
+      'webdav_username',
+      'webdav_password_saved',
+      'last_auto_backup_at',
+    ]));
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('半迁移状态：v8 版本号但自动备份配置列已存在时迁移可重复成功（幂等回归）', () async {
+    // settings 用 v9 快照建库（含全部新列），再把版本号重置为 8，模拟
+    // 「列已手工补上但 user_version 落后」的半迁移状态（addColumnIfMissing
+    // 幂等，不抛 duplicate column name）。
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(9);
+    final raw = schema.rawDatabase;
+    raw.execute('PRAGMA user_version = 8'); // 模拟版本号落后
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 9);
+
+    final settings = await upgraded.select(upgraded.settings).getSingleOrNull();
+    // 默认行由 SettingsRepository 惰性 seed；迁移本身不写 settings 行。
+    expect(settings, isNull);
+
+    final columns = await upgraded.customSelect(
+      "SELECT name FROM pragma_table_info('settings')",
+    ).get();
+    final settingColumns = columns.map((row) => row.read<String>('name')).toSet();
+    expect(settingColumns, contains('auto_backup_enabled'));
 
     await upgraded.close();
     schema.close();

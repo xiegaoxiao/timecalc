@@ -88,4 +88,57 @@ void main() {
     expect(settings.dailyAvailableMinutes, 90);
     expect(settings.closeBehavior, CloseBehavior.minimizeToTray);
   });
+
+  // ---- M8 自动备份配置（FR-9.4，schema v9）----
+
+  test('默认自动备份关闭且无目的地配置', () async {
+    final settings = await repo.get();
+    expect(settings.autoBackupEnabled, isFalse);
+    expect(settings.localBackupFolder, isNull);
+    expect(settings.webdavUrl, isNull);
+    expect(settings.webdavUsername, isNull);
+    expect(settings.webdavPasswordSaved, isFalse);
+    expect(settings.lastAutoBackupAt, isNull);
+  });
+
+  test('更新自动备份开关并持久化', () async {
+    await repo.updateAutoBackupEnabled(true);
+    final settings = await repo.get();
+    expect(settings.autoBackupEnabled, isTrue);
+  });
+
+  test('更新本地备份目录（含清空）', () async {
+    await repo.updateLocalBackupFolder(r'C:\Backups');
+    expect((await repo.get()).localBackupFolder, r'C:\Backups');
+    await repo.updateLocalBackupFolder(null);
+    expect((await repo.get()).localBackupFolder, isNull);
+  });
+
+  test('更新 WebDAV 配置与密码标记', () async {
+    await repo.updateWebDavConfig(url: 'https://dav.example.com/dav', username: 'alice');
+    await repo.updateWebDavPasswordSaved(true);
+    final settings = await repo.get();
+    expect(settings.webdavUrl, 'https://dav.example.com/dav');
+    expect(settings.webdavUsername, 'alice');
+    expect(settings.webdavPasswordSaved, isTrue);
+  });
+
+  test('更新上次自动备份时间（UTC）', () async {
+    final time = DateTime.utc(2026, 8, 6, 12);
+    await repo.updateLastAutoBackupAt(time);
+    // drift 读回为本地时区同一时刻（DateTime == 区分 isUtc，用 toUtc 比较）。
+    expect((await repo.get()).lastAutoBackupAt?.toUtc(), time);
+    await repo.updateLastAutoBackupAt(null);
+    expect((await repo.get()).lastAutoBackupAt, isNull);
+  });
+
+  test('自动备份配置与计划偏好互不覆盖', () async {
+    await repo.updateDailyAvailableMinutes(90);
+    await repo.updateAutoBackupEnabled(true);
+    await repo.updateLocalBackupFolder(r'C:\Backups');
+    final settings = await repo.get();
+    expect(settings.dailyAvailableMinutes, 90);
+    expect(settings.autoBackupEnabled, isTrue);
+    expect(settings.localBackupFolder, r'C:\Backups');
+  });
 }

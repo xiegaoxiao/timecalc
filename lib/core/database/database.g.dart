@@ -3246,6 +3246,81 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
     requiredDuringInsert: false,
     defaultValue: const Constant('exit'),
   );
+  static const VerificationMeta _autoBackupEnabledMeta = const VerificationMeta(
+    'autoBackupEnabled',
+  );
+  @override
+  late final GeneratedColumn<bool> autoBackupEnabled = GeneratedColumn<bool>(
+    'auto_backup_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("auto_backup_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _localBackupFolderMeta = const VerificationMeta(
+    'localBackupFolder',
+  );
+  @override
+  late final GeneratedColumn<String> localBackupFolder =
+      GeneratedColumn<String>(
+        'local_backup_folder',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _webdavUrlMeta = const VerificationMeta(
+    'webdavUrl',
+  );
+  @override
+  late final GeneratedColumn<String> webdavUrl = GeneratedColumn<String>(
+    'webdav_url',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _webdavUsernameMeta = const VerificationMeta(
+    'webdavUsername',
+  );
+  @override
+  late final GeneratedColumn<String> webdavUsername = GeneratedColumn<String>(
+    'webdav_username',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _webdavPasswordSavedMeta =
+      const VerificationMeta('webdavPasswordSaved');
+  @override
+  late final GeneratedColumn<bool> webdavPasswordSaved = GeneratedColumn<bool>(
+    'webdav_password_saved',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("webdav_password_saved" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _lastAutoBackupAtMeta = const VerificationMeta(
+    'lastAutoBackupAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastAutoBackupAt =
+      GeneratedColumn<DateTime>(
+        'last_auto_backup_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -3274,6 +3349,12 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
     dailyAvailableMinutes,
     availableWeekdays,
     closeBehavior,
+    autoBackupEnabled,
+    localBackupFolder,
+    webdavUrl,
+    webdavUsername,
+    webdavPasswordSaved,
+    lastAutoBackupAt,
     createdAt,
     updatedAt,
   ];
@@ -3319,6 +3400,57 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
         ),
       );
     }
+    if (data.containsKey('auto_backup_enabled')) {
+      context.handle(
+        _autoBackupEnabledMeta,
+        autoBackupEnabled.isAcceptableOrUnknown(
+          data['auto_backup_enabled']!,
+          _autoBackupEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('local_backup_folder')) {
+      context.handle(
+        _localBackupFolderMeta,
+        localBackupFolder.isAcceptableOrUnknown(
+          data['local_backup_folder']!,
+          _localBackupFolderMeta,
+        ),
+      );
+    }
+    if (data.containsKey('webdav_url')) {
+      context.handle(
+        _webdavUrlMeta,
+        webdavUrl.isAcceptableOrUnknown(data['webdav_url']!, _webdavUrlMeta),
+      );
+    }
+    if (data.containsKey('webdav_username')) {
+      context.handle(
+        _webdavUsernameMeta,
+        webdavUsername.isAcceptableOrUnknown(
+          data['webdav_username']!,
+          _webdavUsernameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('webdav_password_saved')) {
+      context.handle(
+        _webdavPasswordSavedMeta,
+        webdavPasswordSaved.isAcceptableOrUnknown(
+          data['webdav_password_saved']!,
+          _webdavPasswordSavedMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_auto_backup_at')) {
+      context.handle(
+        _lastAutoBackupAtMeta,
+        lastAutoBackupAt.isAcceptableOrUnknown(
+          data['last_auto_backup_at']!,
+          _lastAutoBackupAtMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -3360,6 +3492,30 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
         DriftSqlType.string,
         data['${effectivePrefix}close_behavior'],
       )!,
+      autoBackupEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}auto_backup_enabled'],
+      )!,
+      localBackupFolder: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}local_backup_folder'],
+      ),
+      webdavUrl: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}webdav_url'],
+      ),
+      webdavUsername: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}webdav_username'],
+      ),
+      webdavPasswordSaved: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}webdav_password_saved'],
+      )!,
+      lastAutoBackupAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_auto_backup_at'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -3393,6 +3549,38 @@ class Setting extends DataClass implements Insertable<Setting> {
   /// `minimize_to_tray`（最小化到托盘）。窗口状态属于桌面层状态，
   /// 不进入业务数据备份（FR-9.5）。
   final String closeBehavior;
+
+  /// 每日自动备份开关（FR-9.4，schema v9 引入）。
+  ///
+  /// 运行时配置，不进入业务数据备份（FR-9.5，同 close_behavior）。
+  final bool autoBackupEnabled;
+
+  /// 本地自动备份目录（schema v9，可空）。
+  ///
+  /// 为空时本地目的地不启用；选择目录经原生对话框后写回（Windows 路径）。
+  final String? localBackupFolder;
+
+  /// WebDAV 服务器地址（schema v9，可空，如 `https://dav.example.com/dav`）。
+  ///
+  /// 为空时 WebDAV 目的地不启用。密码不存本表（NFR-3），存系统凭据存储
+  /// （Windows DPAPI，见 CredentialStore）；[webdavPasswordSaved] 仅作
+  /// 「是否已保存」标记。
+  final String? webdavUrl;
+
+  /// WebDAV 用户名（schema v9，可空；非敏感信息，密码不进本表）。
+  final String? webdavUsername;
+
+  /// 是否已在系统凭据存储中保存 WebDAV 密码（schema v9）。
+  ///
+  /// 供 UI 提示「已保存密码，可留空保持原密码」；清除该标记不会删除
+  /// 凭据存储中的密码。
+  final bool webdavPasswordSaved;
+
+  /// 上次自动备份完成时间（schema v9，UTC，可空）。
+  ///
+  /// 调度判据：距离上次成功不足 1 天时跳过（FR-9.4「每日」语义）。
+  /// 失败不推进该时间戳，避免静默跳过。
+  final DateTime? lastAutoBackupAt;
   final DateTime createdAt;
   final DateTime updatedAt;
   const Setting({
@@ -3400,6 +3588,12 @@ class Setting extends DataClass implements Insertable<Setting> {
     required this.dailyAvailableMinutes,
     required this.availableWeekdays,
     required this.closeBehavior,
+    required this.autoBackupEnabled,
+    this.localBackupFolder,
+    this.webdavUrl,
+    this.webdavUsername,
+    required this.webdavPasswordSaved,
+    this.lastAutoBackupAt,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -3410,6 +3604,20 @@ class Setting extends DataClass implements Insertable<Setting> {
     map['daily_available_minutes'] = Variable<int>(dailyAvailableMinutes);
     map['available_weekdays'] = Variable<String>(availableWeekdays);
     map['close_behavior'] = Variable<String>(closeBehavior);
+    map['auto_backup_enabled'] = Variable<bool>(autoBackupEnabled);
+    if (!nullToAbsent || localBackupFolder != null) {
+      map['local_backup_folder'] = Variable<String>(localBackupFolder);
+    }
+    if (!nullToAbsent || webdavUrl != null) {
+      map['webdav_url'] = Variable<String>(webdavUrl);
+    }
+    if (!nullToAbsent || webdavUsername != null) {
+      map['webdav_username'] = Variable<String>(webdavUsername);
+    }
+    map['webdav_password_saved'] = Variable<bool>(webdavPasswordSaved);
+    if (!nullToAbsent || lastAutoBackupAt != null) {
+      map['last_auto_backup_at'] = Variable<DateTime>(lastAutoBackupAt);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -3421,6 +3629,20 @@ class Setting extends DataClass implements Insertable<Setting> {
       dailyAvailableMinutes: Value(dailyAvailableMinutes),
       availableWeekdays: Value(availableWeekdays),
       closeBehavior: Value(closeBehavior),
+      autoBackupEnabled: Value(autoBackupEnabled),
+      localBackupFolder: localBackupFolder == null && nullToAbsent
+          ? const Value.absent()
+          : Value(localBackupFolder),
+      webdavUrl: webdavUrl == null && nullToAbsent
+          ? const Value.absent()
+          : Value(webdavUrl),
+      webdavUsername: webdavUsername == null && nullToAbsent
+          ? const Value.absent()
+          : Value(webdavUsername),
+      webdavPasswordSaved: Value(webdavPasswordSaved),
+      lastAutoBackupAt: lastAutoBackupAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastAutoBackupAt),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -3438,6 +3660,18 @@ class Setting extends DataClass implements Insertable<Setting> {
       ),
       availableWeekdays: serializer.fromJson<String>(json['availableWeekdays']),
       closeBehavior: serializer.fromJson<String>(json['closeBehavior']),
+      autoBackupEnabled: serializer.fromJson<bool>(json['autoBackupEnabled']),
+      localBackupFolder: serializer.fromJson<String?>(
+        json['localBackupFolder'],
+      ),
+      webdavUrl: serializer.fromJson<String?>(json['webdavUrl']),
+      webdavUsername: serializer.fromJson<String?>(json['webdavUsername']),
+      webdavPasswordSaved: serializer.fromJson<bool>(
+        json['webdavPasswordSaved'],
+      ),
+      lastAutoBackupAt: serializer.fromJson<DateTime?>(
+        json['lastAutoBackupAt'],
+      ),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -3450,6 +3684,12 @@ class Setting extends DataClass implements Insertable<Setting> {
       'dailyAvailableMinutes': serializer.toJson<int>(dailyAvailableMinutes),
       'availableWeekdays': serializer.toJson<String>(availableWeekdays),
       'closeBehavior': serializer.toJson<String>(closeBehavior),
+      'autoBackupEnabled': serializer.toJson<bool>(autoBackupEnabled),
+      'localBackupFolder': serializer.toJson<String?>(localBackupFolder),
+      'webdavUrl': serializer.toJson<String?>(webdavUrl),
+      'webdavUsername': serializer.toJson<String?>(webdavUsername),
+      'webdavPasswordSaved': serializer.toJson<bool>(webdavPasswordSaved),
+      'lastAutoBackupAt': serializer.toJson<DateTime?>(lastAutoBackupAt),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -3460,6 +3700,12 @@ class Setting extends DataClass implements Insertable<Setting> {
     int? dailyAvailableMinutes,
     String? availableWeekdays,
     String? closeBehavior,
+    bool? autoBackupEnabled,
+    Value<String?> localBackupFolder = const Value.absent(),
+    Value<String?> webdavUrl = const Value.absent(),
+    Value<String?> webdavUsername = const Value.absent(),
+    bool? webdavPasswordSaved,
+    Value<DateTime?> lastAutoBackupAt = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => Setting(
@@ -3467,6 +3713,18 @@ class Setting extends DataClass implements Insertable<Setting> {
     dailyAvailableMinutes: dailyAvailableMinutes ?? this.dailyAvailableMinutes,
     availableWeekdays: availableWeekdays ?? this.availableWeekdays,
     closeBehavior: closeBehavior ?? this.closeBehavior,
+    autoBackupEnabled: autoBackupEnabled ?? this.autoBackupEnabled,
+    localBackupFolder: localBackupFolder.present
+        ? localBackupFolder.value
+        : this.localBackupFolder,
+    webdavUrl: webdavUrl.present ? webdavUrl.value : this.webdavUrl,
+    webdavUsername: webdavUsername.present
+        ? webdavUsername.value
+        : this.webdavUsername,
+    webdavPasswordSaved: webdavPasswordSaved ?? this.webdavPasswordSaved,
+    lastAutoBackupAt: lastAutoBackupAt.present
+        ? lastAutoBackupAt.value
+        : this.lastAutoBackupAt,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -3482,6 +3740,22 @@ class Setting extends DataClass implements Insertable<Setting> {
       closeBehavior: data.closeBehavior.present
           ? data.closeBehavior.value
           : this.closeBehavior,
+      autoBackupEnabled: data.autoBackupEnabled.present
+          ? data.autoBackupEnabled.value
+          : this.autoBackupEnabled,
+      localBackupFolder: data.localBackupFolder.present
+          ? data.localBackupFolder.value
+          : this.localBackupFolder,
+      webdavUrl: data.webdavUrl.present ? data.webdavUrl.value : this.webdavUrl,
+      webdavUsername: data.webdavUsername.present
+          ? data.webdavUsername.value
+          : this.webdavUsername,
+      webdavPasswordSaved: data.webdavPasswordSaved.present
+          ? data.webdavPasswordSaved.value
+          : this.webdavPasswordSaved,
+      lastAutoBackupAt: data.lastAutoBackupAt.present
+          ? data.lastAutoBackupAt.value
+          : this.lastAutoBackupAt,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -3494,6 +3768,12 @@ class Setting extends DataClass implements Insertable<Setting> {
           ..write('dailyAvailableMinutes: $dailyAvailableMinutes, ')
           ..write('availableWeekdays: $availableWeekdays, ')
           ..write('closeBehavior: $closeBehavior, ')
+          ..write('autoBackupEnabled: $autoBackupEnabled, ')
+          ..write('localBackupFolder: $localBackupFolder, ')
+          ..write('webdavUrl: $webdavUrl, ')
+          ..write('webdavUsername: $webdavUsername, ')
+          ..write('webdavPasswordSaved: $webdavPasswordSaved, ')
+          ..write('lastAutoBackupAt: $lastAutoBackupAt, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -3506,6 +3786,12 @@ class Setting extends DataClass implements Insertable<Setting> {
     dailyAvailableMinutes,
     availableWeekdays,
     closeBehavior,
+    autoBackupEnabled,
+    localBackupFolder,
+    webdavUrl,
+    webdavUsername,
+    webdavPasswordSaved,
+    lastAutoBackupAt,
     createdAt,
     updatedAt,
   );
@@ -3517,6 +3803,12 @@ class Setting extends DataClass implements Insertable<Setting> {
           other.dailyAvailableMinutes == this.dailyAvailableMinutes &&
           other.availableWeekdays == this.availableWeekdays &&
           other.closeBehavior == this.closeBehavior &&
+          other.autoBackupEnabled == this.autoBackupEnabled &&
+          other.localBackupFolder == this.localBackupFolder &&
+          other.webdavUrl == this.webdavUrl &&
+          other.webdavUsername == this.webdavUsername &&
+          other.webdavPasswordSaved == this.webdavPasswordSaved &&
+          other.lastAutoBackupAt == this.lastAutoBackupAt &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -3526,6 +3818,12 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
   final Value<int> dailyAvailableMinutes;
   final Value<String> availableWeekdays;
   final Value<String> closeBehavior;
+  final Value<bool> autoBackupEnabled;
+  final Value<String?> localBackupFolder;
+  final Value<String?> webdavUrl;
+  final Value<String?> webdavUsername;
+  final Value<bool> webdavPasswordSaved;
+  final Value<DateTime?> lastAutoBackupAt;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   const SettingsCompanion({
@@ -3533,6 +3831,12 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     this.dailyAvailableMinutes = const Value.absent(),
     this.availableWeekdays = const Value.absent(),
     this.closeBehavior = const Value.absent(),
+    this.autoBackupEnabled = const Value.absent(),
+    this.localBackupFolder = const Value.absent(),
+    this.webdavUrl = const Value.absent(),
+    this.webdavUsername = const Value.absent(),
+    this.webdavPasswordSaved = const Value.absent(),
+    this.lastAutoBackupAt = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
@@ -3541,6 +3845,12 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     this.dailyAvailableMinutes = const Value.absent(),
     this.availableWeekdays = const Value.absent(),
     this.closeBehavior = const Value.absent(),
+    this.autoBackupEnabled = const Value.absent(),
+    this.localBackupFolder = const Value.absent(),
+    this.webdavUrl = const Value.absent(),
+    this.webdavUsername = const Value.absent(),
+    this.webdavPasswordSaved = const Value.absent(),
+    this.lastAutoBackupAt = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
   }) : createdAt = Value(createdAt),
@@ -3550,6 +3860,12 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     Expression<int>? dailyAvailableMinutes,
     Expression<String>? availableWeekdays,
     Expression<String>? closeBehavior,
+    Expression<bool>? autoBackupEnabled,
+    Expression<String>? localBackupFolder,
+    Expression<String>? webdavUrl,
+    Expression<String>? webdavUsername,
+    Expression<bool>? webdavPasswordSaved,
+    Expression<DateTime>? lastAutoBackupAt,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
   }) {
@@ -3559,6 +3875,13 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
         'daily_available_minutes': dailyAvailableMinutes,
       if (availableWeekdays != null) 'available_weekdays': availableWeekdays,
       if (closeBehavior != null) 'close_behavior': closeBehavior,
+      if (autoBackupEnabled != null) 'auto_backup_enabled': autoBackupEnabled,
+      if (localBackupFolder != null) 'local_backup_folder': localBackupFolder,
+      if (webdavUrl != null) 'webdav_url': webdavUrl,
+      if (webdavUsername != null) 'webdav_username': webdavUsername,
+      if (webdavPasswordSaved != null)
+        'webdav_password_saved': webdavPasswordSaved,
+      if (lastAutoBackupAt != null) 'last_auto_backup_at': lastAutoBackupAt,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
@@ -3569,6 +3892,12 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     Value<int>? dailyAvailableMinutes,
     Value<String>? availableWeekdays,
     Value<String>? closeBehavior,
+    Value<bool>? autoBackupEnabled,
+    Value<String?>? localBackupFolder,
+    Value<String?>? webdavUrl,
+    Value<String?>? webdavUsername,
+    Value<bool>? webdavPasswordSaved,
+    Value<DateTime?>? lastAutoBackupAt,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
   }) {
@@ -3578,6 +3907,12 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
           dailyAvailableMinutes ?? this.dailyAvailableMinutes,
       availableWeekdays: availableWeekdays ?? this.availableWeekdays,
       closeBehavior: closeBehavior ?? this.closeBehavior,
+      autoBackupEnabled: autoBackupEnabled ?? this.autoBackupEnabled,
+      localBackupFolder: localBackupFolder ?? this.localBackupFolder,
+      webdavUrl: webdavUrl ?? this.webdavUrl,
+      webdavUsername: webdavUsername ?? this.webdavUsername,
+      webdavPasswordSaved: webdavPasswordSaved ?? this.webdavPasswordSaved,
+      lastAutoBackupAt: lastAutoBackupAt ?? this.lastAutoBackupAt,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -3600,6 +3935,24 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     if (closeBehavior.present) {
       map['close_behavior'] = Variable<String>(closeBehavior.value);
     }
+    if (autoBackupEnabled.present) {
+      map['auto_backup_enabled'] = Variable<bool>(autoBackupEnabled.value);
+    }
+    if (localBackupFolder.present) {
+      map['local_backup_folder'] = Variable<String>(localBackupFolder.value);
+    }
+    if (webdavUrl.present) {
+      map['webdav_url'] = Variable<String>(webdavUrl.value);
+    }
+    if (webdavUsername.present) {
+      map['webdav_username'] = Variable<String>(webdavUsername.value);
+    }
+    if (webdavPasswordSaved.present) {
+      map['webdav_password_saved'] = Variable<bool>(webdavPasswordSaved.value);
+    }
+    if (lastAutoBackupAt.present) {
+      map['last_auto_backup_at'] = Variable<DateTime>(lastAutoBackupAt.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -3616,6 +3969,12 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
           ..write('dailyAvailableMinutes: $dailyAvailableMinutes, ')
           ..write('availableWeekdays: $availableWeekdays, ')
           ..write('closeBehavior: $closeBehavior, ')
+          ..write('autoBackupEnabled: $autoBackupEnabled, ')
+          ..write('localBackupFolder: $localBackupFolder, ')
+          ..write('webdavUrl: $webdavUrl, ')
+          ..write('webdavUsername: $webdavUsername, ')
+          ..write('webdavPasswordSaved: $webdavPasswordSaved, ')
+          ..write('lastAutoBackupAt: $lastAutoBackupAt, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -7141,6 +7500,12 @@ typedef $$SettingsTableCreateCompanionBuilder =
       Value<int> dailyAvailableMinutes,
       Value<String> availableWeekdays,
       Value<String> closeBehavior,
+      Value<bool> autoBackupEnabled,
+      Value<String?> localBackupFolder,
+      Value<String?> webdavUrl,
+      Value<String?> webdavUsername,
+      Value<bool> webdavPasswordSaved,
+      Value<DateTime?> lastAutoBackupAt,
       required DateTime createdAt,
       required DateTime updatedAt,
     });
@@ -7150,6 +7515,12 @@ typedef $$SettingsTableUpdateCompanionBuilder =
       Value<int> dailyAvailableMinutes,
       Value<String> availableWeekdays,
       Value<String> closeBehavior,
+      Value<bool> autoBackupEnabled,
+      Value<String?> localBackupFolder,
+      Value<String?> webdavUrl,
+      Value<String?> webdavUsername,
+      Value<bool> webdavPasswordSaved,
+      Value<DateTime?> lastAutoBackupAt,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
     });
@@ -7180,6 +7551,36 @@ class $$SettingsTableFilterComposer
 
   ColumnFilters<String> get closeBehavior => $composableBuilder(
     column: $table.closeBehavior,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get autoBackupEnabled => $composableBuilder(
+    column: $table.autoBackupEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get localBackupFolder => $composableBuilder(
+    column: $table.localBackupFolder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get webdavUrl => $composableBuilder(
+    column: $table.webdavUrl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get webdavUsername => $composableBuilder(
+    column: $table.webdavUsername,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get webdavPasswordSaved => $composableBuilder(
+    column: $table.webdavPasswordSaved,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastAutoBackupAt => $composableBuilder(
+    column: $table.lastAutoBackupAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7223,6 +7624,36 @@ class $$SettingsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get autoBackupEnabled => $composableBuilder(
+    column: $table.autoBackupEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get localBackupFolder => $composableBuilder(
+    column: $table.localBackupFolder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get webdavUrl => $composableBuilder(
+    column: $table.webdavUrl,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get webdavUsername => $composableBuilder(
+    column: $table.webdavUsername,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get webdavPasswordSaved => $composableBuilder(
+    column: $table.webdavPasswordSaved,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastAutoBackupAt => $composableBuilder(
+    column: $table.lastAutoBackupAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -7258,6 +7689,34 @@ class $$SettingsTableAnnotationComposer
 
   GeneratedColumn<String> get closeBehavior => $composableBuilder(
     column: $table.closeBehavior,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get autoBackupEnabled => $composableBuilder(
+    column: $table.autoBackupEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get localBackupFolder => $composableBuilder(
+    column: $table.localBackupFolder,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get webdavUrl =>
+      $composableBuilder(column: $table.webdavUrl, builder: (column) => column);
+
+  GeneratedColumn<String> get webdavUsername => $composableBuilder(
+    column: $table.webdavUsername,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get webdavPasswordSaved => $composableBuilder(
+    column: $table.webdavPasswordSaved,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get lastAutoBackupAt => $composableBuilder(
+    column: $table.lastAutoBackupAt,
     builder: (column) => column,
   );
 
@@ -7300,6 +7759,12 @@ class $$SettingsTableTableManager
                 Value<int> dailyAvailableMinutes = const Value.absent(),
                 Value<String> availableWeekdays = const Value.absent(),
                 Value<String> closeBehavior = const Value.absent(),
+                Value<bool> autoBackupEnabled = const Value.absent(),
+                Value<String?> localBackupFolder = const Value.absent(),
+                Value<String?> webdavUrl = const Value.absent(),
+                Value<String?> webdavUsername = const Value.absent(),
+                Value<bool> webdavPasswordSaved = const Value.absent(),
+                Value<DateTime?> lastAutoBackupAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => SettingsCompanion(
@@ -7307,6 +7772,12 @@ class $$SettingsTableTableManager
                 dailyAvailableMinutes: dailyAvailableMinutes,
                 availableWeekdays: availableWeekdays,
                 closeBehavior: closeBehavior,
+                autoBackupEnabled: autoBackupEnabled,
+                localBackupFolder: localBackupFolder,
+                webdavUrl: webdavUrl,
+                webdavUsername: webdavUsername,
+                webdavPasswordSaved: webdavPasswordSaved,
+                lastAutoBackupAt: lastAutoBackupAt,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),
@@ -7316,6 +7787,12 @@ class $$SettingsTableTableManager
                 Value<int> dailyAvailableMinutes = const Value.absent(),
                 Value<String> availableWeekdays = const Value.absent(),
                 Value<String> closeBehavior = const Value.absent(),
+                Value<bool> autoBackupEnabled = const Value.absent(),
+                Value<String?> localBackupFolder = const Value.absent(),
+                Value<String?> webdavUrl = const Value.absent(),
+                Value<String?> webdavUsername = const Value.absent(),
+                Value<bool> webdavPasswordSaved = const Value.absent(),
+                Value<DateTime?> lastAutoBackupAt = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
               }) => SettingsCompanion.insert(
@@ -7323,6 +7800,12 @@ class $$SettingsTableTableManager
                 dailyAvailableMinutes: dailyAvailableMinutes,
                 availableWeekdays: availableWeekdays,
                 closeBehavior: closeBehavior,
+                autoBackupEnabled: autoBackupEnabled,
+                localBackupFolder: localBackupFolder,
+                webdavUrl: webdavUrl,
+                webdavUsername: webdavUsername,
+                webdavPasswordSaved: webdavPasswordSaved,
+                lastAutoBackupAt: lastAutoBackupAt,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),

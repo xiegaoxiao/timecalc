@@ -50,7 +50,7 @@ void main() {
     final content = await file.readAsString();
     expect(content, contains('TimeCalc 诊断信息'));
     expect(content, contains('应用版本：$kAppVersion'));
-    expect(content, contains('数据库 schema 版本：8'));
+    expect(content, contains('数据库 schema 版本：9'));
     expect(content, contains('goals: 1'));
     expect(content, contains('tasks: 1'));
     expect(content, contains('milestones: 0'));
