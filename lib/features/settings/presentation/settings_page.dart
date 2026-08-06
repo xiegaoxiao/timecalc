@@ -6,13 +6,11 @@ import '../../../core/database/tables.dart';
 import '../../../core/desktop/desktop_providers.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../shared/widgets/app_error_view.dart';
-import '../../../shared/widgets/duration_step_input.dart';
 import '../../backup/presentation/backup_section.dart';
-import '../data/settings_repository.dart';
 import '../data/settings_repository_provider.dart';
 
-/// 设置页：M2 交付「计划偏好」（PRD §5.1 / §9 Settings）；
-/// M3 交付「备份与恢复」（FR-9）与「关闭行为」（FR-8.1）。
+/// 设置页：M3 交付「关闭行为」（FR-8.1）与「备份与恢复」（FR-9）；
+/// 计划偏好已移至进度页入口的独立「计划偏好」页。
 /// 其余设置项（外观、快捷键）随后续里程碑提供。
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -31,8 +29,6 @@ class SettingsPage extends ConsumerWidget {
         data: (settings) => ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            _PlanPreferenceSection(settings: settings),
-            const Divider(height: 32),
             _CloseBehaviorSection(settings: settings),
             const Divider(height: 32),
             const BackupSection(),
@@ -52,143 +48,6 @@ class SettingsPage extends ConsumerWidget {
         ),
       ),
     );
-  }
-}
-
-/// 计划偏好：每日可用时长（小时/分钟步进）+ 每周可用日（FR-5.3 负载计算数据来源）。
-class _PlanPreferenceSection extends ConsumerStatefulWidget {
-  const _PlanPreferenceSection({required this.settings});
-
-  final Setting settings;
-
-  @override
-  ConsumerState<_PlanPreferenceSection> createState() =>
-      _PlanPreferenceSectionState();
-}
-
-class _PlanPreferenceSectionState extends ConsumerState<_PlanPreferenceSection> {
-  late int _dailyMinutes;
-  late Set<int> _weekdays;
-  bool _saving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _dailyMinutes = widget.settings.dailyAvailableMinutes;
-    _weekdays = SettingsRepository.decodeWeekdays(
-      widget.settings.availableWeekdays,
-    );
-  }
-
-  Future<void> _save() async {
-    final total = _dailyMinutes;
-    if (total < 1) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('每日可用时长至少 1 分钟')),
-        );
-      }
-      return;
-    }
-    setState(() => _saving = true);
-    try {
-      final ok = await runDbAction(
-        context,
-        action: () async {
-          final repo = ref.read(settingsRepositoryProvider);
-          await repo.updateDailyAvailableMinutes(total);
-          await repo.updateAvailableWeekdays(_weekdays);
-        },
-      );
-      if (!ok) return;
-      ref.invalidate(settingsProvider);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('计划偏好已保存')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('计划偏好', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
-        Text(
-          '用于计算每日负载与「超出」提示；默认每天 2 小时、每周 7 天（PRD §5.1）。',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        const SizedBox(height: 16),
-        Text(
-          '每日可用时长',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
-        const SizedBox(height: 8),
-        DurationStepInput(
-          label: '每日可用时长',
-          value: _dailyMinutes,
-          onChanged: (minutes) {
-            if (minutes != null) {
-              setState(() => _dailyMinutes = minutes);
-            }
-          },
-          hourFieldKey: const Key('hourStepField'),
-          minuteFieldKey: const Key('minuteStepField'),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          '每周可用日',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
-        const SizedBox(height: 4),
-        Wrap(
-          spacing: 8,
-          children: [
-            for (final day in const [1, 2, 3, 4, 5, 6, 7])
-              FilterChip(
-                label: Text(_weekdayLabel(day)),
-                selected: _weekdays.contains(day),
-                onSelected: (selected) {
-                  setState(() {
-                    if (selected) {
-                      _weekdays.add(day);
-                    } else {
-                      _weekdays.remove(day);
-                    }
-                  });
-                },
-              ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Align(
-          alignment: Alignment.centerRight,
-          child: FilledButton.icon(
-            onPressed: _saving ? null : _save,
-            icon: const Icon(Icons.save_outlined, size: 18),
-            label: const Text('保存'),
-          ),
-        ),
-      ],
-    );
-  }
-
-  static String _weekdayLabel(int iso) {
-    return switch (iso) {
-      1 => '周一',
-      2 => '周二',
-      3 => '周三',
-      4 => '周四',
-      5 => '周五',
-      6 => '周六',
-      7 => '周日',
-      _ => '未知',
-    };
   }
 }
 

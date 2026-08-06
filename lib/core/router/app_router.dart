@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/goals/presentation/goal_detail_page.dart';
 import '../../features/plan/presentation/plan_page.dart';
 import '../../features/progress/presentation/progress_page.dart';
+import '../../features/settings/presentation/plan_preference_page.dart';
 import '../../features/settings/presentation/settings_page.dart';
 import '../../features/tasks/data/recurrence_repository_provider.dart';
 import '../../features/tasks/presentation/subject_task_page.dart';
@@ -79,6 +80,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           goalId: int.parse(state.pathParameters['goalId']!),
           subjectId: int.parse(state.pathParameters['subjectId']!),
         ),
+      ),
+      // 计划偏好独立页（进度页入口卡 push 进入，设置页移除该区块）。
+      GoRoute(
+        path: '/plan-preference',
+        name: 'planPreference',
+        builder: (context, state) => const PlanPreferencePage(),
       ),
     ],
   );

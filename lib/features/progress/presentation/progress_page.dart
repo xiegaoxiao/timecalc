@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
@@ -8,6 +9,8 @@ import '../../../services/duration_format.dart';
 import '../../../services/statistics_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../goals/data/goal_repository_provider.dart';
+import '../../settings/data/settings_repository.dart';
+import '../../settings/data/settings_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
 
 /// LeetCode 官方热力图色板（FR-7.2）。
@@ -134,6 +137,10 @@ class ProgressPage extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // 计划偏好入口卡：偏好是解读进度（今日概览完成率/剩余工作量）
+              // 的上下文，点击进入独立编辑页（设置页已移除该区块）。
+              const _PlanPreferenceEntryCard(),
+              const SizedBox(height: 8),
               _TodayOverviewCard(
                 stats: todayStats,
                 remainingMinutes: remainingMinutes,
@@ -167,6 +174,62 @@ class ProgressPage extends ConsumerWidget {
         );
       },
     );
+  }
+}
+
+/// 计划偏好入口卡。
+///
+/// 展示当前每日可用时长与每周可用日摘要；点击进入独立「计划偏好」页编辑
+/// （计划偏好是负载计算规则，也是解读进度数据的上下文；编辑细节收敛到
+/// 独立页，保持进度页视觉整洁）。
+class _PlanPreferenceEntryCard extends ConsumerWidget {
+  const _PlanPreferenceEntryCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settingsAsync = ref.watch(settingsProvider);
+    return Card(
+      child: settingsAsync.when(
+        loading: () => const ListTile(
+          title: Text('计划偏好'),
+          subtitle: Text('加载中…'),
+        ),
+        error: (error, _) => ListTile(
+          title: const Text('计划偏好'),
+          subtitle: Text('加载失败：$error'),
+        ),
+        data: (settings) {
+          final weekdays = SettingsRepository.decodeWeekdays(
+            settings.availableWeekdays,
+          );
+          final weekdayText = weekdays.length == 7
+              ? '每周 7 天'
+              : '每周 ${weekdays.map(_weekdayShort).join('、')}';
+          return ListTile(
+            leading: const Icon(Icons.tune),
+            title: const Text('计划偏好'),
+            subtitle: Text(
+              '每日可用 ${DurationFormat.minutes(settings.dailyAvailableMinutes)} · $weekdayText',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/plan-preference'),
+          );
+        },
+      ),
+    );
+  }
+
+  static String _weekdayShort(int iso) {
+    return switch (iso) {
+      1 => '一',
+      2 => '二',
+      3 => '三',
+      4 => '四',
+      5 => '五',
+      6 => '六',
+      7 => '日',
+      _ => '?',
+    };
   }
 }
 
