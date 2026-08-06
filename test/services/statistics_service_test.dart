@@ -10,10 +10,10 @@ import 'package:timecalc/services/statistics_service.dart';
 void main() {
   const service = StatisticsService();
 
-  Task todo(String date, {int? minutes, int id = 0}) {
+  Task todo(String date, {int? minutes, int id = 0, int goalId = 1}) {
     return Task(
       id: id,
-      goalId: 1,
+      goalId: goalId,
       title: '任务$id',
       plannedDate: date,
       estimatedMinutes: minutes,
@@ -24,15 +24,15 @@ void main() {
     );
   }
 
-  Task done(String date, {int? minutes, int id = 0, DateTime? completedAt}) {
+  Task done(String date, {int? minutes, int id = 0, int goalId = 1, DateTime? completedAt}) {
     return Task(
       id: id,
-      goalId: 1,
+      goalId: goalId,
       title: '完成$id',
       plannedDate: date,
       estimatedMinutes: minutes,
       status: 'done',
-      completedAt: completedAt ?? DateTime.utc(2026, 1, 1, 12),
+      completedAt: completedAt ?? DateTime(2026, 1, 1, 12),
       sortOrder: 0,
       createdAt: DateTime.utc(2026, 1, 1),
       updatedAt: DateTime.utc(2026, 1, 1),
@@ -115,17 +115,109 @@ void main() {
     });
   });
 
-  group('heatLevel（热力图强度分桶）', () {
+  group('heatLevel（热力图强度分桶，LeetCode 五档）', () {
     test('五档分桶边界', () {
       expect(StatisticsService.heatLevel(0), 0);
       expect(StatisticsService.heatLevel(1), 1);
-      expect(StatisticsService.heatLevel(2), 1);
-      expect(StatisticsService.heatLevel(3), 2);
-      expect(StatisticsService.heatLevel(5), 2);
-      expect(StatisticsService.heatLevel(6), 3);
-      expect(StatisticsService.heatLevel(8), 3);
-      expect(StatisticsService.heatLevel(9), 4);
+      expect(StatisticsService.heatLevel(3), 1);
+      expect(StatisticsService.heatLevel(4), 2);
+      expect(StatisticsService.heatLevel(6), 2);
+      expect(StatisticsService.heatLevel(7), 3);
+      expect(StatisticsService.heatLevel(9), 3);
+      expect(StatisticsService.heatLevel(10), 4);
       expect(StatisticsService.heatLevel(99), 4);
+    });
+  });
+
+  group('minutesLevel（甘特图时长分桶）', () {
+    test('五档分桶边界（分钟）', () {
+      expect(StatisticsService.minutesLevel(0), 0);
+      expect(StatisticsService.minutesLevel(1), 1);
+      expect(StatisticsService.minutesLevel(59), 1);
+      expect(StatisticsService.minutesLevel(60), 2);
+      expect(StatisticsService.minutesLevel(119), 2);
+      expect(StatisticsService.minutesLevel(120), 3);
+      expect(StatisticsService.minutesLevel(299), 3);
+      expect(StatisticsService.minutesLevel(300), 4);
+      expect(StatisticsService.minutesLevel(999), 4);
+    });
+  });
+
+  group('goalGanttData（甘特图周聚合：计划 + 完成）', () {
+    test('按目标分组：未完成按计划日期归周，已完成按完成日期归周', () {
+      final weekStarts = StatisticsService.ganttWeekStarts(
+        DateTime(2026, 8, 5), // 周三
+        pastWeeks: 1,
+        futureWeeks: 1,
+      );
+      // 窗口共 3 周：[上周一, 本周一(08-03), 下周一(08-10)]。
+      final lastStart = weekStarts[1]; // 2026-08-03
+      final prevStart = lastStart.subtract(const Duration(days: 7));
+
+      final data = service.goalGanttData(
+        todoTasks: [
+          todo('2026-08-12', minutes: 120, id: 1, goalId: 1), // 下周计划
+        ],
+        completedTasks: [
+          done(
+            '2026-07-29',
+            minutes: 90,
+            id: 2,
+            goalId: 1,
+            completedAt: prevStart.add(const Duration(hours: 10)),
+          ),
+          done(
+            '2026-08-04',
+            minutes: 60,
+            id: 3,
+            goalId: 2,
+            completedAt: lastStart.add(const Duration(hours: 10)),
+          ),
+        ],
+        weekStarts: weekStarts,
+      );
+
+      // 目标 1：上周完成 90 + 下周计划 120。
+      expect(data[1]!.planned[2], 120);
+      expect(data[1]!.completed[0], 90);
+      // 目标 2：本周完成 60。
+      expect(data[2]!.completed[1], 60);
+    });
+
+    test('无预估时长 / completedAt 为空的任务不计入', () {
+      final weekStarts = StatisticsService.ganttWeekStarts(DateTime(2026, 8, 5));
+      final data = service.goalGanttData(
+        todoTasks: [
+          todo('2026-08-06', id: 1), // 无预估时长
+        ],
+        completedTasks: [
+          Task(
+            id: 2,
+            goalId: 1,
+            title: '无完成时间',
+            plannedDate: '2026-08-04',
+            status: 'done',
+            completedAt: null,
+            estimatedMinutes: 60,
+            sortOrder: 0,
+            createdAt: DateTime.utc(2026, 1, 1),
+            updatedAt: DateTime.utc(2026, 1, 1),
+          ),
+        ],
+        weekStarts: weekStarts,
+      );
+      expect(data, isEmpty);
+    });
+
+    test('ganttWeekStarts：过去 12 + 当前 + 未来 13 周，当前周居中', () {
+      final starts = StatisticsService.ganttWeekStarts(DateTime(2026, 8, 5));
+      expect(starts, hasLength(26));
+      // 2026-08-05 是周三 → 本周一为 2026-08-03。
+      expect(starts[12], DateTime(2026, 8, 3)); // 当前周
+      expect(starts[0], DateTime(2026, 5, 11)); // 12 周前
+      expect(starts[25], DateTime(2026, 11, 2)); // 13 周后
+      // 逐周递增 7 天。
+      expect(starts[1].difference(starts[0]), const Duration(days: 7));
     });
   });
 

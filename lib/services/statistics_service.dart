@@ -20,6 +20,22 @@ class DayCompletionStats {
   );
 }
 
+/// 目标在甘特图某窗口各周的时长数据（计划 vs 完成）。
+class GoalGanttRow {
+  const GoalGanttRow({required this.planned, required this.completed});
+
+  /// 每周计划时长（分钟）：未完成任务按计划日期归周。
+  final List<int> planned;
+
+  /// 每周完成时长（分钟）：已完成任务按完成日期归周。
+  final List<int> completed;
+
+  /// 该目标在窗口内是否有任何数据（计划或完成）。
+  bool get hasData {
+    return planned.any((m) => m > 0) || completed.any((m) => m > 0);
+  }
+}
+
 /// 进度统计规则（FR-7.1 / FR-7.2 / FR-7.4）。
 ///
 /// 纯 Dart service，不依赖数据库与 UI。
@@ -81,14 +97,95 @@ class StatisticsService {
     return sum;
   }
 
-  /// 热力图强度分桶（GitHub 风格五档）。
+  /// 热力图强度分桶（LeetCode 官方五档，FR-7.2）。
   ///
-  /// 0 项 → 0；1-2 项 → 1；3-5 项 → 2；6-8 项 → 3；9+ 项 → 4。
+  /// 0 项 → 0；1-3 项 → 1；4-6 项 → 2；7-9 项 → 3；10+ 项 → 4。
   static int heatLevel(int count) {
     if (count <= 0) return 0;
-    if (count <= 2) return 1;
-    if (count <= 5) return 2;
-    if (count <= 8) return 3;
+    if (count <= 3) return 1;
+    if (count <= 6) return 2;
+    if (count <= 9) return 3;
+    return 4;
+  }
+
+  /// 甘特图窗口：过去 [pastWeeks] 个完整周 + 当前周 + 未来 [futureWeeks] 周
+  /// （默认共 26 周），让用户能同时看到历史完成与未来计划。
+  ///
+  /// 周从周一开始（与热力图一致）。返回的列表按时间升序，当前周位于
+  /// `pastWeeks` 下标处。
+  static List<DateTime> ganttWeekStarts(
+    DateTime today, {
+    int pastWeeks = 12,
+    int futureWeeks = 13,
+  }) {
+    final day = DateTime(today.year, today.month, today.day);
+    final thisWeekStart = day.subtract(Duration(days: day.weekday - 1));
+    return List.generate(pastWeeks + 1 + futureWeeks, (i) {
+      return thisWeekStart.subtract(Duration(days: (pastWeeks - i) * 7));
+    });
+  }
+
+  /// 每个目标在 [weekStarts] 各周内的「计划时长」与「完成时长」（甘特图）。
+  ///
+  /// - 计划时长：未完成任务按计划日期（plannedDate）归入所在周；
+  /// - 完成时长：已完成任务按完成日期（completedAt）归入所在周；
+  /// - 无预估时长的任务不计入（FR-7.4），窗口外的任务忽略。
+  Map<int, GoalGanttRow> goalGanttData({
+    required List<Task> todoTasks,
+    required List<Task> completedTasks,
+    required List<DateTime> weekStarts,
+  }) {
+    final byGoal = <int, GoalGanttRow>{};
+
+    GoalGanttRow rowFor(int goalId) => byGoal.putIfAbsent(
+          goalId,
+          () => GoalGanttRow(
+            planned: List.filled(weekStarts.length, 0),
+            completed: List.filled(weekStarts.length, 0),
+          ),
+        );
+
+    for (final task in todoTasks) {
+      final minutes = task.estimatedMinutes;
+      if (minutes == null) continue;
+      final weekIndex = _weekIndexOf(DateTime.parse(task.plannedDate), weekStarts);
+      if (weekIndex == null) continue;
+      rowFor(task.goalId).planned[weekIndex] += minutes;
+    }
+
+    for (final task in completedTasks) {
+      if (task.status != TaskStatus.done) continue;
+      final minutes = task.estimatedMinutes;
+      final completedAt = task.completedAt;
+      if (minutes == null || completedAt == null) continue;
+      final weekIndex = _weekIndexOf(completedAt.toLocal(), weekStarts);
+      if (weekIndex == null) continue;
+      rowFor(task.goalId).completed[weekIndex] += minutes;
+    }
+
+    return byGoal;
+  }
+
+  /// [date]（本地日历日期）落在 [weekStarts] 中哪一周（下标）；不在任何
+  /// 一周内返回 null。
+  static int? _weekIndexOf(DateTime date, List<DateTime> weekStarts) {
+    final day = DateTime(date.year, date.month, date.day);
+    for (var i = 0; i < weekStarts.length; i++) {
+      final start = weekStarts[i];
+      final end = start.add(const Duration(days: 7));
+      if (!day.isBefore(start) && day.isBefore(end)) return i;
+    }
+    return null;
+  }
+
+  /// 甘特图时长分桶（LeetCode 绿系五档，按周完成分钟数）。
+  ///
+  /// 0 分钟 → 0；1-59 → 1；60-119 → 2；120-299 → 3；300+ → 4。
+  static int minutesLevel(int minutes) {
+    if (minutes <= 0) return 0;
+    if (minutes < 60) return 1;
+    if (minutes < 120) return 2;
+    if (minutes < 300) return 3;
     return 4;
   }
 
