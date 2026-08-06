@@ -379,6 +379,8 @@
 | 2026-08-06 | window_manager | 0.5.2 | 窗口位置/尺寸/防关闭/最大化 | MIT | 手写平台通道 + Win32 | FR-8.1/8.3 标准方案，纯 Dart 调 FFI 插件 |
 | 2026-08-06 | tray_manager | 0.5.3 | 系统托盘图标与菜单 | MIT | system_tray | 与 window_manager 同源（leanflutter），API 一致 |
 | 2026-08-06 | screen_retriever | 0.2.2 | 显示器列表与主屏查询 | MIT | win32 枚举 | 与 window_manager 同源，Display.id/visibleSize 满足多屏恢复 |
+| 2026-08-06 | http | 1.6.0 | WebDAV 客户端 HTTP 传输（提升为直接依赖） | BSD-3-Clause | dio | M8 自动备份 WebDAV 目的地；MockClient 单测不碰真实网络 |
+| 2026-08-06 | flutter_secure_storage | 11.0.0 | WebDAV 密码系统凭据存储（Windows DPAPI） | BSD-3-Clause | wincred/DPAPI 手写 | NFR-3 凭据受保护；测试一律 override 假实现不触碰平台通道 |
 |  |  |  |  |  |  |  |
 
 每次引入或移除重要第三方依赖时新增一行；许可证判断以实际使用版本仓库中的 `LICENSE`/`NOTICE` 为准。

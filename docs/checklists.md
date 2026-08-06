@@ -104,8 +104,8 @@
 - [x]（P0）可将全部业务数据导出为带版本号的备份文件并恢复（FR-9.1）——BackupService 导出 zip（manifest 带版本/计数），设置页「导出备份」；backup_service_test 10 项。
 - [x]（P0）恢复前展示备份时间、目标数和任务数，并要求确认「合并」或「覆盖」（FR-9.2）——恢复确认对话框展示摘要并二选一。
 - [x]（P0）覆盖恢复前自动创建当前数据的安全副本（FR-9.3）——覆盖模式先 exportSafetyCopy 再原子替换；测试断言副本存在且含覆盖前数据。
-- [ ]（P1）每日自动备份，默认保留最近 7 份；路径不可写时通知用户（FR-9.4）——P1 未纳入 M3，不适用。
-- [x] API Key、日志和窗口状态不进入业务数据备份（FR-9.5）——备份仅含业务表 + 计划偏好；settings.json 不含 close_behavior；窗口状态独立 JSON；测试佐证。
+- [x]（P1）每日自动备份，默认保留最近 7 份；路径不可写时通知用户（FR-9.4）——M8 交付：设置页「自动备份」独立页（启用开关 + 本地目录 + WebDAV 双目的地）；应用运行期间语义（启动检查 + 每小时复查，距上次成功不足 24 小时跳过）；每目的地只保留最近 7 份自动备份（`timecalc-auto-` 前缀隔离，不删手动导出）；失败不推进时间戳、当日去重 SnackBar 提示；从备份位置恢复（本地目录/WebDAV 列表 → 下载 → 走合并/覆盖全链路）；WebDAV 密码经系统凭据存储（DPAPI，NFR-3）不落库不进备份；schema v9 新增 6 个配置列 + 覆盖恢复保留运行时配置；auto_backup_service_test 9 项 + webdav_client_test 11 项 + backup_target_test 8 项 + auto_backup_scheduler_test 4 项 + auto_backup_page_test 5 项 + migration v8→v9 3 项佐证。
+- [x] API Key、日志和窗口状态不进入业务数据备份（FR-9.5）——备份仅含业务表 + 计划偏好；settings.json 不含 close_behavior 与自动备份配置；窗口状态独立 JSON；WebDAV 密码存系统凭据存储；测试佐证。
 
 ## 3. 用户流程走查清单（手动回归，每个里程碑结束时执行）
 

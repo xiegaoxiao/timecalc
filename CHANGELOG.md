@@ -4,7 +4,25 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循
 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-当前状态：v1.0.0（M3 里程碑：进度与数据保障）已发布；v1.1.0（M4 MVP 发布候选 + 迭代增强）为本发布候选，尚未发布正式版本；v1.2.0（M5 首个增强迭代：里程碑 FR-2）为本发布候选的迭代增强，尚未发布正式版本；v1.3.0（M6 迭代：任务检查项 FR-4.1）为本发布候选的迭代增强，尚未发布正式版本；v1.4.0（M7 迭代：燃尽趋势 FR-7.3）为本发布候选的迭代增强，尚未发布正式版本。
+当前状态：v1.0.0（M3 里程碑：进度与数据保障）已发布；v1.1.0（M4 MVP 发布候选 + 迭代增强）为本发布候选，尚未发布正式版本；v1.2.0（M5 首个增强迭代：里程碑 FR-2）为本发布候选的迭代增强，尚未发布正式版本；v1.3.0（M6 迭代：任务检查项 FR-4.1）为本发布候选的迭代增强，尚未发布正式版本；v1.4.0（M7 迭代：燃尽趋势 FR-7.3）为本发布候选的迭代增强，尚未发布正式版本；v1.5.0（M8 迭代：自动备份 FR-9.4）为本发布候选的迭代增强，尚未发布正式版本。
+
+## [1.5.0] — 2026-08-06
+
+### 新增（M8：每日自动备份 FR-9.4 + 多目的地备份/恢复）
+
+- **每日自动备份（FR-9.4）**：设置页新增「自动备份」独立页——启用开关 + 本地目录 + WebDAV 两个目的地；应用运行期间语义（启动即检查一次 + 每小时复查，距上次成功不足 24 小时跳过）；每个目的地只保留最近 7 份自动备份（前缀隔离，绝不删手动导出）；失败不推进时间戳并在当日去重提示。
+- **WebDAV 目的地**：自研薄客户端（`http` 包提升为直接依赖，MKCOL/PUT/PROPFIND/GET/DELETE + Basic Auth，路径逐段 percent-encode 兼容非 ASCII 目录）；「保存并测试连接」只读探测（建目录 + 列目录）；401 抛认证异常、网络错误转可读文案。
+- **凭据保护（NFR-3）**：WebDAV 密码经 `flutter_secure_storage`（Windows DPAPI）存系统凭据存储，不落业务数据库、不进备份文件（FR-9.5）；地址维度区分多套凭据；测试一律 override 假实现不触碰平台通道。
+- **从备份位置恢复**：备份页新增「从备份位置恢复」——列出本地目录/WebDAV 上的备份文件（来源 + 文件名 + 时间 + 大小），选中后下载到临时文件，走原有「清单预览 + 合并/覆盖确认」全链路。
+- **数据层（schema v9）**：Settings 表新增 6 个自动备份配置列（`auto_backup_enabled`/`local_backup_folder`/`webdav_url`/`webdav_username`/`webdav_password_saved`/`last_auto_backup_at`，全部带默认值或可空，旧库免回填）；`from8To9` 迁移 + drift schema 快照 + migration 测试（v8→v9 / v1→v9 / 半迁移幂等）。
+- **覆盖恢复保留运行时配置**：`_overwriteRestore` 现在连同 6 个自动备份配置列一起保留（与 close_behavior 同模式，FR-9.5）；备份 JSON 依旧不含这些字段。
+
+**测试**：新增 webdav_client_test 11 项（MockClient，不碰真实网络）、backup_target_test 8 项（本地/WebDAV 目的地）、auto_backup_service_test 9 项（跳过/成功推进时间戳/失败不推进/保留策略/多目的地）、auto_backup_scheduler_test 4 项（幂等/失败去重/成功重置/跳过不提示）、migration_test 新增 3 项（v8→v9/v1→v9/半迁移幂等）、settings_repository_test 新增 6 项、auto_backup_page_test 5 项、backup_service 回归（覆盖恢复保留自动备份配置）。全套 **416 项测试通过**（含既有 368 + M8 新增 48；其中既有日期敏感用例「目标详情添加任务并显示」在干净 HEAD 上即失败，与本次无关）。
+
+### 依赖
+
+- `http ^1.6.0` 由传递依赖提升为直接依赖（WebDAV 客户端传输）。
+- 新增 `flutter_secure_storage ^11.0.0`（WebDAV 密码系统凭据存储，Windows DPAPI）。
 
 ## [1.4.0] — 2026-08-06
 
