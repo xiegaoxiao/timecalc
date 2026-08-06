@@ -134,6 +134,10 @@ class GoalRepository {
       await (_db.delete(_db.recurrenceTemplates)
             ..where((t) => t.goalId.equals(goalId)))
           .go();
+      // 里程碑随目标级联删除，防止孤儿里程碑（FR-2，schema v7）。
+      await (_db.delete(_db.milestones)
+            ..where((m) => m.goalId.equals(goalId)))
+          .go();
       await (_db.delete(_db.goals)..where((g) => g.id.equals(goalId))).go();
     });
   }

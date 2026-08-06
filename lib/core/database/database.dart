@@ -35,8 +35,9 @@ Future<void> addColumnIfMissing(
 /// v5：RecurrenceTemplates 增加 deleted_instance_dates（删除实例墓碑，
 ///     滚动生成跳过已删除日期，防止被删实例复活）。
 /// v6：Settings 增加 close_behavior（FR-8.1 关闭按钮行为：退出/最小化到托盘）。
+/// v7：新增 Milestones 里程碑表（FR-2 目标下的阶段性节点）。
 /// 后续 schema 变更必须提供 migration 与 migration 测试（SOP S3、NFR-2）。
-@DriftDatabase(tables: [Goals, Subjects, Tasks, Settings, RecurrenceTemplates])
+@DriftDatabase(tables: [Goals, Subjects, Milestones, Tasks, Settings, RecurrenceTemplates])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
@@ -45,7 +46,7 @@ class AppDatabase extends _$AppDatabase {
       AppDatabase(driftDatabase(name: 'timecalc'));
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -93,6 +94,11 @@ class AppDatabase extends _$AppDatabase {
               schema.settings,
               schema.settings.closeBehavior,
             );
+          },
+          from6To7: (m, schema) async {
+            // v6 -> v7：新增里程碑表（FR-2 目标下的阶段性节点）。
+            // createTable 自带 IF NOT EXISTS，重复升级/半迁移安全。
+            await m.createTable(schema.milestones);
           },
         ),
       );

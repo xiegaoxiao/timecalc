@@ -415,6 +415,111 @@ void main() {
     await repaired.close();
     schema.close();
   });
+
+  test('schema v6 -> v7：里程碑表创建，v6 数据保留', () async {
+    final verifier = SchemaVerifier(GeneratedHelper());
+    // 以 v6 结构初始化数据库并写入数据。
+    final schema = await verifier.schemaAt(6);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['v6 目标', '2026-08-05', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO settings (id, created_at, updated_at) VALUES (1, ?, ?)',
+      [1750000000, 1750000000],
+    );
+
+    // 以真实 AppDatabase 打开并执行 v6 -> v7 迁移，再与 v7 预期结构比对。
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 7);
+
+    // v6 数据保留。
+    final goal = await (upgraded.select(upgraded.goals)..where((g) => g.id.equals(1))).getSingle();
+    expect(goal.title, 'v6 目标');
+    expect(goal.deadlineDate, '2026-08-05');
+
+    // v7 新表存在且可写入（含外键关联目标）。
+    final tables = await upgraded.customSelect(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+    ).get();
+    final names = tables.map((row) => row.read<String>('name')).toSet();
+    expect(names, contains('milestones'));
+
+    await upgraded.into(upgraded.milestones).insert(
+          MilestonesCompanion.insert(
+            goalId: 1,
+            title: '里程碑一',
+            date: '2026-08-01',
+            createdAt: DateTime.fromMillisecondsSinceEpoch(1750000000, isUtc: true),
+            updatedAt: DateTime.fromMillisecondsSinceEpoch(1750000000, isUtc: true),
+          ),
+        );
+    final milestone = await upgraded.select(upgraded.milestones).getSingle();
+    expect(milestone.title, '里程碑一');
+    expect(milestone.goalId, 1);
+    expect(milestone.status, 'todo');
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('schema v1 -> v7：迁移成功保留数据，里程碑表存在', () async {
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(1);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['迁移目标', '2026-08-05', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO tasks (goal_id, title, planned_date, created_at, updated_at) '
+      'VALUES (1, ?, ?, ?, ?)',
+      ['迁移任务', '2026-08-05', 1750000000, 1750000000],
+    );
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 7);
+
+    final goal = await (upgraded.select(upgraded.goals)..where((g) => g.id.equals(1))).getSingle();
+    expect(goal.title, '迁移目标');
+    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    expect(task.title, '迁移任务');
+
+    final tables = await upgraded.customSelect(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+    ).get();
+    final names = tables.map((row) => row.read<String>('name')).toSet();
+    expect(names, containsAll(['settings', 'recurrence_templates', 'milestones']));
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('半迁移状态：v6 版本号但里程碑表已存在时迁移可重复成功（幂等回归）', () async {
+    // 里程碑表用 v7 快照建库（结构一致），再把版本号重置为 6，模拟
+    // 「表已手工创建但 user_version 落后」的半迁移状态。
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(7);
+    final raw = schema.rawDatabase;
+    raw.execute('PRAGMA user_version = 6'); // 模拟版本号落后
+
+    // 旧实现 createTable 抛 duplicate table name；createTable 自带
+    // IF NOT EXISTS，幂等实现应成功。
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 7);
+
+    final tables = await upgraded.customSelect(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+    ).get();
+    final names = tables.map((row) => row.read<String>('name')).toSet();
+    expect(names, contains('milestones'));
+
+    await upgraded.close();
+    schema.close();
+  });
 }
 
 /// 打开时即抛错的迁移策略（验证 onUpgrade 失败回滚与数据保全）。

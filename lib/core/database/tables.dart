@@ -28,6 +28,12 @@ class TaskStatus {
   static const String done = 'done';
 }
 
+/// 里程碑状态（FR-2，schema v7 引入）。
+class MilestoneStatus {
+  static const String todo = 'todo';
+  static const String done = 'done';
+}
+
 /// 计划偏好默认值（PRD §5.1：默认每天 2 小时、每周 7 天）。
 class SettingsDefaults {
   static const int dailyAvailableMinutes = 120;
@@ -52,6 +58,22 @@ class Subjects extends Table {
   IntColumn get goalId => integer().references(Goals, #id)();
   TextColumn get name => text().withLength(min: 1, max: 100)();
   TextColumn get color => text()();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+}
+
+/// 里程碑（FR-2，schema v7 引入）。
+///
+/// 目标下的阶段性节点，用户可添加/编辑/完成/删除（FR-2.1）；
+/// 里程碑日期原则上不得晚于目标截止日（FR-2.2）。date 为本地日历日期，
+/// 遵循 `yyyy-MM-dd` 文本约定（tables.dart 头注释）。
+class Milestones extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get goalId => integer().references(Goals, #id)();
+  TextColumn get title => text().withLength(min: 1, max: 200)();
+  TextColumn get date => text()();
+  TextColumn get status => text().withDefault(const Constant('todo'))();
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
