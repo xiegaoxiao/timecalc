@@ -252,35 +252,19 @@ void main() {
     expect(find.text('当前共 24 小时'), findsOneWidget);
   });
 
-  testWidgets('历史任务区展示归档任务并可恢复回当前计划', (tester) async {
+  testWidgets('详情页不展示历史任务区（归档任务移入设置页数据管理）', (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
     await tasks.create(goalId: goal.id, title: '旧任务', plannedDate: '2026-08-06', estimatedMinutes: 60);
     // 归档全部任务（模拟 JSON 导入替换）。
     await tasks.archiveAllActive(goal.id);
+    expect((await tasks.archivedByGoal(goal.id)), isNotEmpty);
 
     await pumpApp(tester);
     await openGoalDetail(tester, '考研');
 
-    // 历史任务区在目标详情底部，先滚动到可见。
-    await tester.scrollUntilVisible(
-      find.text('历史任务（1）'),
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('历史任务（1）'), findsOneWidget);
-    expect(find.textContaining('旧任务'), findsOneWidget);
-
-    // 点击恢复：任务回到当前计划，历史区消失。
-    await tester.ensureVisible(find.text('恢复'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('恢复'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('历史任务（1）'), findsNothing);
-    final active = await tasks.byGoal(goal.id);
-    expect(active.map((t) => t.title), contains('旧任务'));
-    expect(await tasks.archivedByGoal(goal.id), isEmpty);
+    // 详情页不再渲染「历史任务」区（已移入设置页「备份与恢复」）。
+    expect(find.textContaining('历史任务'), findsNothing);
+    // 归档任务不进入当前计划列表。
+    expect(find.text('旧任务'), findsNothing);
   });
 }

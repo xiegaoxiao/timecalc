@@ -223,19 +223,21 @@ void main() {
     expect(math.estimatedMinutes, 180);
   });
 
-  testWidgets('JSON 导入替换：展示将被替换的任务，确认后旧任务归档保留', (tester) async {
-    await tasks.create(goalId: goalId, title: '旧任务A', plannedDate: '2026-08-06', estimatedMinutes: 60);
-    await tasks.create(goalId: goalId, title: '旧任务B', plannedDate: '2026-08-07');
+  testWidgets('JSON 导入替换：已完成归档保留、未完成删除', (tester) async {
+    // 已完成旧任务：替换时归档保留；未完成旧任务：替换时删除。
+    final done = await tasks.create(goalId: goalId, title: '已完成旧任务', plannedDate: '2026-08-06', estimatedMinutes: 60);
+    await tasks.setDone(done.id, true);
+    await tasks.create(goalId: goalId, title: '未完成旧任务', plannedDate: '2026-08-07');
     await pumpApp(tester);
     await openGoalDetail(tester);
 
     await tester.tap(find.text('JSON 导入'));
     await tester.pumpAndSettle();
 
-    // 对话框展示将被替换并保留为历史的当前任务清单。
-    expect(find.text('当前任务（将被替换并保留为历史）'), findsOneWidget);
-    expect(find.text('• 旧任务A · 2026-08-06 · 1 小时'), findsOneWidget);
-    expect(find.text('• 旧任务B · 2026-08-07'), findsOneWidget);
+    // 对话框展示将被替换的当前任务清单。
+    expect(find.text('当前任务（将被替换）'), findsOneWidget);
+    expect(find.text('• 已完成旧任务 · 2026-08-06 · 1 小时'), findsOneWidget);
+    expect(find.text('• 未完成旧任务 · 2026-08-07'), findsOneWidget);
 
     // 粘贴合法 JSON 并等待自动校验。
     await tester.enterText(
@@ -246,21 +248,23 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('校验通过：1 个任务'), findsOneWidget);
 
-    // 点导入 → 弹替换确认。
+    // 点导入 → 弹替换确认（提示删除未完成、归档已完成）。
     await tester.tap(find.text('导入'));
     await tester.pumpAndSettle();
     expect(find.text('替换当前任务计划？'), findsOneWidget);
     expect(find.textContaining('2 个任务将从计划中移除'), findsOneWidget);
+    expect(find.textContaining('未完成的 1 个任务将被删除'), findsOneWidget);
+    expect(find.textContaining('已完成的 1 个任务归档保留'), findsOneWidget);
 
     await tester.tap(find.text('导入并替换'));
     await tester.pumpAndSettle();
 
-    // 替换完成：当前列表只剩新任务，旧任务归档保留（历史任务）。
+    // 替换完成：当前列表只剩新任务；未完成旧任务已删除、已完成归档保留。
     final goalTasks = await tasks.byGoal(goalId);
     expect(goalTasks.map((t) => t.title).toList(), ['新任务']);
     final archived = await tasks.archivedByGoal(goalId);
-    expect(archived.map((t) => t.title).toSet(), {'旧任务A', '旧任务B'});
-    expect(find.text('替换导入 1 个任务；2 个旧任务已归档到历史任务'), findsOneWidget);
+    expect(archived.map((t) => t.title).toSet(), {'已完成旧任务'});
+    expect(find.text('替换导入 1 个任务；删除 1 个未完成旧任务、归档 1 个已完成任务'), findsOneWidget);
   });
 
   testWidgets('JSON 导入合并：追加到现有计划，不改动当前任务', (tester) async {
@@ -272,11 +276,11 @@ void main() {
     await tester.pumpAndSettle();
 
     // 默认替换模式：合并模式不展示「将被替换」清单。
-    expect(find.text('当前任务（将被替换并保留为历史）'), findsOneWidget);
+    expect(find.text('当前任务（将被替换）'), findsOneWidget);
     await tester.tap(find.text('合并'));
     await tester.pumpAndSettle();
     expect(find.textContaining('JSON 任务追加到现有计划'), findsOneWidget);
-    expect(find.text('当前任务（将被替换并保留为历史）'), findsNothing);
+    expect(find.text('当前任务（将被替换）'), findsNothing);
 
     // 粘贴合法 JSON 并等待自动校验。
     await tester.enterText(

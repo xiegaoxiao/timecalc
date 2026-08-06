@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
-import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../services/countdown_service.dart';
 import '../../../services/duration_format.dart';
@@ -59,7 +58,6 @@ class GoalDetailBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final subjectsAsync = ref.watch(subjectListProvider(goal.id));
     final tasksAsync = ref.watch(taskListProvider(goal.id));
-    final archivedAsync = ref.watch(archivedTaskListProvider(goal.id));
 
     return CustomScrollView(
       slivers: [
@@ -143,39 +141,6 @@ class GoalDetailBody extends ConsumerWidget {
           ),
         ),
         const SliverToBoxAdapter(child: Divider(height: 32)),
-        // 历史任务区：JSON 导入替换时归档保留的旧任务，可手动恢复。
-        // 以懒加载 sliver 展示：归档任务可能很多（如替换导入遗留），
-        // 全量渲染会导致进入详情页卡顿（性能回归见 CHANGELOG）。
-        ...archivedAsync.when(
-          loading: () => const <Widget>[],
-          error: (error, _) => [
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              sliver: SliverToBoxAdapter(child: AppErrorView(error: error)),
-            ),
-          ],
-          data: (archived) {
-            if (archived.isEmpty) return const <Widget>[];
-            return [
-              SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                sliver: SliverToBoxAdapter(
-                  child: _ArchivedSection(archivedCount: archived.length),
-                ),
-              ),
-              SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                sliver: SliverList.builder(
-                  itemCount: archived.length,
-                  itemBuilder: (context, index) => _ArchivedTaskRow(
-                    goalId: goal.id,
-                    task: archived[index],
-                  ),
-                ),
-              ),
-            ];
-          },
-        ),
       ],
     );
   }
@@ -263,77 +228,6 @@ class _LoadSection extends ConsumerWidget {
           ),
         );
       },
-    );
-  }
-}
-
-/// 历史任务区标题（JSON 导入替换时归档保留的旧任务）。
-///
-/// 归档任务以懒加载 [SliverList] 逐行展示（见 [_ArchivedTaskRow]），
-/// 避免归档任务过多时全量实例化导致进入详情页卡顿。
-class _ArchivedSection extends StatelessWidget {
-  const _ArchivedSection({required this.archivedCount});
-
-  final int archivedCount;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '历史任务（$archivedCount）',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'JSON 导入替换时归档保留，可手动恢复回当前计划',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.outline,
-              ),
-        ),
-        const SizedBox(height: 8),
-      ],
-    );
-  }
-}
-
-/// 单条归档任务行（历史任务区，懒加载 SliverList 的 item）。
-class _ArchivedTaskRow extends ConsumerWidget {
-  const _ArchivedTaskRow({required this.goalId, required this.task});
-
-  final int goalId;
-  final Task task;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        dense: true,
-        title: Text(task.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text(
-          [
-            task.plannedDate,
-            if (task.estimatedMinutes != null)
-              DurationFormat.minutes(task.estimatedMinutes!),
-          ].join(' · '),
-        ),
-        trailing: TextButton.icon(
-          onPressed: () async {
-            final repo = ref.read(taskRepositoryProvider);
-            final ok = await runDbAction(
-              context,
-              action: () => repo.restoreArchived(task.id),
-            );
-            if (!ok) return;
-            ref.invalidate(archivedTaskListProvider(goalId));
-            ref.invalidate(taskListProvider(goalId));
-          },
-          icon: const Icon(Icons.restore, size: 16),
-          label: const Text('恢复'),
-        ),
-      ),
     );
   }
 }

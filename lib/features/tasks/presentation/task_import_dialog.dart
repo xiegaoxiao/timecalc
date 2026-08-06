@@ -118,15 +118,21 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
     final plan = result.plan;
     if (plan == null) return;
 
-    // 替换模式确认：导入会替换当前任务的计划，旧任务保留为历史记录。
+    // 替换模式确认：未完成的旧任务将被删除，已完成的旧任务归档保留。
     if (_replaceMode && widget.currentTasks.isNotEmpty) {
+      final todoCount =
+          widget.currentTasks.where((t) => t.status != 'done').length;
+      final doneCount =
+          widget.currentTasks.where((t) => t.status == 'done').length;
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('替换当前任务计划？'),
           content: Text(
-            '导入后，当前目标的 ${widget.currentTasks.length} 个任务将从计划中移除，'
-            '并保留在「历史任务」中（可手动恢复）。确定继续导入？',
+            '导入后，当前目标的 ${widget.currentTasks.length} 个任务将从计划中移除。'
+            '未完成的 $todoCount 个任务将被删除'
+            '${doneCount > 0 ? '，已完成的 $doneCount 个任务归档保留（可在设置页「备份与恢复」回看）' : ''}。'
+            '确定继续导入？',
           ),
           actions: [
             TextButton(
@@ -154,18 +160,23 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
       // 跨页刷新（FR-3 验收）：目标详情、今日页、日历同步。
       ref.invalidate(taskListProvider(widget.goalId));
       ref.invalidate(archivedTaskListProvider(widget.goalId));
+      ref.invalidate(allArchivedTasksProvider);
       ref.invalidate(tasksByDateProvider);
       ref.invalidate(tasksByMonthProvider);
       ref.invalidate(unfinishedBeforeProvider);
       // 导入会按 JSON 自动新建科目，科目列表缓存必须同步失效。
       ref.invalidate(subjectListProvider(widget.goalId));
       if (mounted) {
+        final replacedPart = _replaceMode && stats.replacedTasks > 0
+            ? '；删除 ${stats.deletedTasks} 个未完成旧任务'
+                '${stats.archivedTasks > 0 ? '、归档 ${stats.archivedTasks} 个已完成任务' : ''}'
+            : '';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               '${_replaceMode ? '替换' : '合并'}导入 ${stats.createdTasks} 个任务'
               '${stats.createdSubjects > 0 ? '，新建 ${stats.createdSubjects} 个科目' : ''}'
-              '${stats.replacedTasks > 0 ? '；${stats.replacedTasks} 个旧任务已归档到历史任务' : ''}',
+              '$replacedPart',
             ),
           ),
         );
@@ -292,7 +303,7 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
             if (widget.currentTasks.isNotEmpty && _replaceMode) ...[
               const Divider(height: 24),
               Text(
-                '当前任务（将被替换并保留为历史）',
+                '当前任务（将被替换）',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: 4),
