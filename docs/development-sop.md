@@ -374,6 +374,11 @@
 | 2026-08-05 | go_router | 17.4.0 | 路由 | BSD-3-Clause | Navigator 2.0 手写 | 声明式路由 + StatefulShell 满足主导航 |
 | 2026-08-05 | intl | 0.20.2 | 日期/数字格式化 | BSD-3-Clause | 手写格式化 | flutter_localizations 强依赖版本 |
 | 2026-08-05 | path_provider | 2.1.6 | 跨平台目录 | BSD-3-Clause | 平台通道手写 | M3 备份恢复将使用，随 drift_flutter 引入 |
+| 2026-08-06 | archive | 4.0.9 | zip 打包/解包（备份文件格式） | MIT | 手写 zip/单文件 JSON | 备份采用「JSON 文件 + 配置目录 + zip」格式，Dart 生态标准 zip 实现 |
+| 2026-08-06 | file_selector | 1.1.0 | Windows 保存/打开对话框 | BSD-3-Clause | file_picker | flutter.dev 官方维护；widget 测试经抽象接口注入假实现 |
+| 2026-08-06 | window_manager | 0.5.2 | 窗口位置/尺寸/防关闭/最大化 | MIT | 手写平台通道 + Win32 | FR-8.1/8.3 标准方案，纯 Dart 调 FFI 插件 |
+| 2026-08-06 | tray_manager | 0.5.3 | 系统托盘图标与菜单 | MIT | system_tray | 与 window_manager 同源（leanflutter），API 一致 |
+| 2026-08-06 | screen_retriever | 0.2.2 | 显示器列表与主屏查询 | MIT | win32 枚举 | 与 window_manager 同源，Display.id/visibleSize 满足多屏恢复 |
 |  |  |  |  |  |  |  |
 
 每次引入或移除重要第三方依赖时新增一行；许可证判断以实际使用版本仓库中的 `LICENSE`/`NOTICE` 为准。
