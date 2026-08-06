@@ -16,11 +16,13 @@ import '../../tasks/presentation/task_list_section.dart';
 import '../data/goal_repository_provider.dart';
 import '../data/subject_repository_provider.dart';
 import 'goal_form_dialog.dart';
+import 'milestone_section.dart';
 import 'subject_manager.dart';
 
-/// 目标详情页：目标概览 → 科目列表 → 未分类任务（PRD §7 层级）。
+/// 目标详情页：目标概览 → 里程碑 → 科目列表 → 未分类任务（PRD §7 层级）。
 ///
-/// 点击科目进入该科目的任务列表页；未归属科目的任务在本页「未分类」区管理。
+/// 里程碑区（FR-2）展示目标下的阶段性节点；点击科目进入该科目的任务列表页；
+/// 未归属科目的任务在本页「未分类」区管理。
 class GoalDetailPage extends ConsumerWidget {
   const GoalDetailPage({super.key, required this.goalId});
 
@@ -63,6 +65,9 @@ class GoalDetailBody extends ConsumerWidget {
       padding: const EdgeInsets.all(16),
       children: [
         _GoalHeader(goal: goal),
+        const Divider(height: 32),
+        // 里程碑区（FR-2）：目标概览 → 里程碑 → 任务（PRD §7 层级）。
+        MilestoneSection(goalId: goal.id, deadlineDate: goal.deadlineDate),
         const Divider(height: 32),
         // 负载区（FR-5.3）：剩余任务时长、剩余可用天数、建议日均与计划风险。
         tasksAsync.when(

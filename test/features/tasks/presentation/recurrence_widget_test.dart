@@ -27,6 +27,11 @@ void main() {
   late DateTime fixedNow;
 
   Future<void> pumpApp(WidgetTester tester) async {
+    // 目标详情页含里程碑区（FR-2）后页面变长，放大视口避免任务区按钮
+    // 落在 600px 默认视口外（ListView 惰性构建，视口外 find 不到）。
+    tester.view.physicalSize = const Size(800, 1800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [

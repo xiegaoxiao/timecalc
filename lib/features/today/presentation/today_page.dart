@@ -13,6 +13,7 @@ import '../../../services/load_service.dart';
 import '../../../services/statistics_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../goals/data/goal_repository_provider.dart';
+import '../../goals/data/milestone_repository_provider.dart';
 import '../../goals/presentation/goal_form_dialog.dart';
 import '../../settings/data/settings_repository.dart';
 import '../../settings/data/settings_repository_provider.dart';
@@ -416,6 +417,7 @@ class _CountdownCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final today = ref.watch(clockProvider)();
+    final nextMilestone = ref.watch(nextUpcomingMilestoneProvider(goal.id));
     final (phase, days) = _countdown.evaluate(
       deadlineDate: goal.deadlineDate,
       today: today,
@@ -454,6 +456,26 @@ class _CountdownCard extends ConsumerWidget {
                 ),
               ],
             ),
+            // FR-2.3：首页仅展示距离最近的一个未完成里程碑。
+            if (nextMilestone.valueOrNull case final milestone?) ...[
+              const SizedBox(height: 2),
+              Row(
+                children: [
+                  Icon(Icons.flag_outlined, size: 14, color: scheme.primary),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      '下一里程碑：${milestone.title} · ${milestone.date}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: scheme.primary,
+                          ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
         isThreeLine: true,
