@@ -12,11 +12,24 @@ import 'diagnostics_service.dart';
 void installGlobalErrorHandlers(DiagnosticsService diagnostics) {
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
-    diagnostics.capture(details.exception, details.stack);
+    _captureSafe(diagnostics, details.exception, details.stack);
   };
   // 返回 true：错误已处理，不终止 isolate（release 下保持应用可用）。
   PlatformDispatcher.instance.onError = (error, stack) {
-    diagnostics.capture(error, stack);
+    _captureSafe(diagnostics, error, stack);
     return true;
   };
+}
+
+/// 捕获错误，防止诊断服务自身抛错时再次进入错误处理器造成无限递归。
+void _captureSafe(
+  DiagnosticsService diagnostics,
+  Object error,
+  StackTrace? stack,
+) {
+  try {
+    diagnostics.capture(error, stack);
+  } catch (_) {
+    // 日志写入失败不影响错误处理器（尽力而为）。
+  }
 }

@@ -57,9 +57,16 @@ class _QuickTaskFormDialogState extends ConsumerState<QuickTaskFormDialog> {
   void initState() {
     super.initState();
     _titleController = TextEditingController();
-    _goalId = widget.goals.isEmpty
-        ? null
-        : (widget.defaultGoalId ?? widget.goals.first.id);
+    // defaultGoalId 可能因目标被删/列表刷新而过期：仅当它仍在 goals 中
+    // 才作为初值，否则回退第一个目标，避免 Dropdown initialValue 与
+    // items 不匹配触发断言（P2-11）。
+    final requested = widget.defaultGoalId;
+    final fallback = widget.goals.firstOrNull?.id;
+    final goalId = requested != null &&
+            widget.goals.any((g) => g.id == requested)
+        ? requested
+        : fallback;
+    _goalId = widget.goals.isEmpty ? null : goalId;
   }
 
   @override

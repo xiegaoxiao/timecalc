@@ -131,8 +131,11 @@ class IntervalRecurrenceHandler extends RecurrenceRuleHandler {
 
 /// 间隔序列重复（艾宾浩斯等自定义复习节奏）。
 ///
-/// 第 1 次（复习/使用）发生在起始日当天；此后第 n 次发生在起始日 + 前 n-1
-/// 项累计天数。序列按天计算（任务按日计划，同一天不产生多条同内容实例）。
+/// 第 1 次（复习/使用）发生在起始日当天；此后第 n 次发生在「起始日 +
+/// 第 n 个偏移天」——offsets 中的每个值解释为**绝对复习日**（距起始日的
+/// 天数），而非相对间隔。默认值 [1, 2, 4, 7, 15, 30] 即「第 1、2、4、7、
+/// 15、30 天复习」，与 UI hint 一致（P1-7 语义修正）。序列按天计算
+/// （任务按日计划，同一天不产生多条同内容实例）。
 class SequenceRecurrenceHandler extends RecurrenceRuleHandler {
   @override
   String get type => 'sequence';
@@ -144,11 +147,11 @@ class SequenceRecurrenceHandler extends RecurrenceRuleHandler {
           key: 'offsets',
           label: '间隔天数序列',
           type: RuleParamType.intList,
-          // 艾宾浩斯复习节点：第 1、2、4、7、15、30 天复习。
+          // 艾宾浩斯复习节点：起始日后第 1、2、4、7、15、30 天复习。
           defaultList: [1, 2, 4, 7, 15, 30],
           min: 1,
           max: 365,
-          hint: '逗号分隔的正整数；如艾宾浩斯 1,2,4,7,15,30',
+          hint: '逗号分隔的正整数（距起始日的绝对天数）；如艾宾浩斯 1,2,4,7,15,30',
         ),
       ];
   @override
@@ -185,10 +188,11 @@ class SequenceRecurrenceHandler extends RecurrenceRuleHandler {
     // 参数非法（如非 int 列表）时不产生后续发生日，仅保留起始日。
     if (offsets == null) return out;
 
-    var cumulative = 0;
-    for (final offset in offsets) {
-      cumulative += offset;
-      final date = start.add(Duration(days: cumulative));
+    // 每个 offset 是「距起始日的绝对天数」：起始日 + offset（排序去重，
+    // 同一复习日只保留一次）。
+    final uniqueOffsets = offsets.toSet().toList()..sort();
+    for (final offset in uniqueOffsets) {
+      final date = start.add(Duration(days: offset));
       if (date.isBefore(fromD)) continue;
       if (date.isAfter(toD)) break;
       out.add(_format(date));

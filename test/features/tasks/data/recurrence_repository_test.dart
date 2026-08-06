@@ -57,7 +57,7 @@ void main() {
       expect(instances.last.plannedDate, '2026-09-04');
     });
 
-    test('艾宾浩斯序列：窗口内按累计间隔生成', () async {
+    test('艾宾浩斯序列：窗口内按绝对复习日生成', () async {
       final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
       final template = await recurrence.create(
         goalId: goal.id,
@@ -68,10 +68,10 @@ void main() {
       );
 
       final instances = await tasks.byGoal(goal.id);
-      // 起始日 +1 +3 +7 +14 +29（+59 超出 30 天窗口）。
+      // offsets 为绝对复习日：+1 +2 +4 +7 +15 +30（+30 恰为窗口终点）。
       expect(
         instances.map((t) => t.plannedDate).toList(),
-        ['2026-08-05', '2026-08-06', '2026-08-08', '2026-08-12', '2026-08-19', '2026-09-03'],
+        ['2026-08-05', '2026-08-06', '2026-08-07', '2026-08-09', '2026-08-12', '2026-08-20', '2026-09-04'],
       );
       expect(template.generatedThroughDate, '2026-09-04');
     });

@@ -72,7 +72,7 @@ void main() {
     await tester.tap(find.text('间隔序列'));
     await tester.pumpAndSettle();
 
-    // 默认序列 1,2,4,7,15,30；起始日今天 08-05 → 预览含 08-05、08-06、08-08。
+    // 默认序列 1,2,4,7,15,30；起始日今天 08-05 → 预览含 08-05、08-06、08-07。
     expect(find.textContaining('08-05'), findsWidgets);
     expect(find.textContaining('08-06'), findsWidgets);
 
@@ -85,7 +85,7 @@ void main() {
 
     final instances = await tasks.byGoal(goalId);
     expect(instances.map((t) => t.plannedDate).toList(),
-        ['2026-08-05', '2026-08-06', '2026-08-08', '2026-08-12', '2026-08-19', '2026-09-03']);
+        ['2026-08-05', '2026-08-06', '2026-08-07', '2026-08-09', '2026-08-12', '2026-08-20', '2026-09-04']);
     expect(instances.every((t) => t.recurrenceTemplateId != null), isTrue);
 
     // 今天页也出现今日实例（先返回计划页，再切到今天）。

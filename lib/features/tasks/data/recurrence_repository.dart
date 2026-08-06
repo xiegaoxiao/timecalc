@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/database/tables.dart';
+import '../../../core/utils/date_text.dart';
 import '../../../services/recurrence_service.dart';
 import '../domain/recurrence/recurrence_rule.dart';
 import '../domain/recurrence/recurrence_registry.dart';
@@ -359,11 +360,12 @@ class RecurrenceRepository {
   }
 
   static String _plusDays(String yyyyMMdd, int days) {
-    return _format(_parse(yyyyMMdd).add(Duration(days: days)));
+    // 纯日历加法（date_text）：避免 Duration(days:) 在夏令时切换日偏移。
+    return formatLocalDate(addLocalDays(_parse(yyyyMMdd), days));
   }
 
   static String _minusDays(String yyyyMMdd, int days) {
-    return _format(_parse(yyyyMMdd).subtract(Duration(days: days)));
+    return formatLocalDate(addLocalDays(_parse(yyyyMMdd), -days));
   }
 
   static bool _dateLess(String a, String b) => a.compareTo(b) < 0;

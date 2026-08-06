@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../goals/data/goal_repository_provider.dart';
+import '../../goals/data/subject_repository_provider.dart';
 import '../../settings/data/settings_repository_provider.dart';
+import '../../tasks/data/recurrence_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
 import '../data/backup_file_picker.dart';
 import '../data/backup_manifest.dart';
@@ -114,6 +116,8 @@ class BackupSection extends ConsumerWidget {
 
   void _invalidateAll(WidgetRef ref) {
     ref.invalidate(goalListProvider);
+    ref.invalidate(goalDetailProvider); // family 无参失效整族（详情页缓存）
+    ref.invalidate(subjectListProvider); // family 整族（科目页/表单缓存）
     ref.invalidate(taskListProvider);
     ref.invalidate(tasksByDateProvider);
     ref.invalidate(tasksByMonthProvider);
@@ -121,6 +125,8 @@ class BackupSection extends ConsumerWidget {
     ref.invalidate(archivedTaskListProvider);
     ref.invalidate(completedTasksProvider);
     ref.invalidate(allTodoTasksProvider);
+    ref.invalidate(recurrenceTemplatesProvider); // family 整族（重复任务入口）
+    ref.invalidate(recurrenceTemplateProvider); // family 整族（任务条目标注）
     ref.invalidate(settingsProvider);
   }
 }

@@ -183,8 +183,15 @@ class BackupCodec {
     );
   }
 
-  /// JSON → SettingsCompanion（仅计划偏好）。
-  SettingsCompanion settingsFromJson(Map<String, Object?> json) {
+  /// JSON → SettingsCompanion（仅计划偏好；[closeBehavior] 默认 null）。
+  ///
+  /// 备份文件按 FR-9.5 不包含 close_behavior（桌面层状态不进业务备份），
+  /// 因此恢复时该字段由调用方决定：null 表示按「覆盖恢复保留当前值」
+  /// 处理（见 BackupService._overwriteRestore）。
+  SettingsCompanion settingsFromJson(
+    Map<String, Object?> json, {
+    String? closeBehavior,
+  }) {
     final now = DateTime.now().toUtc();
     return SettingsCompanion.insert(
       id: const Value(1),
@@ -193,6 +200,9 @@ class BackupCodec {
       availableWeekdays: Value(
         json['availableWeekdays'] as String? ?? '1,2,3,4,5,6,7',
       ),
+      closeBehavior: closeBehavior == null
+          ? const Value.absent()
+          : Value(closeBehavior),
       createdAt: now,
       updatedAt: now,
     );

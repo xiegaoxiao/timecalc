@@ -26,14 +26,14 @@ class TaskFormDialog extends ConsumerStatefulWidget {
   final List<Subject> subjects;
   final int? defaultSubjectId;
 
-  static Future<void> show(
+  static Future<bool> show(
     BuildContext context, {
     required int goalId,
     Task? task,
     List<Subject> subjects = const [],
     int? defaultSubjectId,
   }) {
-    return showDialog<void>(
+    return showDialog<bool>(
       context: context,
       builder: (_) => TaskFormDialog(
         goalId: goalId,
@@ -41,7 +41,7 @@ class TaskFormDialog extends ConsumerStatefulWidget {
         subjects: subjects,
         defaultSubjectId: defaultSubjectId,
       ),
-    );
+    ).then((saved) => saved ?? false);
   }
 
   @override
@@ -143,7 +143,7 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
       ref.invalidate(tasksByDateProvider);
       ref.invalidate(tasksByMonthProvider);
       ref.invalidate(unfinishedBeforeProvider);
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) Navigator.of(context).pop(true);
     } finally {
       if (mounted) setState(() => _saving = false);
     }

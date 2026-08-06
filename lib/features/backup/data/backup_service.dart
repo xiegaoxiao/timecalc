@@ -312,9 +312,20 @@ class BackupService {
 
       // 计划偏好：覆盖模式下随备份一并恢复（FR-9.2 覆盖语义）。
       if (payload.settings.isNotEmpty) {
+        // 关闭行为（close_behavior）不进备份文件（FR-9.5）；备份 JSON 中
+        // 无该字段。覆盖清空 settings 行会把它重置为默认值 exit，故在
+        // 恢复前读取当前值并保留——桌面行为不该被「数据恢复」意外改变。
+        final previousCloseBehavior = (await _db.select(_db.settings).getSingleOrNull())
+            ?.closeBehavior;
         await _db.delete(_db.settings).go();
         await _db.into(_db.settings).insert(
-              _codec.settingsFromJson(payload.settings.first),
+              _codec.settingsFromJson(
+                payload.settings.first,
+                // 若备份 JSON 里恰好携带了 close_behavior（手工构造），
+                // 优先用它，否则保留恢复前的当前值。
+                closeBehavior: payload.settings.first['closeBehavior'] as String? ??
+                    previousCloseBehavior,
+              ),
             );
       }
     });

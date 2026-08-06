@@ -38,20 +38,20 @@ class RecurrenceTaskDialog extends ConsumerStatefulWidget {
   /// 编辑模式：非空时预填该模板并走 FR-4.4 应用范围确认。
   final RecurrenceTemplate? editTemplate;
 
-  static Future<void> show(
+  static Future<bool> show(
     BuildContext context, {
     required int goalId,
     List<Subject> subjects = const [],
     RecurrenceTemplate? editTemplate,
   }) {
-    return showDialog<void>(
+    return showDialog<bool>(
       context: context,
       builder: (_) => RecurrenceTaskDialog(
         goalId: goalId,
         subjects: subjects,
         editTemplate: editTemplate,
       ),
-    );
+    ).then((saved) => saved ?? false);
   }
 
   @override
@@ -156,7 +156,9 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
     final picked = await showDatePicker(
       context: context,
       initialDate: current,
-      firstDate: DateTime(now.year - 10),
+      // 结束日期选择器下界固定为起始日，UI 层直接阻止「结束早于起始」
+      // （配合 _save 的兜底校验，双保险，FR-4）。
+      firstDate: isEnd ? _startDate : DateTime(now.year - 10),
       lastDate: DateTime(now.year + 10),
       helpText: isEnd ? '选择结束日期' : '选择起始日期',
     );
@@ -166,6 +168,10 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
         _endDate = picked;
       } else {
         _startDate = picked;
+        // 起始日被推到结束日之后时，清空结束日（保持窗口有效）。
+        if (_endDate != null && _endDate!.isBefore(picked)) {
+          _endDate = null;
+        }
       }
     });
   }
@@ -204,6 +210,14 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
     if (ruleError != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('重复规则不合法：$ruleError')),
+      );
+      return;
+    }
+    // 兜底校验：结束日期不得早于起始日期（选择器已防住，此处防状态被
+    // 意外改写后仍落库为「0 个未来实例」的无效窗口，FR-4）。
+    if (_endDate != null && _endDate!.isBefore(_startDate)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('结束日期不能早于起始日期')),
       );
       return;
     }
@@ -278,7 +292,7 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
       );
       if (!ok) return;
       _refresh();
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) Navigator.of(context).pop(true);
     } finally {
       if (mounted) setState(() => _saving = false);
     }

@@ -6,6 +6,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:timecalc/core/database/database.dart';
+import 'package:timecalc/core/database/tables.dart';
 import 'package:timecalc/features/backup/data/backup_manifest.dart';
 import 'package:timecalc/features/backup/data/backup_service.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
@@ -284,6 +285,26 @@ void main() {
       await backup.restoreBackup(file, mode: RestoreMode.overwrite);
       final settings = await db.select(db.settings).getSingle();
       expect(settings.dailyAvailableMinutes, 90);
+    });
+
+    test('覆盖恢复后关闭行为 close_behavior 被保留（P1-3 回归）', () async {
+      await seedBaseData();
+      // 当前关闭行为设为「最小化到托盘」；备份文件不含该字段（FR-9.5）。
+      await db.into(db.settings).insertOnConflictUpdate(
+            SettingsCompanion.insert(
+              id: const Value(1),
+              closeBehavior: const Value(CloseBehavior.minimizeToTray),
+              createdAt: DateTime.utc(2026, 1, 1),
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+      final file = tempFile('backup.timecalc');
+      await backup.exportBackup(file);
+
+      // 覆盖恢复：业务数据被替换，但桌面层关闭行为不被重置为默认 exit。
+      await backup.restoreBackup(file, mode: RestoreMode.overwrite);
+      final settings = await db.select(db.settings).getSingle();
+      expect(settings.closeBehavior, CloseBehavior.minimizeToTray);
     });
   });
 }

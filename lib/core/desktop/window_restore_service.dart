@@ -92,7 +92,12 @@ class WindowRestoreService {
       );
     }
 
-    final size = Size(saved.width!, saved.height!);
+    // 保存的尺寸可能有下界缺失（损坏的 window_state.json）：钳制到
+    // 最小可用窗口，避免以 0/负尺寸「恢复」窗口导致不可见（P2-9）。
+    final size = Size(
+      _clampWidth(saved.width!),
+      _clampHeight(saved.height!),
+    );
     final position = Offset(saved.x!, saved.y!);
     final restored = _fitToVisibleArea(
       position: position,
@@ -105,6 +110,14 @@ class WindowRestoreService {
       maximized: saved.maximized && restored.size == size,
     );
   }
+
+  /// 窗口最小尺寸（与桌面约定一致，防止损坏配置恢复出不可见窗口）。
+  static const double _minWidth = 400;
+  static const double _minHeight = 300;
+
+  static double _clampWidth(double w) => w < _minWidth ? _minWidth : w;
+
+  static double _clampHeight(double h) => h < _minHeight ? _minHeight : h;
 
   static DisplayInfo? _displayById(List<DisplayInfo> displays, String id) {
     for (final display in displays) {

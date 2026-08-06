@@ -123,6 +123,25 @@ void main() {
     expect(restored.maximized, isFalse);
   });
 
+  test('保存的尺寸为 0/负值（损坏配置）：钳制到最小窗口尺寸（P2-9 回归）', () {
+    final restored = service.resolve(
+      saved: const SavedWindowState(
+        x: 0,
+        y: 0,
+        width: 0,
+        height: -50,
+        displayId: 'primary',
+      ),
+      displays: [primary],
+      primaryId: 'primary',
+      defaultSize: defaultSize,
+    );
+    // 宽度/高度被钳制到最小可用窗口，不以 0/负尺寸恢复出不可见窗口。
+    expect(restored.size.width, greaterThanOrEqualTo(400));
+    expect(restored.size.height, greaterThanOrEqualTo(300));
+    expect(restored.maximized, isFalse);
+  });
+
   test('没有任何显示器信息：使用默认尺寸与原点', () {
     final restored = service.resolve(
       saved: const SavedWindowState(x: 50, y: 50, width: 800, height: 600),

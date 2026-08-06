@@ -55,6 +55,8 @@ class TaskTile extends ConsumerWidget {
       child: ListTile(
         leading: Checkbox(
           value: done,
+          // 读屏可读的名称（NFR-4）：任务完成复选框不依赖相邻文本推断。
+          semanticLabel: done ? '标记未完成' : '标记完成',
           onChanged: (value) async {
             final repo = ref.read(taskRepositoryProvider);
             final ok = await runDbAction(
@@ -148,13 +150,13 @@ class TaskTile extends ConsumerWidget {
     if (template == null || !context.mounted) return;
     final subjects =
         ref.read(subjectListProvider(task.goalId)).valueOrNull ?? const <Subject>[];
-    await RecurrenceTaskDialog.show(
+    final saved = await RecurrenceTaskDialog.show(
       context,
       goalId: task.goalId,
       subjects: subjects,
       editTemplate: template,
     );
-    onChanged();
+    if (saved) onChanged();
   }
 
   /// 停止重复（确认后停用模板，历史实例保留，FR-4.5）。
@@ -194,13 +196,13 @@ class TaskTile extends ConsumerWidget {
     // 编辑对话框需要该目标下的科目列表（含无科目选项）。
     final subjects = await ref.read(subjectListProvider(task.goalId).future);
     if (!context.mounted) return;
-    await TaskFormDialog.show(
+    final saved = await TaskFormDialog.show(
       context,
       goalId: task.goalId,
       task: task,
       subjects: subjects,
     );
-    onChanged();
+    if (saved) onChanged();
   }
 
   Future<void> _deferToNextAvailable(BuildContext context, WidgetRef ref) async {
@@ -223,10 +225,15 @@ class TaskTile extends ConsumerWidget {
 
   Future<void> _deferPickDate(BuildContext context, WidgetRef ref) async {
     final now = DateTime.now();
+    // 任务计划日期可早于 firstDate（逾期一年以上是真实场景）：initialDate
+    // 越界会在 debug 下触发 datepicker 断言、release 下落到错误初值，故钳制。
+    final planned = _parseDate(task.plannedDate);
+    final first = DateTime(now.year - 1);
+    final initial = planned.isBefore(first) ? first : planned;
     final picked = await showDatePicker(
       context: context,
-      initialDate: _parseDate(task.plannedDate),
-      firstDate: DateTime(now.year - 1),
+      initialDate: initial,
+      firstDate: first,
       lastDate: DateTime(now.year + 10),
       helpText: '选择延期日期',
     );

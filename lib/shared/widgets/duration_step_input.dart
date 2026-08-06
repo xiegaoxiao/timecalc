@@ -98,7 +98,12 @@ class _DurationStepInputState extends State<DurationStepInput> {
   void _startAutoStep(int delta) {
     _stepBy(delta);
     // 长按 400ms 后进入连续步进（每 100ms 一次）。
-    Timer(const Duration(milliseconds: 400), () {
+    //
+    // 一次性 Timer 与周期 Timer 都存入 [_timer]：长按不足 400ms 即松开时，
+    // _stopAutoStep 取消该一次性 Timer，避免它在松开后仍启动周期步进
+    // （此前一次性 Timer 未跟踪，短长按后数值会一直自动变化，P0 回归）。
+    _timer?.cancel();
+    _timer = Timer(const Duration(milliseconds: 400), () {
       if (!mounted) return;
       _timer = Timer.periodic(const Duration(milliseconds: 100), (_) {
         if (mounted) _stepBy(delta);
@@ -384,6 +389,11 @@ class _StepFieldState extends State<_StepField> {
 }
 
 /// 步进按钮：普通点击 + 长按连续触发。
+///
+/// 用 GestureDetector + 自绘视觉，而非 IconButton：IconButton 内部
+/// InkResponse 会抢占手势 arena，外层 GestureDetector 的 onLongPressStart
+/// 永不触发；且该 Flutter 版本的 IconButton 不支持 onLongPressStart
+/// （只有松开时触发的 onLongPress，无法做长按连续步进）。
 class _StepButton extends StatelessWidget {
   const _StepButton({
     required this.tooltip,
@@ -403,14 +413,34 @@ class _StepButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onLongPressStart: onLongPressStart,
-      onLongPressEnd: onLongPressEnd,
-      onLongPressCancel: onLongPressCancel,
-      child: IconButton(
-        tooltip: tooltip,
-        icon: Icon(icon),
-        onPressed: onPressed,
+    final scheme = Theme.of(context).colorScheme;
+    final enabled = onPressed != null;
+
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onPressed,
+        onLongPressStart: onLongPressStart,
+        onLongPressEnd: onLongPressEnd,
+        onLongPressCancel: onLongPressCancel,
+        child: MouseRegion(
+          cursor: enabled
+              ? SystemMouseCursors.click
+              : SystemMouseCursors.basic,
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: enabled ? scheme.surfaceContainerHighest : Colors.transparent,
+            ),
+            child: Icon(
+              icon,
+              size: 20,
+              color: enabled ? scheme.onSurfaceVariant : scheme.outlineVariant,
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -65,11 +65,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/goals/:goalId',
         name: 'goalDetail',
-        builder: (context, state) => GoalDetailPage(goalId: state.pathParameters['goalId']!),
+        // 防御外部深链/拼写错误：非数字参数重定向到首页，避免 build 中
+        // 抛 FormatException 红屏（P2-8）。
+        redirect: _redirectOnInvalidInt(['goalId']),
+        builder: (context, state) =>
+            GoalDetailPage(goalId: state.pathParameters['goalId']!),
       ),
       GoRoute(
         path: '/goals/:goalId/subjects/:subjectId',
         name: 'subjectTasks',
+        redirect: _redirectOnInvalidInt(['goalId', 'subjectId']),
         builder: (context, state) => SubjectTaskPage(
           goalId: int.parse(state.pathParameters['goalId']!),
           subjectId: int.parse(state.pathParameters['subjectId']!),
@@ -78,6 +83,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+/// 构造 redirect：任一 [keys] 对应的路径参数不是合法整数时，重定向到首页。
+///
+/// 配套用法：redirect 通过后，builder 内可直接 `int.parse` 路径参数
+/// （已保证合法）。
+GoRouterRedirect _redirectOnInvalidInt(List<String> keys) {
+  return (context, state) {
+    for (final key in keys) {
+      final raw = state.pathParameters[key];
+      if (raw == null || int.tryParse(raw) == null) return '/today';
+    }
+    return null; // 合法，继续导航
+  };
+}
 
 /// 主导航 Shell：底部导航承载四个一级入口。
 ///

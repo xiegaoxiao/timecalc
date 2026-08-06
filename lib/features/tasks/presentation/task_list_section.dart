@@ -163,6 +163,8 @@ class _TaskTile extends ConsumerWidget {
       child: ListTile(
         leading: Checkbox(
           value: done,
+          // 读屏可读的名称（NFR-4）：任务完成复选框不依赖相邻文本推断。
+          semanticLabel: done ? '标记未完成' : '标记完成',
           onChanged: (value) async {
             final repo = ref.read(taskRepositoryProvider);
             final ok = await runDbAction(
@@ -234,26 +236,26 @@ class _TaskTile extends ConsumerWidget {
     final repo = ref.read(taskRepositoryProvider);
     switch (action) {
       case 'edit':
-        await TaskFormDialog.show(
+        final saved = await TaskFormDialog.show(
           context,
           goalId: goalId,
           task: task,
           subjects: subjects,
         );
-        onChanged();
+        if (saved) onChanged();
       case 'editRecurrence':
         final templateId = task.recurrenceTemplateId;
         if (templateId != null) {
           final template =
               await ref.read(recurrenceTemplateProvider(templateId).future);
           if (template != null && context.mounted) {
-            await RecurrenceTaskDialog.show(
+            final saved = await RecurrenceTaskDialog.show(
               context,
               goalId: goalId,
               subjects: subjects,
               editTemplate: template,
             );
-            onChanged();
+            if (saved) onChanged();
           }
         }
       case 'stopRecurrence':

@@ -54,7 +54,6 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
   final _intervalController = TextEditingController(text: '1');
   DateTime _startDate = DateTime.now();
   bool _useInterval = false;
-  int _intervalDays = 1;
   int? _subjectId;
   int? _estimatedMinutes;
   bool _saving = false;
@@ -100,6 +99,10 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
     // 0 分钟视为未设置（预估时长合法范围为 1～1440，FR-3 验收）。
     final minutes = _estimatedMinutes == 0 ? null : _estimatedMinutes;
 
+    // 间隔天数以输入框为准重新解析（validator 已保证合法）；状态 _intervalDays
+    // 仅为未提交时的旧值，此处直接解析避免「所见≠所存」。
+    final intervalDays = int.tryParse(_intervalController.text.trim()) ?? 1;
+
     setState(() => _saving = true);
     try {
       final repo = ref.read(taskRepositoryProvider);
@@ -110,7 +113,7 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
           subjectId: _subjectId,
           titles: lines,
           startDate: DateFormat('yyyy-MM-dd').format(_startDate),
-          dateIntervalDays: _useInterval ? _intervalDays : 0,
+          dateIntervalDays: _useInterval ? intervalDays : 0,
           estimatedMinutes: minutes,
         ),
       );
@@ -135,6 +138,9 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
     final totalMinutes = _estimatedMinutes == null
         ? 0
         : lines.length * _estimatedMinutes!;
+    // 间隔天数取输入框实时解析值，保证「所见即所存」。
+    final intervalDays =
+        int.tryParse(_intervalController.text.trim()) ?? 1;
 
     return AlertDialog(
       title: const Text('批量添加任务'),
@@ -224,10 +230,18 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
                           isDense: true,
                         ),
                         onChanged: (v) {
-                          final n = int.tryParse(v);
-                          if (n != null && n >= 1) {
-                            _intervalDays = n;
+                          // 仅回显变化触发重绘；_intervalDays 已废弃为
+                          // 保存时的兜底解析源，输入以 validator 为准。
+                          setState(() {});
+                        },
+                        validator: (value) {
+                          final text = (value ?? '').trim();
+                          if (text.isEmpty) return '请输入间隔天数';
+                          final n = int.tryParse(text);
+                          if (n == null || n < 1) {
+                            return '间隔天数必须是 ≥1 的整数';
                           }
+                          return null;
                         },
                       ),
                     ),
@@ -249,7 +263,7 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
                 lines.isEmpty
                     ? '输入标题后将在此预览'
                     : '将创建 ${lines.length} 个任务'
-                        '${_useInterval ? '，自 ${DateFormat('yyyy-MM-dd').format(_startDate)} 起每 $_intervalDays 天一个' : '，日期 ${DateFormat('yyyy-MM-dd').format(_startDate)}'}'
+                        '${_useInterval ? '，自 ${DateFormat('yyyy-MM-dd').format(_startDate)} 起每 $intervalDays 天一个' : '，日期 ${DateFormat('yyyy-MM-dd').format(_startDate)}'}'
                         '${totalMinutes > 0 ? '，共 ${DurationFormat.minutes(totalMinutes)}' : ''}',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.primary,

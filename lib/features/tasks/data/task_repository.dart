@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/database/tables.dart';
+import '../../../core/utils/date_text.dart';
 import '../domain/task_import_parser.dart';
 import 'recurrence_repository.dart';
 
@@ -165,12 +166,14 @@ class TaskRepository {
     return _db.transaction(() async {
       var count = 0;
       for (var i = 0; i < cleanTitles.length; i++) {
-        final date = start.add(Duration(days: dateIntervalDays * i));
+        // 纯日历加法（date_text）：避免 Duration(days:) 在夏令时切换日
+        // 偏移一小时导致日期文本错位。
+        final date = addLocalDays(start, dateIntervalDays * i);
         await _db.into(_db.tasks).insert(TasksCompanion.insert(
               goalId: goalId,
               subjectId: Value(subjectId),
               title: cleanTitles[i],
-              plannedDate: _formatLocalDate(date),
+              plannedDate: formatLocalDate(date),
               estimatedMinutes: Value(estimatedMinutes),
               createdAt: now,
               updatedAt: now,
@@ -184,12 +187,6 @@ class TaskRepository {
   static DateTime _parseLocalDate(String yyyyMMdd) {
     final parts = yyyyMMdd.split('-');
     return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
-  }
-
-  static String _formatLocalDate(DateTime date) {
-    final mm = date.month.toString().padLeft(2, '0');
-    final dd = date.day.toString().padLeft(2, '0');
-    return '${date.year}-$mm-$dd';
   }
 
   /// 批量导入（JSON 导入升级版）。
