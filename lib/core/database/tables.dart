@@ -1,6 +1,6 @@
 import 'package:drift/drift.dart';
 
-/// TimeCalc 数据模型（schema v1）。
+/// TimeCalc 数据模型（schema v8）。
 ///
 /// 遵循 PRD §9：
 /// - 业务实体包含 id、createdAt、updatedAt；
@@ -142,6 +142,22 @@ class RecurrenceTemplates extends Table {
   /// 后续 generateDue/updateRule 滚动生成时跳过这些日期，被删除的实例
   /// 不会随窗口滚动「复活」。null 表示从未删除过实例。
   TextColumn get deletedInstanceDates => text().nullable()();
+}
+
+/// 任务检查项（FR-4.1，schema v8 引入）。
+///
+/// 任务可包含可排序的检查项（PRD §9 ChecklistItem：taskId/title/done/
+/// sortOrder，另按项目惯例带 id/createdAt/updatedAt）。检查项随任务
+/// 级联删除（防孤儿数据，NFR-2）。done 用 BoolColumn（仿
+/// RecurrenceTemplates.active），sortOrder 支持任务内上移/下移重排。
+class ChecklistItems extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get taskId => integer().references(Tasks, #id)();
+  TextColumn get title => text().withLength(min: 1, max: 200)();
+  BoolColumn get done => boolean().withDefault(const Constant(false))();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
 }
 
 /// 计划偏好（单行表，PRD §9 Settings 的 M2 子集 + M3 关闭行为）。

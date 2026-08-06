@@ -241,4 +241,106 @@ void main() {
       expect(starts.last, DateTime(2026, 8, 3));
     });
   });
+
+  group('burndownSeries（FR-7.3 燃尽趋势）', () {
+    // 固定时钟：2026-08-05 → 窗口 [2026-07-07 .. 2026-08-05] 共 30 天。
+    final today = DateTime(2026, 8, 5, 12);
+
+    test('窗口边界：30 个点，起点 today-29，末点 today', () {
+      final points = StatisticsService.burndownSeries(
+        todoTasks: const [],
+        completedTasks: const [],
+        today: today,
+        endDate: DateTime(2026, 8, 5),
+      );
+      expect(points, hasLength(30));
+      expect(points.first.date, DateTime(2026, 7, 7));
+      expect(points.last.date, DateTime(2026, 8, 5));
+      // 逐日递增。
+      expect(points[1].date.difference(points[0].date), const Duration(days: 1));
+    });
+
+    test('无完成、有当前未完成：剩余水平 = 当前未完成时长和（today 点）', () {
+      final points = StatisticsService.burndownSeries(
+        todoTasks: [
+          todo('2026-08-10', minutes: 120),
+          todo('2026-08-12', minutes: 60),
+        ],
+        completedTasks: const [],
+        today: today,
+        endDate: DateTime(2026, 8, 5),
+      );
+      // 无窗口内完成：全程剩余 = 180（today 点 = 当前剩余）。
+      for (final point in points) {
+        expect(point.remaining, 180);
+      }
+    });
+
+    test('窗口内完成的任务：越早的日期剩余越多，today 点=当前剩余', () {
+      final points = StatisticsService.burndownSeries(
+        todoTasks: [todo('2026-08-10', minutes: 120)],
+        completedTasks: [
+          // 窗口内（8-01）完成 60 分钟任务。
+          done('2026-08-01', minutes: 60, completedAt: DateTime(2026, 8, 1, 9)),
+        ],
+        today: today,
+        endDate: DateTime(2026, 8, 5),
+      );
+      // 窗口起点（07-07）：尚未完成 → 180。
+      expect(points.first.remaining, 180);
+      // 8-01 当天起：该 60 分钟已消化 → 120。
+      final aug1 = points.firstWhere((p) => p.date == DateTime(2026, 8, 1));
+      expect(aug1.remaining, 120);
+      // today 点 = 当前剩余 120。
+      expect(points.last.remaining, 120);
+    });
+
+    test('理想参考线：从起点实际剩余按 endDate 线性递减到 0', () {
+      final points = StatisticsService.burndownSeries(
+        todoTasks: [todo('2026-08-10', minutes: 180)],
+        completedTasks: const [],
+        today: today,
+        // 截止日 2026-07-20：起点 07-07 起 13 天线性递减到 0。
+        endDate: DateTime(2026, 7, 20),
+      );
+      expect(points.first.remaining, 180);
+      // 参考线起点 = 180，截止日当天归 0，此后保持 0。
+      expect(points.first.ideal, 180);
+      final deadline = points.firstWhere((p) => p.date == DateTime(2026, 7, 20));
+      expect(deadline.ideal, 0);
+      expect(points.last.ideal, 0);
+      // 单调不增。
+      for (var i = 1; i < points.length; i++) {
+        expect(points[i].ideal, lessThanOrEqualTo(points[i - 1].ideal));
+      }
+    });
+
+    test('endDate 不晚于窗口起点：理想参考线全 0', () {
+      final points = StatisticsService.burndownSeries(
+        todoTasks: [todo('2026-08-10', minutes: 90)],
+        completedTasks: const [],
+        today: today,
+        endDate: DateTime(2026, 7, 1), // 早于窗口起点 07-07
+      );
+      expect(points.first.ideal, 0);
+      expect(points.last.ideal, 0);
+    });
+
+    test('无预估时长的任务不计入（FR-7.4）', () {
+      final points = StatisticsService.burndownSeries(
+        todoTasks: [
+          todo('2026-08-10', minutes: 120),
+          todo('2026-08-12'), // 无时长，不计入
+        ],
+        completedTasks: [
+          done('2026-08-02'), // 无时长，不计入
+        ],
+        today: today,
+        endDate: DateTime(2026, 8, 5),
+      );
+      for (final point in points) {
+        expect(point.remaining, 120);
+      }
+    });
+  });
 }

@@ -1191,6 +1191,205 @@ i1.GeneratedColumn<String> _column_31(String aliasedName) =>
       type: i1.DriftSqlType.string,
       $customConstraints: 'NOT NULL',
     );
+
+final class Schema8 extends i0.VersionedSchema {
+  Schema8({required super.database}) : super(version: 8);
+  @override
+  late final List<i1.DatabaseSchemaEntity> entities = [
+    goals,
+    subjects,
+    milestones,
+    recurrenceTemplates,
+    tasks,
+    settings,
+    checklistItems,
+  ];
+  late final Shape0 goals = Shape0(
+    source: i0.VersionedTable(
+      entityName: 'goals',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_1,
+        _column_2,
+        _column_3,
+        _column_4,
+        _column_5,
+        _column_6,
+        _column_7,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape1 subjects = Shape1(
+    source: i0.VersionedTable(
+      entityName: 'subjects',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_6,
+        _column_7,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape9 milestones = Shape9(
+    source: i0.VersionedTable(
+      entityName: 'milestones',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_8,
+        _column_1,
+        _column_31,
+        _column_16,
+        _column_11,
+        _column_6,
+        _column_7,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape7 recurrenceTemplates = Shape7(
+    source: i0.VersionedTable(
+      entityName: 'recurrence_templates',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_8,
+        _column_12,
+        _column_1,
+        _column_15,
+        _column_22,
+        _column_23,
+        _column_24,
+        _column_25,
+        _column_26,
+        _column_27,
+        _column_6,
+        _column_7,
+        _column_29,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape6 tasks = Shape6(
+    source: i0.VersionedTable(
+      entityName: 'tasks',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_8,
+        _column_12,
+        _column_1,
+        _column_13,
+        _column_14,
+        _column_15,
+        _column_16,
+        _column_5,
+        _column_11,
+        _column_6,
+        _column_7,
+        _column_17,
+        _column_21,
+        _column_28,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape8 settings = Shape8(
+    source: i0.VersionedTable(
+      entityName: 'settings',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_18,
+        _column_19,
+        _column_20,
+        _column_30,
+        _column_6,
+        _column_7,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape10 checklistItems = Shape10(
+    source: i0.VersionedTable(
+      entityName: 'checklist_items',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_32,
+        _column_1,
+        _column_33,
+        _column_11,
+        _column_6,
+        _column_7,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+}
+
+class Shape10 extends i0.VersionedTable {
+  Shape10({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<int> get id =>
+      columnsByName['id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get taskId =>
+      columnsByName['task_id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get title =>
+      columnsByName['title']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get done =>
+      columnsByName['done']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get sortOrder =>
+      columnsByName['sort_order']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get createdAt =>
+      columnsByName['created_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get updatedAt =>
+      columnsByName['updated_at']! as i1.GeneratedColumn<int>;
+}
+
+i1.GeneratedColumn<int> _column_32(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'task_id',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL REFERENCES tasks(id)',
+    );
+i1.GeneratedColumn<int> _column_33(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'done',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL DEFAULT 0 CHECK (done IN (0, 1))',
+      defaultValue: const i1.CustomExpression('0'),
+    );
 i0.MigrationStepWithVersion migrationSteps({
   required Future<void> Function(i1.Migrator m, Schema2 schema) from1To2,
   required Future<void> Function(i1.Migrator m, Schema3 schema) from2To3,
@@ -1198,6 +1397,7 @@ i0.MigrationStepWithVersion migrationSteps({
   required Future<void> Function(i1.Migrator m, Schema5 schema) from4To5,
   required Future<void> Function(i1.Migrator m, Schema6 schema) from5To6,
   required Future<void> Function(i1.Migrator m, Schema7 schema) from6To7,
+  required Future<void> Function(i1.Migrator m, Schema8 schema) from7To8,
 }) {
   return (currentVersion, database) async {
     switch (currentVersion) {
@@ -1231,6 +1431,11 @@ i0.MigrationStepWithVersion migrationSteps({
         final migrator = i1.Migrator(database, schema);
         await from6To7(migrator, schema);
         return 7;
+      case 7:
+        final schema = Schema8(database: database);
+        final migrator = i1.Migrator(database, schema);
+        await from7To8(migrator, schema);
+        return 8;
       default:
         throw ArgumentError.value('Unknown migration from $currentVersion');
     }
@@ -1244,6 +1449,7 @@ i1.OnUpgrade stepByStep({
   required Future<void> Function(i1.Migrator m, Schema5 schema) from4To5,
   required Future<void> Function(i1.Migrator m, Schema6 schema) from5To6,
   required Future<void> Function(i1.Migrator m, Schema7 schema) from6To7,
+  required Future<void> Function(i1.Migrator m, Schema8 schema) from7To8,
 }) => i0.VersionedSchema.stepByStepHelper(
   step: migrationSteps(
     from1To2: from1To2,
@@ -1252,5 +1458,6 @@ i1.OnUpgrade stepByStep({
     from4To5: from4To5,
     from5To6: from5To6,
     from6To7: from6To7,
+    from7To8: from7To8,
   ),
 );

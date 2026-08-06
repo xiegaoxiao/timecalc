@@ -2714,10 +2714,12 @@ class Task extends DataClass implements Insertable<Task> {
   /// 用于审计与后续恢复/统计。未延期过的任务为 null。
   final String? originalPlannedDate;
 
-  /// 归档时间（JSON 导入替换时保留的历史记录，schema v3 引入）。
+  /// 归档时间（JSON 替换导入时保留的已完成旧任务，schema v3 引入）。
   ///
-  /// 非 null 表示该任务已被归档：不参与负载/日历统计与常规列表，仅出现在
-  /// 目标详情的「历史任务」区，可手动恢复。未归档任务为 null。
+  /// 非 null 表示该任务已被归档：不参与负载/日历统计与常规列表，仅在
+  /// 设置页「备份与恢复」的已归档任务区展示，可手动恢复回当前计划。
+  /// 替换导入时未完成旧任务直接删除、不归档；已完成的归档保留。未归档
+  /// 任务为 null。
   final DateTime? archivedAt;
 
   /// 所属重复模板（FR-4，schema v4 引入）。
@@ -3621,6 +3623,453 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
   }
 }
 
+class $ChecklistItemsTable extends ChecklistItems
+    with TableInfo<$ChecklistItemsTable, ChecklistItem> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ChecklistItemsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _taskIdMeta = const VerificationMeta('taskId');
+  @override
+  late final GeneratedColumn<int> taskId = GeneratedColumn<int>(
+    'task_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES tasks (id)',
+    ),
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 200,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _doneMeta = const VerificationMeta('done');
+  @override
+  late final GeneratedColumn<bool> done = GeneratedColumn<bool>(
+    'done',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("done" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    taskId,
+    title,
+    done,
+    sortOrder,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'checklist_items';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ChecklistItem> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('task_id')) {
+      context.handle(
+        _taskIdMeta,
+        taskId.isAcceptableOrUnknown(data['task_id']!, _taskIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_taskIdMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('done')) {
+      context.handle(
+        _doneMeta,
+        done.isAcceptableOrUnknown(data['done']!, _doneMeta),
+      );
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ChecklistItem map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ChecklistItem(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      taskId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}task_id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      done: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}done'],
+      )!,
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ChecklistItemsTable createAlias(String alias) {
+    return $ChecklistItemsTable(attachedDatabase, alias);
+  }
+}
+
+class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
+  final int id;
+  final int taskId;
+  final String title;
+  final bool done;
+  final int sortOrder;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const ChecklistItem({
+    required this.id,
+    required this.taskId,
+    required this.title,
+    required this.done,
+    required this.sortOrder,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['task_id'] = Variable<int>(taskId);
+    map['title'] = Variable<String>(title);
+    map['done'] = Variable<bool>(done);
+    map['sort_order'] = Variable<int>(sortOrder);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  ChecklistItemsCompanion toCompanion(bool nullToAbsent) {
+    return ChecklistItemsCompanion(
+      id: Value(id),
+      taskId: Value(taskId),
+      title: Value(title),
+      done: Value(done),
+      sortOrder: Value(sortOrder),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory ChecklistItem.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ChecklistItem(
+      id: serializer.fromJson<int>(json['id']),
+      taskId: serializer.fromJson<int>(json['taskId']),
+      title: serializer.fromJson<String>(json['title']),
+      done: serializer.fromJson<bool>(json['done']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'taskId': serializer.toJson<int>(taskId),
+      'title': serializer.toJson<String>(title),
+      'done': serializer.toJson<bool>(done),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  ChecklistItem copyWith({
+    int? id,
+    int? taskId,
+    String? title,
+    bool? done,
+    int? sortOrder,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => ChecklistItem(
+    id: id ?? this.id,
+    taskId: taskId ?? this.taskId,
+    title: title ?? this.title,
+    done: done ?? this.done,
+    sortOrder: sortOrder ?? this.sortOrder,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  ChecklistItem copyWithCompanion(ChecklistItemsCompanion data) {
+    return ChecklistItem(
+      id: data.id.present ? data.id.value : this.id,
+      taskId: data.taskId.present ? data.taskId.value : this.taskId,
+      title: data.title.present ? data.title.value : this.title,
+      done: data.done.present ? data.done.value : this.done,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ChecklistItem(')
+          ..write('id: $id, ')
+          ..write('taskId: $taskId, ')
+          ..write('title: $title, ')
+          ..write('done: $done, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, taskId, title, done, sortOrder, createdAt, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ChecklistItem &&
+          other.id == this.id &&
+          other.taskId == this.taskId &&
+          other.title == this.title &&
+          other.done == this.done &&
+          other.sortOrder == this.sortOrder &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class ChecklistItemsCompanion extends UpdateCompanion<ChecklistItem> {
+  final Value<int> id;
+  final Value<int> taskId;
+  final Value<String> title;
+  final Value<bool> done;
+  final Value<int> sortOrder;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  const ChecklistItemsCompanion({
+    this.id = const Value.absent(),
+    this.taskId = const Value.absent(),
+    this.title = const Value.absent(),
+    this.done = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  ChecklistItemsCompanion.insert({
+    this.id = const Value.absent(),
+    required int taskId,
+    required String title,
+    this.done = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+  }) : taskId = Value(taskId),
+       title = Value(title),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<ChecklistItem> custom({
+    Expression<int>? id,
+    Expression<int>? taskId,
+    Expression<String>? title,
+    Expression<bool>? done,
+    Expression<int>? sortOrder,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (taskId != null) 'task_id': taskId,
+      if (title != null) 'title': title,
+      if (done != null) 'done': done,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  ChecklistItemsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? taskId,
+    Value<String>? title,
+    Value<bool>? done,
+    Value<int>? sortOrder,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+  }) {
+    return ChecklistItemsCompanion(
+      id: id ?? this.id,
+      taskId: taskId ?? this.taskId,
+      title: title ?? this.title,
+      done: done ?? this.done,
+      sortOrder: sortOrder ?? this.sortOrder,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (taskId.present) {
+      map['task_id'] = Variable<int>(taskId.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (done.present) {
+      map['done'] = Variable<bool>(done.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ChecklistItemsCompanion(')
+          ..write('id: $id, ')
+          ..write('taskId: $taskId, ')
+          ..write('title: $title, ')
+          ..write('done: $done, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3631,6 +4080,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $RecurrenceTemplatesTable(this);
   late final $TasksTable tasks = $TasksTable(this);
   late final $SettingsTable settings = $SettingsTable(this);
+  late final $ChecklistItemsTable checklistItems = $ChecklistItemsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3642,6 +4092,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     recurrenceTemplates,
     tasks,
     settings,
+    checklistItems,
   ];
 }
 
@@ -5985,6 +6436,24 @@ final class $$TasksTableReferences
       manager.$state.copyWith(prefetchedData: [item]),
     );
   }
+
+  static MultiTypedResultKey<$ChecklistItemsTable, List<ChecklistItem>>
+  _checklistItemsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.checklistItems,
+    aliasName: 'tasks__id__checklist_items__task_id',
+  );
+
+  $$ChecklistItemsTableProcessedTableManager get checklistItemsRefs {
+    final manager = $$ChecklistItemsTableTableManager(
+      $_db,
+      $_db.checklistItems,
+    ).filter((f) => f.taskId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_checklistItemsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$TasksTableFilterComposer extends Composer<_$AppDatabase, $TasksTable> {
@@ -6122,6 +6591,31 @@ class $$TasksTableFilterComposer extends Composer<_$AppDatabase, $TasksTable> {
           ),
     );
     return composer;
+  }
+
+  Expression<bool> checklistItemsRefs(
+    Expression<bool> Function($$ChecklistItemsTableFilterComposer f) f,
+  ) {
+    final $$ChecklistItemsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.checklistItems,
+      getReferencedColumn: (t) => t.taskId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChecklistItemsTableFilterComposer(
+            $db: $db,
+            $table: $db.checklistItems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
   }
 }
 
@@ -6389,6 +6883,31 @@ class $$TasksTableAnnotationComposer
         );
     return composer;
   }
+
+  Expression<T> checklistItemsRefs<T extends Object>(
+    Expression<T> Function($$ChecklistItemsTableAnnotationComposer a) f,
+  ) {
+    final $$ChecklistItemsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.checklistItems,
+      getReferencedColumn: (t) => t.taskId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChecklistItemsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.checklistItems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$TasksTableTableManager
@@ -6408,6 +6927,7 @@ class $$TasksTableTableManager
             bool goalId,
             bool subjectId,
             bool recurrenceTemplateId,
+            bool checklistItemsRefs,
           })
         > {
   $$TasksTableTableManager(_$AppDatabase db, $TasksTable table)
@@ -6500,10 +7020,13 @@ class $$TasksTableTableManager
                 goalId = false,
                 subjectId = false,
                 recurrenceTemplateId = false,
+                checklistItemsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
-                  explicitlyWatchedTables: [],
+                  explicitlyWatchedTables: [
+                    if (checklistItemsRefs) db.checklistItems,
+                  ],
                   addJoins:
                       <
                         T extends TableManagerState<
@@ -6563,7 +7086,29 @@ class $$TasksTableTableManager
                         return state;
                       },
                   getPrefetchedDataCallback: (items) async {
-                    return [];
+                    return [
+                      if (checklistItemsRefs)
+                        await $_getPrefetchedData<
+                          Task,
+                          $TasksTable,
+                          ChecklistItem
+                        >(
+                          currentTable: table,
+                          referencedTable: $$TasksTableReferences
+                              ._checklistItemsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$TasksTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).checklistItemsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.taskId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
                   },
                 );
               },
@@ -6587,6 +7132,7 @@ typedef $$TasksTableProcessedTableManager =
         bool goalId,
         bool subjectId,
         bool recurrenceTemplateId,
+        bool checklistItemsRefs,
       })
     >;
 typedef $$SettingsTableCreateCompanionBuilder =
@@ -6802,6 +7348,362 @@ typedef $$SettingsTableProcessedTableManager =
       Setting,
       PrefetchHooks Function()
     >;
+typedef $$ChecklistItemsTableCreateCompanionBuilder =
+    ChecklistItemsCompanion Function({
+      Value<int> id,
+      required int taskId,
+      required String title,
+      Value<bool> done,
+      Value<int> sortOrder,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+    });
+typedef $$ChecklistItemsTableUpdateCompanionBuilder =
+    ChecklistItemsCompanion Function({
+      Value<int> id,
+      Value<int> taskId,
+      Value<String> title,
+      Value<bool> done,
+      Value<int> sortOrder,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+
+final class $$ChecklistItemsTableReferences
+    extends BaseReferences<_$AppDatabase, $ChecklistItemsTable, ChecklistItem> {
+  $$ChecklistItemsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $TasksTable _taskIdTable(_$AppDatabase db) =>
+      db.tasks.createAlias('checklist_items__task_id__tasks__id');
+
+  $$TasksTableProcessedTableManager get taskId {
+    final $_column = $_itemColumn<int>('task_id')!;
+
+    final manager = $$TasksTableTableManager(
+      $_db,
+      $_db.tasks,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_taskIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ChecklistItemsTableFilterComposer
+    extends Composer<_$AppDatabase, $ChecklistItemsTable> {
+  $$ChecklistItemsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get done => $composableBuilder(
+    column: $table.done,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$TasksTableFilterComposer get taskId {
+    final $$TasksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.taskId,
+      referencedTable: $db.tasks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TasksTableFilterComposer(
+            $db: $db,
+            $table: $db.tasks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ChecklistItemsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ChecklistItemsTable> {
+  $$ChecklistItemsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get done => $composableBuilder(
+    column: $table.done,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$TasksTableOrderingComposer get taskId {
+    final $$TasksTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.taskId,
+      referencedTable: $db.tasks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TasksTableOrderingComposer(
+            $db: $db,
+            $table: $db.tasks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ChecklistItemsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ChecklistItemsTable> {
+  $$ChecklistItemsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<bool> get done =>
+      $composableBuilder(column: $table.done, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$TasksTableAnnotationComposer get taskId {
+    final $$TasksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.taskId,
+      referencedTable: $db.tasks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TasksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.tasks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ChecklistItemsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ChecklistItemsTable,
+          ChecklistItem,
+          $$ChecklistItemsTableFilterComposer,
+          $$ChecklistItemsTableOrderingComposer,
+          $$ChecklistItemsTableAnnotationComposer,
+          $$ChecklistItemsTableCreateCompanionBuilder,
+          $$ChecklistItemsTableUpdateCompanionBuilder,
+          (ChecklistItem, $$ChecklistItemsTableReferences),
+          ChecklistItem,
+          PrefetchHooks Function({bool taskId})
+        > {
+  $$ChecklistItemsTableTableManager(
+    _$AppDatabase db,
+    $ChecklistItemsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ChecklistItemsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ChecklistItemsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ChecklistItemsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> taskId = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<bool> done = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => ChecklistItemsCompanion(
+                id: id,
+                taskId: taskId,
+                title: title,
+                done: done,
+                sortOrder: sortOrder,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int taskId,
+                required String title,
+                Value<bool> done = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime updatedAt,
+              }) => ChecklistItemsCompanion.insert(
+                id: id,
+                taskId: taskId,
+                title: title,
+                done: done,
+                sortOrder: sortOrder,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$ChecklistItemsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({taskId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (taskId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.taskId,
+                                referencedTable: $$ChecklistItemsTableReferences
+                                    ._taskIdTable(db),
+                                referencedColumn:
+                                    $$ChecklistItemsTableReferences
+                                        ._taskIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ChecklistItemsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ChecklistItemsTable,
+      ChecklistItem,
+      $$ChecklistItemsTableFilterComposer,
+      $$ChecklistItemsTableOrderingComposer,
+      $$ChecklistItemsTableAnnotationComposer,
+      $$ChecklistItemsTableCreateCompanionBuilder,
+      $$ChecklistItemsTableUpdateCompanionBuilder,
+      (ChecklistItem, $$ChecklistItemsTableReferences),
+      ChecklistItem,
+      PrefetchHooks Function({bool taskId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -6818,4 +7720,6 @@ class $AppDatabaseManager {
       $$TasksTableTableManager(_db, _db.tasks);
   $$SettingsTableTableManager get settings =>
       $$SettingsTableTableManager(_db, _db.settings);
+  $$ChecklistItemsTableTableManager get checklistItems =>
+      $$ChecklistItemsTableTableManager(_db, _db.checklistItems);
 }

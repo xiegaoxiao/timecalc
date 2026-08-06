@@ -12,6 +12,7 @@ import 'package:timecalc/features/backup/data/backup_service.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/goals/data/milestone_repository.dart';
 import 'package:timecalc/features/goals/data/subject_repository.dart';
+import 'package:timecalc/features/tasks/data/checklist_item_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 
 /// BackupService 内存数据库测试（FR-9.1 / FR-9.2 / FR-9.3，NFR-2）。
@@ -27,6 +28,7 @@ void main() {
   late SubjectRepository subjects;
   late TaskRepository tasks;
   late MilestoneRepository milestones;
+  late ChecklistItemRepository checklist;
   late BackupService backup;
   late Directory tempDir;
 
@@ -36,6 +38,7 @@ void main() {
     subjects = SubjectRepository(db);
     tasks = TaskRepository(db);
     milestones = MilestoneRepository(db);
+    checklist = ChecklistItemRepository(db);
     backup = BackupService(db);
     tempDir = Directory.systemTemp.createTempSync('timecalc-backup-test');
   });
@@ -69,6 +72,8 @@ void main() {
       title: '完成一轮复习',
       date: '2026-09-30',
     );
+    // 检查项（FR-4.1，schema v8）：挂到已完成任务上，进入业务备份。
+    await checklist.create(taskId: created.id, title: '背诵并默写');
   }
 
   /// 目标下的未归档任务。
@@ -105,6 +110,10 @@ void main() {
       expect(restoredMilestones.single.title, '完成一轮复习');
       expect(restoredMilestones.single.date, '2026-09-30');
       expect(restoredMilestones.single.status, MilestoneStatus.todo);
+      // 检查项随备份覆盖恢复（FR-4.1，schema v8）。
+      final restoredItems = await checklist.byTask(restoredTasks.single.id);
+      expect(restoredItems.single.title, '背诵并默写');
+      expect(restoredItems.single.done, isFalse);
     });
 
     test('导出 → 合并恢复 → 备份数据追加且当前数据保留', () async {
@@ -159,6 +168,29 @@ void main() {
         await db2.close();
       }
     });
+
+    test('合并恢复：检查项随任务 id 映射追加到新任务下（FR-4.1/FR-9.1）', () async {
+      await seedBaseData();
+      final file = tempFile('backup.timecalc');
+      await backup.exportBackup(file);
+
+      // 备份到另一份空库（合并模式）：任务获得新 id，检查项须映射到新任务。
+      final db2 = AppDatabase(NativeDatabase.memory());
+      final backup2 = BackupService(db2);
+      final tasks2 = TaskRepository(db2);
+      final checklist2 = ChecklistItemRepository(db2);
+      try {
+        await backup2.restoreBackup(file, mode: RestoreMode.merge);
+
+        final goal = (await db2.select(db2.goals).get()).single;
+        final restoredTask = (await tasks2.byGoal(goal.id)).single;
+        final items = await checklist2.byTask(restoredTask.id);
+        expect(items.single.title, '背诵并默写');
+        expect(items.single.done, isFalse);
+      } finally {
+        await db2.close();
+      }
+    });
   });
 
   group('覆盖恢复（FR-9.3）', () {
@@ -191,7 +223,7 @@ void main() {
               'manifest.json',
               '{"format":"timecalc-backup","version":999,"type":"full",'
               '"exportedAtUtc":"2026-01-01T00:00:00.000Z","appSchemaVersion":6,'
-              '"appVersion":"1.0.0","counts":{"goals":0,"subjects":0,"tasks":0,'
+              '"appVersion":"1.2.0","counts":{"goals":0,"subjects":0,"tasks":0,'
               '"recurrenceTemplates":0}}',
             )),
         ),
@@ -223,6 +255,7 @@ void main() {
       expect(manifest.taskCount, 1);
       expect(manifest.subjectCount, 1);
       expect(manifest.milestoneCount, 1);
+      expect(manifest.checklistItemCount, 1);
       expect(manifest.validate(), isNull);
     });
 
@@ -269,6 +302,71 @@ void main() {
         throwsA(isA<BackupException>()),
       );
       // 原库仍可用。
+      final allGoals = await goals.watchAll();
+      expect(allGoals.single.title, '考研');
+    });
+
+    test('数据数组含非对象元素时拒绝恢复且不触碰数据库', () async {
+      await seedBaseData();
+      // 导出后篡改 tasks.json：数组元素改为非对象（数字）。保持元素个数为 1
+      // 与 manifest 计数一致，确保走到「元素类型校验」而非「计数不一致」。
+      final file = tempFile('backup.timecalc');
+      await backup.exportBackup(file);
+      final bytes = await file.readAsBytes();
+      final archive = ZipDecoder().decodeBytes(bytes);
+      final tampered = Archive();
+      for (final entry in archive) {
+        if (entry.name == 'data/tasks.json') {
+          tampered.addFile(ArchiveFile.string('data/tasks.json', '[42]'));
+        } else {
+          tampered.addFile(ArchiveFile.bytes(
+            entry.name,
+            entry.content as List<int>,
+          ));
+        }
+      }
+      final tamperedFile = tempFile('bad-element.timecalc');
+      await tamperedFile.writeAsBytes(ZipEncoder().encodeBytes(tampered));
+
+      await expectLater(
+        backup.restoreBackup(tamperedFile, mode: RestoreMode.overwrite),
+        throwsA(isA<BackupException>()),
+      );
+      // 原库未被破坏（此前类型错误元素会抛 TypeError 静默失败）。
+      final allGoals = await goals.watchAll();
+      expect(allGoals.single.title, '考研');
+      final restoredTasks = await tasksFor(allGoals.single.id);
+      expect(restoredTasks.single.title, '完成第一章');
+    });
+
+    test('数据文件顶层不是数组时拒绝恢复（损坏清单也拒绝）', () async {
+      await seedBaseData();
+      // 篡改 goals.json：顶层为对象而非数组。
+      final file = tempFile('backup.timecalc');
+      await backup.exportBackup(file);
+      final bytes = await file.readAsBytes();
+      final archive = ZipDecoder().decodeBytes(bytes);
+      final tampered = Archive();
+      for (final entry in archive) {
+        if (entry.name == 'data/goals.json') {
+          tampered.addFile(ArchiveFile.string(
+            'data/goals.json',
+            '{"title":"不是数组"}',
+          ));
+        } else {
+          tampered.addFile(ArchiveFile.bytes(
+            entry.name,
+            entry.content as List<int>,
+          ));
+        }
+      }
+      final tamperedFile = tempFile('bad-shape.timecalc');
+      await tamperedFile.writeAsBytes(ZipEncoder().encodeBytes(tampered));
+
+      await expectLater(
+        backup.restoreBackup(tamperedFile, mode: RestoreMode.overwrite),
+        throwsA(isA<BackupException>()),
+      );
       final allGoals = await goals.watchAll();
       expect(allGoals.single.title, '考研');
     });

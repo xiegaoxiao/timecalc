@@ -284,6 +284,32 @@ void main() {
       final regenerated = instances.firstWhere((t) => t.plannedDate == '2026-08-10');
       expect(regenerated.title, '改期背单词');
     });
+
+    test('future 应用后 generatedThroughDate 直接推进到窗口目标，不重复重算', () async {
+      final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+      final template = await recurrence.create(
+        goalId: goal.id,
+        title: '背单词',
+        rule: rule('daily', const {}),
+        startDate: '2026-08-05',
+        today: fixedToday,
+      );
+
+      await recurrence.updateRule(
+        templateId: template.id,
+        rule: rule('weekly', const {'weekdays': [1, 3, 5]}),
+        applyTo: RecurrenceApplyTo.future,
+        today: fixedToday,
+      );
+
+      // future 应用后已按新规则生成到 today+30：窗口应直接推进到位，
+      // 后续 generateDue 无需对同一窗口重复重算（回归：曾停留在 today-1）。
+      final updated = await recurrence.byId(template.id);
+      expect(updated?.generatedThroughDate, '2026-09-04'); // 08-05 + 30
+
+      final generated = await recurrence.generateDue(today: fixedToday);
+      expect(generated, 0); // 窗口已完整，无新增实例。
+    });
   });
 
   group('delete（删除模板，实例降级）', () {

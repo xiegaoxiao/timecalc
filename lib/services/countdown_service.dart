@@ -28,14 +28,17 @@ class CountdownService {
   /// 计算截止日相对 [today]（本地日期）的倒计时阶段与天数差。
   ///
   /// [deadlineDate] 为本地日历日期文本（yyyy-MM-dd）。
-  /// [status] 为 GoalStatus；已完成/已放弃返回 terminated，且不计逾期。
+  /// [status] 为 GoalStatus；已完成/已放弃/已归档返回 terminated，且不计逾期
+  /// （已归档目标如对历史记录，同样停止倒计时与逾期提醒）。
   (CountdownPhase, int days) evaluate({
     required String deadlineDate,
     required DateTime today,
     required String status,
   }) {
     final deadline = _parseDate(deadlineDate);
-    if (status == GoalStatus.completed || status == GoalStatus.abandoned) {
+    if (status == GoalStatus.completed ||
+        status == GoalStatus.abandoned ||
+        status == GoalStatus.archived) {
       return (CountdownPhase.terminated, _dayDiff(deadline, today));
     }
 

@@ -159,6 +159,7 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
       );
       // 跨页刷新（FR-3 验收）：目标详情、今日页、日历同步。
       ref.invalidate(taskListProvider(widget.goalId));
+      ref.invalidate(archivedCountProvider);
       ref.invalidate(archivedTaskListProvider(widget.goalId));
       ref.invalidate(allArchivedTasksProvider);
       ref.invalidate(tasksByDateProvider);

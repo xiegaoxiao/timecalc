@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/backup/presentation/backup_page.dart';
 import 'diagnostics_service.dart';
 
 /// 展示数据库写入失败对话框（PRD §8：停止继续写入，提示恢复或导出诊断）。
@@ -51,7 +52,7 @@ class DbErrorDialog extends ConsumerWidget {
         TextButton(
           onPressed: () {
             Navigator.of(context).pop();
-            context.go('/settings');
+            context.go(BackupPage.route);
           },
           child: const Text('前往备份恢复'),
         ),

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:archive/archive.dart';
 import 'package:drift/drift.dart';
 
+import '../../../../core/app_version.dart';
 import '../../../../core/database/database.dart';
 import 'backup_codec.dart';
 import 'backup_manifest.dart';
@@ -27,6 +28,7 @@ class BackupPayload {
     required this.tasks,
     required this.templates,
     required this.milestones,
+    required this.checklistItems,
     required this.settings,
   });
 
@@ -36,6 +38,7 @@ class BackupPayload {
   final List<Map<String, Object?>> tasks;
   final List<Map<String, Object?>> templates;
   final List<Map<String, Object?>> milestones;
+  final List<Map<String, Object?>> checklistItems;
   final List<Map<String, Object?>> settings;
 }
 
@@ -44,7 +47,8 @@ class BackupPayload {
 /// 备份文件为 zip（扩展名 `.timecalc`），内部结构：
 /// - `manifest.json`：格式/版本/类型/导出时间/计数；
 /// - `data/goals.json`、`data/subjects.json`、`data/tasks.json`、
-///   `data/recurrence_templates.json`、`data/settings.json`（配置目录）。
+///   `data/recurrence_templates.json`、`data/milestones.json`、
+///   `data/checklist_items.json`、`data/settings.json`（配置目录）。
 ///
 /// 恢复流程（NFR-2：先校验后写入，失败保持原库可用）：
 /// 1. 解包并校验格式、版本、类型、计数与数组长度一致；
@@ -72,6 +76,7 @@ class BackupService {
       final tasks = await _db.select(_db.tasks).get();
       final templates = await _db.select(_db.recurrenceTemplates).get();
       final milestones = await _db.select(_db.milestones).get();
+      final checklistItems = await _db.select(_db.checklistItems).get();
       final settings = await _db.select(_db.settings).get();
       return (
         goals: goals,
@@ -79,6 +84,7 @@ class BackupService {
         tasks: tasks,
         templates: templates,
         milestones: milestones,
+        checklistItems: checklistItems,
         settings: settings,
       );
     });
@@ -95,6 +101,7 @@ class BackupService {
       taskCount: snapshot.tasks.length,
       recurrenceTemplateCount: snapshot.templates.length,
       milestoneCount: snapshot.milestones.length,
+      checklistItemCount: snapshot.checklistItems.length,
     );
 
     final archive = Archive()
@@ -121,6 +128,12 @@ class BackupService {
       ..addFile(ArchiveFile.string(
         '$_dataDir${_jsonFileName('milestones')}',
         jsonEncode(snapshot.milestones.map(_codec.milestoneToJson).toList()),
+      ))
+      ..addFile(ArchiveFile.string(
+        '$_dataDir${_jsonFileName('checklist_items')}',
+        jsonEncode(
+          snapshot.checklistItems.map(_codec.checklistItemToJson).toList(),
+        ),
       ))
       ..addFile(ArchiveFile.string(
         '$_dataDir${_jsonFileName('settings')}',
@@ -253,7 +266,9 @@ class BackupService {
         oldTemplateToNew[json['id'] as int] = templateId;
       }
 
-      // 任务：追加（含归档任务），外键映射。
+      // 任务：追加（含归档任务），外键映射。同时记录旧 id → 新 id 映射，
+      // 供检查项（taskId 外键）转换。
+      final oldTaskToNew = <int, int>{};
       for (final json in payload.tasks) {
         final newGoalId = oldGoalToNew[json['goalId'] as int];
         if (newGoalId == null) continue;
@@ -263,7 +278,7 @@ class BackupService {
         final templateId = json['recurrenceTemplateId'] == null
             ? null
             : oldTemplateToNew[json['recurrenceTemplateId'] as int];
-        await _db.into(_db.tasks).insert(
+        final taskId = await _db.into(_db.tasks).insert(
               _codec.taskFromJson(
                 json,
                 goalId: newGoalId,
@@ -271,16 +286,28 @@ class BackupService {
                 recurrenceTemplateId: templateId,
               ),
             );
+        oldTaskToNew[json['id'] as int] = taskId;
+      }
+
+      // 检查项：追加（FR-4.1，schema v8），taskId 经任务映射转换。
+      for (final json in payload.checklistItems) {
+        final newTaskId = oldTaskToNew[json['taskId'] as int];
+        if (newTaskId == null) continue; // 任务不在备份任务列表，跳过该检查项。
+        await _db.into(_db.checklistItems).insert(
+              _codec.checklistItemFromJson(json, taskId: newTaskId),
+            );
       }
     });
   }
 
   /// 覆盖模式：单事务清空业务表并写入备份数据（settings 一并恢复）。
   ///
-  /// 清空按子表→父表顺序（tasks → recurrence_templates → milestones →
-  /// subjects → goals），写入按父表→子表顺序并保留原 ID，保证外键一致。
+  /// 清空按子表→父表顺序（checklist_items → tasks → recurrence_templates →
+  /// milestones → subjects → goals），写入按父表→子表顺序并保留原 ID，
+  /// 保证外键一致。
   Future<void> _overwriteRestore(BackupPayload payload) async {
     await _db.transaction(() async {
+      await _db.delete(_db.checklistItems).go();
       await _db.delete(_db.tasks).go();
       await _db.delete(_db.recurrenceTemplates).go();
       await _db.delete(_db.milestones).go();
@@ -335,6 +362,14 @@ class BackupService {
               mode: InsertMode.insertOrReplace,
             );
       }
+      // 检查项（FR-4.1，schema v8）：覆盖模式保留原 ID，taskId 原样还原。
+      for (final json in payload.checklistItems) {
+        final taskId = json['taskId'] as int;
+        await _db.into(_db.checklistItems).insert(
+              _codec.checklistItemFromJson(json, taskId: taskId, keepId: true),
+              mode: InsertMode.insertOrReplace,
+            );
+      }
 
       // 计划偏好：覆盖模式下随备份一并恢复（FR-9.2 覆盖语义）。
       if (payload.settings.isNotEmpty) {
@@ -375,32 +410,45 @@ class BackupService {
     if (manifestFile == null) {
       throw const BackupException('备份文件缺少清单（manifest.json）');
     }
-    final manifest = BackupManifest.fromJson(
-      (jsonDecode(_decodeUtf8(manifestFile.content as List<int>))
-          as Map).cast<String, Object?>(),
-    );
+    // manifest 顶层结构校验：损坏/非对象清单统一报 BackupException
+    // （此前 `as Map` 在极端损坏时抛 TypeError，UI 的 on Exception 捕不到）。
+    final Object? decodedManifest;
+    try {
+      decodedManifest = jsonDecode(_decodeUtf8(manifestFile.content as List<int>));
+    } catch (_) {
+      throw const BackupException('备份文件清单不是有效 JSON');
+    }
+    if (decodedManifest is! Map<String, Object?>) {
+      throw const BackupException('备份文件清单格式不正确');
+    }
+    final manifest = BackupManifest.fromJson(decodedManifest);
 
     List<Map<String, Object?>> readJson(String name) {
       final entry = archive.findFile('$_dataDir$name');
       if (entry == null) throw BackupException('备份文件缺少 data/$name');
-      final decoded = jsonDecode(_decodeUtf8(entry.content as List<int>));
-      return (decoded as List).cast<Map<String, Object?>>();
+      return _readObjectList(
+        jsonDecode(_decodeUtf8(entry.content as List<int>)),
+        name,
+      );
     }
 
     List<Map<String, Object?>> readJsonOptional(String name) {
       final entry = archive.findFile('$_dataDir$name');
       if (entry == null) return const [];
-      final decoded = jsonDecode(_decodeUtf8(entry.content as List<int>));
-      return (decoded as List).cast<Map<String, Object?>>();
+      return _readObjectList(
+        jsonDecode(_decodeUtf8(entry.content as List<int>)),
+        name,
+      );
     }
 
     final goals = readJson(_jsonFileName('goals'));
     final subjects = readJson(_jsonFileName('subjects'));
     final tasks = readJson(_jsonFileName('tasks'));
     final templates = readJson(_jsonFileName('recurrence_templates'));
-    // 旧版本备份（v1 格式早期）不含 milestones.json；缺失时按空处理，
-    // 里程碑计数随 manifest 的 milestoneCount（缺失为 0）保持一致。
+    // 旧版本备份不含 milestones.json / checklist_items.json：缺失时按空
+    // 处理，计数随 manifest 的对应字段（缺失为 0）保持一致。
     final milestones = readJsonOptional(_jsonFileName('milestones'));
+    final checklistItems = readJsonOptional(_jsonFileName('checklist_items'));
     final settings = readJson(_jsonFileName('settings'));
 
     // 计数校验：manifest 声明的数量必须与实际数组长度一致（NFR-2）。
@@ -408,7 +456,8 @@ class BackupService {
         subjects.length != manifest.subjectCount ||
         tasks.length != manifest.taskCount ||
         templates.length != manifest.recurrenceTemplateCount ||
-        milestones.length != manifest.milestoneCount) {
+        milestones.length != manifest.milestoneCount ||
+        checklistItems.length != manifest.checklistItemCount) {
       throw const BackupException('备份文件内容与清单不一致，已拒绝恢复');
     }
 
@@ -419,6 +468,7 @@ class BackupService {
       tasks: tasks,
       templates: templates,
       milestones: milestones,
+      checklistItems: checklistItems,
       settings: settings,
     );
   }
@@ -436,6 +486,31 @@ class BackupService {
   }
 
   static String _jsonFileName(String table) => '$table.json';
+
+  /// 把备份数据 JSON 解码结果校验为对象数组。
+  ///
+  /// 逐元素显式校验（而非惰性 `.cast`）：非数组或数组内混入非对象元素时
+  /// 立即抛 [BackupException]——惰性 cast 只在后续迭代时才抛 TypeError
+  /// （Error，UI 的 `on Exception` 捕不到），会造成恢复静默失败无反馈。
+  static List<Map<String, Object?>> _readObjectList(
+    Object? decoded,
+    String name,
+  ) {
+    if (decoded is! List) {
+      throw BackupException('备份文件 data/$name 格式不正确（应为数组）');
+    }
+    final out = <Map<String, Object?>>[];
+    for (var i = 0; i < decoded.length; i++) {
+      final item = decoded[i];
+      if (item is! Map<String, Object?>) {
+        throw BackupException(
+          '备份文件 data/$name 格式不正确（第 ${i + 1} 项不是对象）',
+        );
+      }
+      out.add(item);
+    }
+    return out;
+  }
 
   static String _goalKey(String title, String deadline, String status) =>
       '$title|$deadline|$status';

@@ -2,11 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/backup/presentation/archived_tasks_page.dart';
+import '../../features/backup/presentation/backup_page.dart';
 import '../../features/goals/presentation/goal_detail_page.dart';
 import '../../features/plan/presentation/plan_page.dart';
 import '../../features/progress/presentation/progress_page.dart';
+import '../../features/settings/presentation/appearance_page.dart';
+import '../../features/settings/presentation/close_behavior_page.dart';
 import '../../features/settings/presentation/plan_preference_page.dart';
 import '../../features/settings/presentation/settings_page.dart';
+import '../../features/settings/presentation/shortcuts_page.dart';
 import '../../features/tasks/data/recurrence_repository_provider.dart';
 import '../../features/tasks/presentation/subject_task_page.dart';
 import '../../features/today/presentation/today_page.dart';
@@ -86,6 +91,33 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/plan-preference',
         name: 'planPreference',
         builder: (context, state) => const PlanPreferencePage(),
+      ),
+      // 设置页子页（整宽菜单 push 进入，均自带 Scaffold + AppBar，
+      // 无路径参数，不需要 redirect helper）。
+      GoRoute(
+        path: CloseBehaviorPage.route,
+        name: 'closeBehavior',
+        builder: (context, state) => const CloseBehaviorPage(),
+      ),
+      GoRoute(
+        path: BackupPage.route,
+        name: 'backup',
+        builder: (context, state) => const BackupPage(),
+      ),
+      GoRoute(
+        path: ArchivedTasksPage.route,
+        name: 'archivedTasks',
+        builder: (context, state) => const ArchivedTasksPage(),
+      ),
+      GoRoute(
+        path: AppearancePage.route,
+        name: 'appearance',
+        builder: (context, state) => const AppearancePage(),
+      ),
+      GoRoute(
+        path: ShortcutsPage.route,
+        name: 'shortcuts',
+        builder: (context, state) => const ShortcutsPage(),
       ),
     ],
   );

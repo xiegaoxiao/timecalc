@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:drift/native.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -15,11 +14,12 @@ import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/backup/data/backup_file_picker.dart';
 import 'package:timecalc/features/settings/data/settings_repository.dart';
 
-/// 设置页 Widget 测试（FR-8.1 关闭行为 / FR-9 备份与恢复入口）。
+/// 设置页 Widget 测试（整宽菜单 + FR-8.1 关闭行为子页 / FR-9 备份入口）。
 ///
 /// 固定时钟 2026-08-05，验证：
-/// - 关闭行为分段选择与保存写库（FR-8.1）
-/// - 备份与恢复入口存在（FR-9.1）
+/// - 设置页为整宽长条形菜单，五项入口齐全（FR-8.1 / FR-9.1）
+/// - 关闭行为子页：分段选择与保存写库（FR-8.1）
+/// - 保存后实时应用到桌面层（FR-8.1 无需重启）
 /// - 文件选择器以假实现注入，不触碰平台对话框
 void main() {
   late AppDatabase db;
@@ -47,6 +47,12 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> openCloseBehavior(WidgetTester tester) async {
+    await openSettings(tester);
+    await tester.tap(find.text('关闭行为'));
+    await tester.pumpAndSettle();
+  }
+
   setUp(() {
     db = AppDatabase(NativeDatabase.memory());
     fixedNow = DateTime(2026, 8, 5, 12);
@@ -57,30 +63,29 @@ void main() {
     await db.close();
   });
 
-  testWidgets('设置页展示关闭行为与备份恢复入口（FR-8.1 / FR-9.1）', (tester) async {
+  testWidgets('设置页为整宽菜单，五项入口齐全（FR-8.1 / FR-9.1）', (tester) async {
     await pumpApp(tester);
     await openSettings(tester);
 
     expect(find.text('关闭行为'), findsOneWidget);
-    expect(find.text('直接退出'), findsOneWidget);
-    expect(find.text('最小化到托盘'), findsOneWidget);
-
-    // 备份区在列表下方，滚动后再断言。
-    await tester.drag(find.byType(ListView).first, const Offset(0, -400));
-    await tester.pumpAndSettle();
     expect(find.text('备份与恢复'), findsOneWidget);
-    expect(find.text('导出备份'), findsOneWidget);
-    expect(find.text('从备份恢复'), findsOneWidget);
+    expect(find.text('已归档任务'), findsOneWidget);
+    expect(find.text('外观'), findsOneWidget);
+    expect(find.text('快捷键'), findsOneWidget);
+
+    // 菜单页本身不再平铺关闭行为按钮或备份操作按钮（收敛到子页）。
+    expect(find.text('导出备份'), findsNothing);
+    expect(find.text('从备份恢复'), findsNothing);
+    expect(find.text('最小化到托盘'), findsNothing);
   });
 
   testWidgets('切换关闭行为为「最小化到托盘」并保存写库（FR-8.1）', (tester) async {
     await pumpApp(tester);
-    await openSettings(tester);
+    await openCloseBehavior(tester);
 
-    // 关闭行为是设置页第一个区块（计划偏好已移至进度页入口）。
     await tester.tap(find.text('最小化到托盘'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('保存').last);
+    await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 
     // 写库成功（SnackBar 提示）。
@@ -103,16 +108,15 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await openSettings(tester);
+    await openCloseBehavior(tester);
 
-    // 关闭行为是设置页第一个区块，直接可见。
     await tester.tap(find.text('最小化到托盘'));
     await tester.pumpAndSettle();
 
     // 保存前未应用关闭行为。
     expect(controller.applyCalls, 0);
 
-    await tester.tap(find.text('保存').last);
+    await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 
     // 保存后桌面层收到 applyCloseBehavior 调用，切换实时生效。

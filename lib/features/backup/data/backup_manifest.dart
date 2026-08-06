@@ -34,9 +34,6 @@ class BackupFormat {
   static const int version = 1;
 }
 
-/// 当前应用版本（写入备份 manifest 便于追溯）。
-const String kAppVersion = '1.0.0';
-
 /// 备份文件清单（manifest.json 内容）。
 ///
 /// 恢复前展示「备份时间、目标数、任务数」（FR-9.2）的数据来源。
@@ -53,6 +50,7 @@ class BackupManifest {
     required this.taskCount,
     required this.recurrenceTemplateCount,
     required this.milestoneCount,
+    required this.checklistItemCount,
   });
 
   final String format;
@@ -66,6 +64,7 @@ class BackupManifest {
   final int taskCount;
   final int recurrenceTemplateCount;
   final int milestoneCount;
+  final int checklistItemCount;
 
   /// 校验备份文件的格式、版本与类型（恢复前第一步，NFR-2）。
   ///
@@ -75,7 +74,8 @@ class BackupManifest {
     if (version != BackupFormat.version) return '备份版本不受支持（$version）';
     if (type != BackupType.full) return '不支持的备份类型';
     if (goalCount < 0 || subjectCount < 0 || taskCount < 0 ||
-        recurrenceTemplateCount < 0 || milestoneCount < 0) {
+        recurrenceTemplateCount < 0 || milestoneCount < 0 ||
+        checklistItemCount < 0) {
       return '备份计数非法';
     }
     return null;
@@ -95,6 +95,7 @@ class BackupManifest {
         'tasks': taskCount,
         'recurrenceTemplates': recurrenceTemplateCount,
         'milestones': milestoneCount,
+        'checklistItems': checklistItemCount,
       },
     };
   }
@@ -115,6 +116,7 @@ class BackupManifest {
       recurrenceTemplateCount:
           (counts['recurrenceTemplates'] as num?)?.toInt() ?? 0,
       milestoneCount: (counts['milestones'] as num?)?.toInt() ?? 0,
+      checklistItemCount: (counts['checklistItems'] as num?)?.toInt() ?? 0,
     );
   }
 }

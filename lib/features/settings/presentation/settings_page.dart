@@ -1,168 +1,108 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
-import '../../../core/database/database.dart';
 import '../../../core/database/tables.dart';
-import '../../../core/desktop/desktop_providers.dart';
-import '../../../core/errors/app_guard.dart';
-import '../../../shared/widgets/app_error_view.dart';
-import '../../backup/presentation/backup_section.dart';
+import '../../backup/presentation/archived_tasks_page.dart';
+import '../../backup/presentation/backup_page.dart';
 import '../data/settings_repository_provider.dart';
+import '../../tasks/data/task_repository_provider.dart';
+import 'appearance_page.dart';
+import 'close_behavior_page.dart';
+import 'shortcuts_page.dart';
 
-/// 设置页：M3 交付「关闭行为」（FR-8.1）与「备份与恢复」（FR-9）；
-/// 计划偏好已移至进度页入口的独立「计划偏好」页。
-/// 其余设置项（外观、快捷键）随后续里程碑提供。
+/// 设置页：整宽长条形菜单，每个菜单项点击进入独立子页。
+///
+/// 统一信息架构：关闭行为 / 备份与恢复 / 已归档任务 / 外观 / 快捷键
+/// 一律为整宽 ListTile（图标 + 标题 + 摘要 + chevron），不再混用胶囊
+/// 按钮、独立按钮或纯文字占位。摘要数据（关闭行为当前值、归档数量）
+/// 用 valueOrNull 展示，加载中/失败时回退默认文案，菜单本身不被阻塞。
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final settingsAsync = ref.watch(settingsProvider);
+    final settings = ref.watch(settingsProvider).valueOrNull;
+    final archivedCount = ref.watch(archivedCountProvider).valueOrNull ?? 0;
+    final closeLabel = settings?.closeBehavior == CloseBehavior.minimizeToTray
+        ? '最小化到托盘'
+        : '直接退出';
+
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
-      body: settingsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => AppErrorView(
-          error: error,
-          onRetry: () => ref.invalidate(settingsProvider),
-        ),
-        data: (settings) => ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            _CloseBehaviorSection(settings: settings),
-            const Divider(height: 32),
-            const BackupSection(),
-            const Divider(height: 32),
-            const _PlaceholderTile(
-              icon: Icons.palette_outlined,
-              title: '外观',
-              note: '后续里程碑提供主题切换',
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            margin: EdgeInsets.zero,
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                _MenuTile(
+                  icon: Icons.close_fullscreen_outlined,
+                  title: '关闭行为',
+                  subtitle: closeLabel,
+                  onTap: () => context.push(CloseBehaviorPage.route),
+                ),
+                const Divider(height: 1),
+                _MenuTile(
+                  icon: Icons.file_download_outlined,
+                  title: '备份与恢复',
+                  subtitle: '导出备份、从备份恢复数据',
+                  onTap: () => context.push(BackupPage.route),
+                ),
+                const Divider(height: 1),
+                _MenuTile(
+                  icon: Icons.history,
+                  title: '已归档任务',
+                  subtitle: '$archivedCount 个已完成旧任务，可恢复回当前计划',
+                  onTap: () => context.push(ArchivedTasksPage.route),
+                ),
+                const Divider(height: 1),
+                _MenuTile(
+                  icon: Icons.palette_outlined,
+                  title: '外观',
+                  subtitle: '主题切换（后续里程碑提供）',
+                  onTap: () => context.push(AppearancePage.route),
+                ),
+                const Divider(height: 1),
+                _MenuTile(
+                  icon: Icons.keyboard_outlined,
+                  title: '快捷键',
+                  subtitle: '全局快捷键（P1 功能，后续迭代提供）',
+                  onTap: () => context.push(ShortcutsPage.route),
+                ),
+              ],
             ),
-            const Divider(height: 8),
-            const _PlaceholderTile(
-              icon: Icons.keyboard_outlined,
-              title: '快捷键',
-              note: 'P1 功能，后续迭代提供',
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// 关闭按钮行为（FR-8.1）：退出 / 最小化到托盘。
-///
-/// 存储于 schema v6 `Settings.close_behavior`；桌面层（DesktopController）
-/// 在 M3 据此决定关闭按钮的拦截行为。首次触发最小化到托盘时由桌面层
-/// 说明当前选择。
-class _CloseBehaviorSection extends ConsumerStatefulWidget {
-  const _CloseBehaviorSection({required this.settings});
-
-  final Setting settings;
-
-  @override
-  ConsumerState<_CloseBehaviorSection> createState() =>
-      _CloseBehaviorSectionState();
-}
-
-class _CloseBehaviorSectionState extends ConsumerState<_CloseBehaviorSection> {
-  late String _behavior;
-  bool _saving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _behavior = widget.settings.closeBehavior;
-  }
-
-  Future<void> _save() async {
-    setState(() => _saving = true);
-    try {
-      final ok = await runDbAction(
-        context,
-        action: () async {
-          await ref
-              .read(settingsRepositoryProvider)
-              .updateCloseBehavior(_behavior);
-        },
-      );
-      if (!ok) return;
-      ref.invalidate(settingsProvider);
-      // FR-8.1：保存后实时应用窗口拦截行为，切换无需重启即生效。
-      await ref.read(desktopControllerProvider)?.applyCloseBehavior();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('关闭行为已保存')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('关闭行为', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
-        Text(
-          '点击窗口关闭按钮时的行为；最小化到托盘后可随时从托盘菜单恢复（FR-8.1/8.2）。',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        const SizedBox(height: 12),
-        SegmentedButton<String>(
-          segments: const [
-            ButtonSegment(
-              value: CloseBehavior.exit,
-              label: Text('直接退出'),
-              icon: Icon(Icons.close),
-            ),
-            ButtonSegment(
-              value: CloseBehavior.minimizeToTray,
-              label: Text('最小化到托盘'),
-              icon: Icon(Icons.minimize),
-            ),
-          ],
-          selected: {_behavior},
-          onSelectionChanged: (selection) =>
-              setState(() => _behavior = selection.first),
-        ),
-        const SizedBox(height: 12),
-        Align(
-          alignment: Alignment.centerRight,
-          child: FilledButton.icon(
-            onPressed: _saving ? null : _save,
-            icon: const Icon(Icons.save_outlined, size: 18),
-            label: const Text('保存'),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// 尚未交付的设置项占位（PRD §8：不做纯说明页，提供明确后续计划）。
-class _PlaceholderTile extends StatelessWidget {
-  const _PlaceholderTile({
+/// 整宽菜单项：图标 + 标题 + 摘要 + chevron。
+class _MenuTile extends StatelessWidget {
+  const _MenuTile({
     required this.icon,
     required this.title,
-    required this.note,
+    required this.subtitle,
+    required this.onTap,
   });
 
   final IconData icon;
   final String title;
-  final String note;
+  final String subtitle;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return ListTile(
       leading: Icon(icon),
       title: Text(title),
-      subtitle: Text(note),
-      enabled: false,
+      subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: onTap,
     );
   }
 }

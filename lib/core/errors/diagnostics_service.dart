@@ -4,7 +4,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../../features/backup/data/backup_manifest.dart';
+import '../app_version.dart';
 import '../database/database.dart';
 import '../database/database_provider.dart';
 
@@ -119,6 +119,8 @@ class DiagnosticsService {
           () async => (await db.select(db.recurrenceTemplates).get()).length);
       await writeRowCount(
           'milestones', () async => (await db.select(db.milestones).get()).length);
+      await writeRowCount('checklist_items',
+          () async => (await db.select(db.checklistItems).get()).length);
     }
 
     buffer

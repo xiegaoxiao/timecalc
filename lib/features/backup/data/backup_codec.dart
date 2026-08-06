@@ -96,6 +96,17 @@ class BackupCodec {
         'updatedAt': row.updatedAt.toUtc().toIso8601String(),
       };
 
+  /// 检查项行 → JSON（FR-4.1，schema v8）。
+  Map<String, Object?> checklistItemToJson(ChecklistItem row) => {
+        'id': row.id,
+        'taskId': row.taskId,
+        'title': row.title,
+        'done': row.done,
+        'sortOrder': row.sortOrder,
+        'createdAt': row.createdAt.toUtc().toIso8601String(),
+        'updatedAt': row.updatedAt.toUtc().toIso8601String(),
+      };
+
   /// JSON → GoalsCompanion（[keepId] 为 true 时保留原 id 供覆盖恢复）。
   GoalsCompanion goalFromJson(Map<String, Object?> json, {bool keepId = false}) {
     final now = DateTime.now().toUtc();
@@ -233,6 +244,26 @@ class BackupCodec {
       title: json['title'] as String,
       date: json['date'] as String,
       status: Value(json['status'] as String? ?? 'todo'),
+      sortOrder: Value(json['sortOrder'] as int? ?? 0),
+      createdAt: _parseUtc(json['createdAt']) ?? now,
+      updatedAt: _parseUtc(json['updatedAt']) ?? now,
+    );
+  }
+
+  /// JSON → ChecklistItemsCompanion（FR-4.1，schema v8）。
+  ///
+  /// [taskId] 为恢复时经外键映射转换后的新任务 id（备份 JSON 存旧 id）。
+  ChecklistItemsCompanion checklistItemFromJson(
+    Map<String, Object?> json, {
+    required int taskId,
+    bool keepId = false,
+  }) {
+    final now = DateTime.now().toUtc();
+    return ChecklistItemsCompanion.insert(
+      id: keepId ? Value(json['id'] as int) : const Value.absent(),
+      taskId: taskId,
+      title: json['title'] as String,
+      done: Value(json['done'] as bool? ?? false),
       sortOrder: Value(json['sortOrder'] as int? ?? 0),
       createdAt: _parseUtc(json['createdAt']) ?? now,
       updatedAt: _parseUtc(json['updatedAt']) ?? now,

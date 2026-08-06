@@ -1,9 +1,13 @@
+import 'dart:math' as math;
+
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/database/tables.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../services/duration_format.dart';
 import '../../../services/statistics_service.dart';
@@ -25,18 +29,40 @@ const _heatColors = <Color>[
   Color(0xFF216E39),
 ];
 
-/// 进度页（M3）：基础统计、热力图与甘特图（FR-7.1 / FR-7.2 / FR-7.4）。
+/// 进度页（M3）：基础统计、热力图与任务耗时图（FR-7.1 / FR-7.2 / FR-7.3 / FR-7.4）。
 ///
 /// 结构（自上而下）：
 /// 1. 今日概览：今日完成数/总数、今日已完成预估时长、目标剩余工作量；
-/// 2. 热力图：按「完成日期」统计最近 26 周完成任务数量（LeetCode 配色，
+/// 2. 燃尽趋势（FR-7.3）：最近 30 天「剩余预估时长」随日期的变化 + 理想
+///    参考线（今日点 = 当前剩余；虚线按最晚截止日线性递减）；
+/// 3. 热力图：按「完成日期」统计最近 26 周完成任务数量（LeetCode 配色，
 ///    tooltip 与图例文本，状态不只依赖颜色，NFR-4）；
-/// 3. 任务耗时甘特图：按目标分组，展示最近 26 周每周完成时长；
-/// 4. FR-7.4 说明：无预估时长的任务只计入任务数。
+/// 4. 任务耗时图（fl_chart，M7 迭代）：按周展示未来计划与已完成时长；
+/// 5. FR-7.4 说明：无预估时长的任务只计入任务数。
 class ProgressPage extends ConsumerWidget {
   const ProgressPage({super.key});
 
   static const _stats = StatisticsService();
+
+  /// 进行中目标的最晚截止日（yyyy-MM-dd 文本）；无进行中目标返回 null。
+  static DateTime? _latestDeadline(List<Goal> goals) {
+    DateTime? latest;
+    for (final goal in goals) {
+      if (goal.status == GoalStatus.completed ||
+          goal.status == GoalStatus.abandoned ||
+          goal.status == GoalStatus.archived) {
+        continue;
+      }
+      final date = _parseDate(goal.deadlineDate);
+      if (latest == null || date.isAfter(latest)) latest = date;
+    }
+    return latest;
+  }
+
+  static DateTime _parseDate(String yyyyMMdd) {
+    final parts = yyyyMMdd.split('-');
+    return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -100,12 +126,12 @@ class ProgressPage extends ConsumerWidget {
     final remainingMinutes = _stats.remainingMinutes(todo);
     final completedCounts = _stats.completedCountsByLocalDate(completed);
     final weekStarts = StatisticsService.recentWeekStarts(today);
-    // 甘特图窗口更宽：过去 12 周 + 当前周 + 未来 13 周，能看到未来计划。
+    // 任务耗时图窗口：过去 12 周 + 当前周 + 未来 13 周，能看到未来计划。
     final ganttStarts = StatisticsService.ganttWeekStarts(today);
 
     final style = Theme.of(context).textTheme.bodySmall;
 
-    // 甘特图数据一次计算，供行数（行高自适应）与图表区共用。
+    // 任务耗时图数据：按目标×周聚合（跨目标总览时在图表区合并）。
     final ganttData = _stats.goalGanttData(
       todoTasks: todo,
       completedTasks: completed,
@@ -115,21 +141,11 @@ class ProgressPage extends ConsumerWidget {
         .where((g) => ganttData[g.id]?.hasData ?? false)
         .toList();
 
-    // 整页纵向滚动（概览 + 热力图 + 甘特图 + 说明统一滚动）：甘特图行高
-    // 随窗口高度与行数自适应——行少/窗口高时条形饱满，行数多时回落到
-    // 最小行高并靠整页滚动查看全部行（不被固定/截断）。
+    // 整页纵向滚动（概览 + 燃尽 + 热力图 + 任务耗时图 + 说明统一滚动）。
     return LayoutBuilder(
       builder: (context, constraints) {
         // 水平边距按容器宽度比例（约 5%，夹取 12~48px），其余交给内容铺满。
         final hPad = (constraints.maxWidth * 0.05).clamp(12.0, 48.0);
-        // 行高：甘特图约占窗口高度 45%，均分给各行，夹取 [min, max]。
-        final rowHeight = ganttRows.isEmpty
-            ? _GanttChart._defaultRowHeight
-            : (constraints.maxHeight * 0.45 / ganttRows.length)
-                .clamp(
-                  _GanttChart._minRowHeight,
-                  _GanttChart._maxRowHeight,
-                );
 
         return SingleChildScrollView(
           key: const ValueKey('progressPageScroll'),
@@ -146,6 +162,13 @@ class ProgressPage extends ConsumerWidget {
                 remainingMinutes: remainingMinutes,
               ),
               const SizedBox(height: 8),
+              _BurndownSection(
+                todoTasks: todo,
+                completedTasks: completed,
+                today: today,
+                endDate: _latestDeadline(goals) ?? today,
+              ),
+              const SizedBox(height: 8),
               _HeatmapSection(
                 today: today,
                 weekStarts: weekStarts,
@@ -156,7 +179,6 @@ class ProgressPage extends ConsumerWidget {
                 rows: ganttRows,
                 data: ganttData,
                 weekStarts: ganttStarts,
-                rowHeight: rowHeight,
               ),
               const SizedBox(height: 8),
               // 说明文本：左对齐，不随 stretch 拉伸；随整页滚动。
@@ -164,8 +186,9 @@ class ProgressPage extends ConsumerWidget {
                 alignment: Alignment.centerLeft,
                 child: Text(
                   '说明：无预估时长的任务只计入任务数，不计入时长（FR-7.4）。'
-                  '热力图按任务完成日期统计；甘特图浅色为未来计划时长，'
-                  '深色为已完成时长。',
+                  '燃尽图展示剩余预估时长随日期的变化（今日点=当前剩余），'
+                  '虚线为按截止日线性递减的理想参考线；热力图按任务完成日期'
+                  '统计；任务耗时图按周展示未来计划（浅色）与已完成时长（深色）。',
                   style: style,
                 ),
               ),
@@ -335,6 +358,417 @@ class _StatItem extends StatelessWidget {
               ?.copyWith(fontWeight: FontWeight.w600),
         ),
       ],
+    );
+  }
+}
+
+/// 燃尽趋势区（FR-7.3）：最近 [windowDays] 天「剩余预估时长」随日期的
+/// 变化 + 理想参考线（fl_chart 图表，视觉重构增强）。
+///
+/// - 实际剩余（实线 + 面积填充）：今日点 = 当前剩余（与 FR-7.1 口径一致），
+///   随日期往前回退，完成日期越晚的任务越晚被「消化」，剩余越多；
+/// - 理想参考线（虚线）：从窗口起点的实际剩余按 [endDate]（最晚截止日）
+///   线性递减到 0；
+/// - Header 右侧展示「当前剩余」大字（燃尽核心信息）；悬停 tooltip +
+///   图例文本 + 整体读屏语义（NFR-4，不只依赖颜色）。
+class _BurndownSection extends StatelessWidget {
+  const _BurndownSection({
+    required this.todoTasks,
+    required this.completedTasks,
+    required this.today,
+    required this.endDate,
+  });
+
+  final List<Task> todoTasks;
+  final List<Task> completedTasks;
+  final DateTime today;
+  final DateTime endDate;
+
+  /// 实际剩余线颜色。
+  static const _remainingColor = Color(0xFF216E39);
+
+  /// 面积填充渐变：从深绿淡出到透明。
+  static const _areaGradient = [
+    Color(0x47216E39), // 深绿 28% 透明度
+    Color(0x00216E39), // 全透明
+  ];
+
+  /// 理想参考线颜色。
+  static const _idealColor = Color(0xFFB0BEC5);
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final hasMinutes = todoTasks.any((t) =>
+            t.status != 'done' && t.estimatedMinutes != null) ||
+        completedTasks.any((t) => t.estimatedMinutes != null);
+
+    // 燃尽序列：Header 的「当前剩余」与图表共用一次计算。
+    final points = hasMinutes
+        ? StatisticsService.burndownSeries(
+            todoTasks: todoTasks,
+            completedTasks: completedTasks,
+            today: today,
+            endDate: endDate,
+          )
+        : const <BurndownPoint>[];
+    final currentRemaining =
+        points.isEmpty ? 0 : points.last.remaining;
+
+    return Card(
+      // 微透明边框 + 柔和阴影：提升卡片质感。
+      // clipBehavior: Clip.none：fl_chart 悬停 tooltip 会浮出图表区域，
+      // 若卡片裁剪，边缘数据点的气泡会被截断（问题 3）。
+      clipBehavior: Clip.none,
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: scheme.outlineVariant.withValues(alpha: 0.4),
+        ),
+      ),
+      child: Padding(
+        // 底部留出额外空间：给 X 轴旋转 45° 后的日期标签与悬停 tooltip
+        // 预留展示区域，避免贴到卡片边缘（问题 2 / 3）。
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.trending_down, size: 20, color: scheme.primary),
+                const SizedBox(width: 8),
+                Text('燃尽趋势', style: Theme.of(context).textTheme.titleMedium),
+                const Spacer(),
+                // Header 右侧：当前剩余大字（燃尽核心信息直接呈现）。
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '当前剩余',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    Text(
+                      DurationFormat.minutes(currentRemaining),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            color: scheme.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '最近 30 天剩余预估时长与理想参考线（FR-7.3）',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 16),
+            if (!hasMinutes)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Column(
+                  children: [
+                    Icon(Icons.trending_down, size: 40, color: scheme.outline),
+                    const SizedBox(height: 8),
+                    const Text('还没有可展示的燃尽数据'),
+                    const SizedBox(height: 4),
+                    Text(
+                      '给任务设置预估时长并开始完成后，这里会展示剩余工作量随时间的变化',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              )
+            else
+              _BurndownChart(
+                points: points,
+                today: today,
+              ),
+            const SizedBox(height: 16),
+            // Footer 图例：胶囊式圆点 + 文字，间距放宽。
+            Row(
+              children: [
+                _BurndownLegendDot(
+                  color: _remainingColor,
+                  borderColor: Colors.white,
+                ),
+                const SizedBox(width: 6),
+                const Text('实际剩余', style: TextStyle(fontSize: 11)),
+                const SizedBox(width: 20),
+                _BurndownLegendDot(color: _idealColor),
+                const SizedBox(width: 6),
+                const Text('理想参考线', style: TextStyle(fontSize: 11)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 图例圆点：实心圆（可带白色描边表达「实际线带白色节点描边」）。
+class _BurndownLegendDot extends StatelessWidget {
+  const _BurndownLegendDot({required this.color, this.borderColor});
+
+  final Color color;
+  final Color? borderColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 10,
+      height: 10,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color,
+        border: borderColor == null
+            ? null
+            : Border.all(color: borderColor!, width: 1.5),
+      ),
+    );
+  }
+}
+
+/// 燃尽折线图（fl_chart 重构）：实际剩余（平滑曲线 + 面积填充 + 白描边
+/// 节点）+ 理想参考线（虚线）+ 浅色网格 + 每 5 天日期轴 + 悬停 tooltip。
+///
+/// 视觉重构（M7 迭代增强）：
+/// - 面积填充：实际线下方 from 深绿 28% 到透明（belowBarData gradient）；
+/// - 平滑曲线（isCurved）替代生硬折线；
+/// - 节点白描边（FlDotCirclePainter strokeColor 白），图更精致；
+/// - 理想线虚线（dashArray），浅灰；
+/// - X/Y 轴每 25% 浅色虚线网格，增加参考感；
+/// - 入场动画：TweenAnimationBuilder 高度 0→100% 从底部向上生长；
+/// - 整体 Semantics（NFR-4）+ 悬停 tooltip（日期 + 剩余 + 理想）。
+class _BurndownChart extends StatelessWidget {
+  const _BurndownChart({required this.points, required this.today});
+
+  final List<BurndownPoint> points;
+  final DateTime today;
+
+  static const _chartHeight = 220.0;
+
+  /// 数据点最大值（Y 轴顶），0 时回退 1。
+  int get _maxMinutes {
+    var max = 0;
+    for (final point in points) {
+      if (point.remaining > max) max = point.remaining;
+      if (point.ideal > max) max = point.ideal;
+    }
+    return max <= 0 ? 1 : max;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final first = points.first.date;
+    // fl_chart X 轴用「距窗口起点的天数」而非绝对日期，便于 interval=1。
+    double xOf(DateTime date) =>
+        date.difference(first).inDays.toDouble();
+
+    final remainingSpots = [
+      for (final p in points) FlSpot(xOf(p.date), p.remaining.toDouble()),
+    ];
+    final idealSpots = [
+      for (final p in points) FlSpot(xOf(p.date), p.ideal.toDouble()),
+    ];
+
+    final axisStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+          fontSize: 10,
+          color: scheme.outline,
+        );
+
+    // Y 轴最大值（含 10% 顶部余量）：gridData 水平间隔与刻度统一用它。
+    final maxY = _maxMinutes * 1.1;
+
+    // 图整体读屏语义（NFR-4）：状态不只依赖颜色，辅以文本说明。
+    final semanticLabel = StringBuffer('燃尽趋势，最近 30 天剩余预估时长。');
+    semanticLabel
+        .write('今日剩余 ${DurationFormat.minutes(points.last.remaining)}。');
+    final avgMinutes = points.isEmpty
+        ? 0
+        : points.map((p) => p.remaining).reduce((a, b) => a + b) ~/ points.length;
+    semanticLabel.write('近 30 天平均 ${DurationFormat.minutes(avgMinutes)}。');
+
+    return Semantics(
+      label: semanticLabel.toString(),
+      child: SizedBox(
+        height: _chartHeight,
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: 1),
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeOutCubic,
+          // 入场动画改用不裁剪的淡入 + 上移：ClipRect 会把浮出图表区域的
+          // 悬停 tooltip 裁掉（问题 3），故取消裁剪。
+          builder: (context, t, child) => Opacity(
+            opacity: t,
+            child: Transform.translate(
+              offset: Offset(0, (1 - t) * 24),
+              child: child,
+            ),
+          ),
+          child: LineChart(
+            LineChartData(
+              minX: 0,
+              maxX: (points.length - 1).toDouble(),
+              minY: 0,
+              // Y 轴顶留 10% 余量，避免文字贴顶。
+              maxY: maxY,
+              // 绘图区不裁剪：让 tooltip 可完整浮出图表边界（问题 3）。
+              clipData: FlClipData.none(),
+              // 淡虚线网格（水平 + 垂直）：用户可直观看出每天/每档的落差。
+              // horizontalInterval 按 Y 轴最大值均分（4 档），verticalInterval
+              // 为 5 天，与 X 轴标签同步。
+              gridData: FlGridData(
+                show: true,
+                drawVerticalLine: true,
+                drawHorizontalLine: true,
+                horizontalInterval: maxY / 4,
+                verticalInterval: 5,
+                getDrawingHorizontalLine: (_) => FlLine(
+                  color: scheme.outlineVariant.withValues(alpha: 0.4),
+                  strokeWidth: 1,
+                  dashArray: [4, 4],
+                ),
+                getDrawingVerticalLine: (_) => FlLine(
+                  color: scheme.outlineVariant.withValues(alpha: 0.3),
+                  strokeWidth: 1,
+                  dashArray: [4, 4],
+                ),
+              ),
+              borderData: FlBorderData(show: false),
+              titlesData: FlTitlesData(
+                topTitles: const AxisTitles(),
+                rightTitles: const AxisTitles(),
+                // 左轴刻度：reservedSize 预留足够宽度把文字完全推出图表区，
+                // SideTitleWidget.space 提供文字与绘图区之间的额外间隙，
+                // 文本右对齐后与绿色填充区彻底分离（问题 1）。
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 96,
+                    getTitlesWidget: (value, meta) {
+                      final text = value == 0
+                          ? '0'
+                          : DurationFormat.minutes(value.round());
+                      return SideTitleWidget(
+                        meta: meta,
+                        space: 12,
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: Text(text, style: axisStyle),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                // X 轴：每 5 天一个日期标签，旋转 -45° 防止挤在一起；
+                // reservedSize 提高到 56 为旋转后的斜文字与底部留白；
+                // 首个标签（X=0）跳过，避免与左轴「0」刻度挤在左下角。
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 56,
+                    interval: 5,
+                    getTitlesWidget: (value, meta) {
+                      final index = value.round();
+                      if (index <= 0 || index >= points.length) {
+                        return const SizedBox.shrink();
+                      }
+                      return SideTitleWidget(
+                        meta: meta,
+                        space: 12,
+                        child: Transform.rotate(
+                          angle: -math.pi / 4, // -45°，向左下倾斜
+                          child: Text(
+                            DateFormat('M/d').format(points[index].date),
+                            style: axisStyle,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              // 悬停 tooltip：Windows 桌面鼠标悬停触发。
+              lineTouchData: LineTouchData(
+                touchTooltipData: LineTouchTooltipData(
+                  // 关键：让 tooltip 绘制在图表盒区域之上，可完整浮出图表
+                  // 边界（配合外层 Card clipBehavior: Clip.none 与
+                  // clipData: FlClipData.none()，边缘数据点的气泡不再被截断）。
+                  showOnTopOfTheChartBoxArea: true,
+                  getTooltipColor: (_) => scheme.inverseSurface,
+                  tooltipBorderRadius: BorderRadius.circular(8),
+                  getTooltipItems: (touchedSpots) {
+                    return touchedSpots.map((spot) {
+                      final index = spot.x.round();
+                      if (index < 0 || index >= points.length) {
+                        return LineTooltipItem('', const TextStyle());
+                      }
+                      final point = points[index];
+                      final isRemaining = spot.barIndex == 0;
+                      final value = isRemaining
+                          ? point.remaining
+                          : point.ideal;
+                      return LineTooltipItem(
+                        '${DateFormat('yyyy-MM-dd').format(point.date)}\n'
+                        '${isRemaining ? '剩余' : '理想'} '
+                        '${DurationFormat.minutes(value)}',
+                        TextStyle(
+                          color: scheme.onInverseSurface,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      );
+                    }).toList();
+                  },
+                ),
+              ),
+              lineBarsData: [
+                // 实际剩余线：实线 + 面积填充 + 白描边节点。
+                LineChartBarData(
+                  spots: remainingSpots,
+                  isCurved: true,
+                  curveSmoothness: 0.3,
+                  color: _BurndownSection._remainingColor,
+                  barWidth: 2.5,
+                  belowBarData: BarAreaData(
+                    show: true,
+                    gradient: LinearGradient(
+                      colors: _BurndownSection._areaGradient,
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                  ),
+                  dotData: FlDotData(
+                    show: true,
+                    getDotPainter: (spot, percent, bar, index) =>
+                        FlDotCirclePainter(
+                      radius: 3.5,
+                      color: _BurndownSection._remainingColor,
+                      strokeWidth: 2,
+                      strokeColor: Colors.white,
+                    ),
+                  ),
+                ),
+                // 理想参考线：浅灰虚线。
+                LineChartBarData(
+                  spots: idealSpots,
+                  isCurved: true,
+                  curveSmoothness: 0.3,
+                  color: _BurndownSection._idealColor,
+                  barWidth: 2,
+                  dashArray: [6, 4],
+                  dotData: const FlDotData(show: false),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -597,30 +1031,22 @@ class _HeatmapGrid extends StatelessWidget {
   }
 }
 
-/// 任务耗时甘特图（M3 迭代，flutter_gantt 式布局重构）。
+/// 任务耗时图区（M7 迭代增强，fl_chart 重构）。
 ///
-/// - X 轴：过去 12 周 + 当前周 + 未来 13 周（共 26 周），横向可拖拽滚动，
-///   能看到之后的任务计划；表头双刻度（月份 + ISO 周序号）；
-/// - Y 轴：当前录入的目标（有计划或完成记录者），目标名列 sticky 固定；
-/// - 条形：每个目标每周的时长分两段——浅色为未来计划时长（未完成任务按
-///   计划日期归周），深色为已完成时长（按完成日期归周）；高度按全局最大
-///   周时长归一化；
-/// - 悬停展示「周起始 yyyy-MM-dd：计划 X · 完成 Y」。
-///
-/// [rows]/[data] 由页面层计算传入（行高自适应的数据源）；[rowHeight] 为
-/// 每目标行高，随窗口高度自适应。
+/// 原「甘特图」实为按目标×周的周时长堆叠条形图（每格竖向条形=该周该
+/// 目标时长），无任务时间跨度、非真正甘特图，名不符实；重构后以周为
+/// 横轴（一维 fl_chart BarChart），跨目标合并为每周一根堆叠条——
+/// 深色=已完成时长（底）、浅色=未来计划时长（上），保留时间趋势。
 class _GanttSection extends StatelessWidget {
   const _GanttSection({
     required this.rows,
     required this.data,
     required this.weekStarts,
-    required this.rowHeight,
   });
 
   final List<Goal> rows;
   final Map<int, GoalGanttRow> data;
   final List<DateTime> weekStarts;
-  final double rowHeight;
 
   /// 计划（未完成）条形颜色：浅绿。
   static const _plannedColor = Color(0xFF9BE9A8);
@@ -632,16 +1058,33 @@ class _GanttSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
+    // 跨目标合并：每周的计划/完成时长（长度 = weekStarts.length）。
+    final plannedPerWeek = List.filled(weekStarts.length, 0);
+    final completedPerWeek = List.filled(weekStarts.length, 0);
+    for (final goal in rows) {
+      final row = data[goal.id];
+      if (row == null) continue;
+      for (var i = 0; i < weekStarts.length; i++) {
+        plannedPerWeek[i] += row.planned[i];
+        completedPerWeek[i] += row.completed[i];
+      }
+    }
+
     return Card(
+      // clipBehavior: Clip.none：fl_chart 悬停 tooltip 会浮出图表区域，
+      // 若卡片裁剪，边缘数据点的气泡会被截断（同燃尽图）。
+      clipBehavior: Clip.none,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        // 顶部加大留白：容纳 Y 轴 maxY 刻度的长文本（如「74 小时 10 分」），
+        // 底部留白给 X 轴旋转 45° 后的斜日期标签与悬停 tooltip。
+        padding: const EdgeInsets.fromLTRB(16, 24, 16, 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('任务耗时甘特图', style: Theme.of(context).textTheme.titleMedium),
+            Text('任务耗时图', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 4),
             Text(
-              '按目标分组，展示未来计划与已完成时长（分钟）',
+              '按周展示未来计划与已完成时长（分钟）',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 12),
@@ -657,18 +1100,17 @@ class _GanttSection extends StatelessWidget {
                     const Text('还没有带预估时长的任务安排'),
                     const SizedBox(height: 4),
                     Text(
-                      '给任务设置预估时长后，这里会按目标展示计划与完成进度',
+                      '给任务设置预估时长后，这里会按周展示计划与完成进度',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
                 ),
               )
             else
-              _GanttChart(
-                rows: rows,
-                data: data,
+              _BarChart(
+                plannedPerWeek: plannedPerWeek,
+                completedPerWeek: completedPerWeek,
                 weekStarts: weekStarts,
-                rowHeight: rowHeight,
               ),
             const SizedBox(height: 12),
             // 图例固定在卡片底部，不随图表横向滚动而移动。
@@ -709,372 +1151,219 @@ class _LegendSwatch extends StatelessWidget {
   }
 }
 
-/// 甘特图（flutter_gantt 式左右分栏）：sticky 目标名列 + 双刻度时间轴。
+/// 任务耗时图（fl_chart BarChart）：以周为横轴，每周一根堆叠条。
 ///
-/// 参考开源 flutter_gantt 的布局：
-/// - 左列固定（sticky）展示目标名，右侧时间轴区横向滚动时目标名始终可见；
-/// - 表头双刻度：月份（跨月时显示，1 月带年份）+ ISO 周序号（每周一格）；
-/// - 每目标一行、每周一格：双段条形（浅色=未来计划时长、深色=已完成时长），
-///   高度按全局最大周时长归一化；格带 tooltip「周起始 yyyy-MM-dd：
-///   计划 X · 完成 Y」与屏幕阅读器语义标签（NFR-4）；
-/// - 网格线（周列分隔 + 行分隔）接近常规甘特图观感。
-///
-/// 高度策略：行高由页面层按「窗口高度 × 45% / 目标数」计算并传入
-/// （夹取到 [minRowHeight, maxRowHeight]）——窗口越高、目标越少，条形
-/// 越饱满；目标行多时回落到最小行高，靠整页滚动查看全部行（本组件
-/// 不设置纵向滚动，避免滚动被固定）。
-class _GanttChart extends StatelessWidget {
-  const _GanttChart({
-    required this.rows,
-    required this.data,
+/// - 深色段=已完成时长（底），浅色段=未来计划时长（上），仅当对应段 >0
+///   时加入，杜绝 fromY==toY 的空段；
+/// - X 轴每 3 周一个日期标签（M/d），Y 轴中文时长刻度（沿用燃尽图修复后
+///   的 reservedSize/space 配置，杜绝文字压线）；
+/// - 悬停 tooltip 按 group.x 反查闭包捕获的每周数据（fl_chart 的
+///   getTooltipItem 拿不到被触发的 stack 段，用数据源重建）；
+/// - 宽屏铺满，窄窗横向滚动；整体读屏语义（NFR-4）。
+class _BarChart extends StatelessWidget {
+  const _BarChart({
+    required this.plannedPerWeek,
+    required this.completedPerWeek,
     required this.weekStarts,
-    required this.rowHeight,
   });
 
-  final List<Goal> rows;
-  final Map<int, GoalGanttRow> data;
+  final List<int> plannedPerWeek;
+  final List<int> completedPerWeek;
   final List<DateTime> weekStarts;
-  final double rowHeight;
 
-  // 布局常量：目标名列宽、周格宽/间距、表头双行高与行高范围（页面层
-  // 按窗口高度与行数自适应计算行高，夹取到该范围；整页滚动兜底超高）。
-  static const _labelWidth = 112.0;
-  static const _barWidth = 20.0;
-  static const _cellGap = 4.0;
-  static const _monthRowHeight = 18.0;
-  static const _weekRowHeight = 18.0;
-  static const _headerGap = 6.0;
-  static const _minRowHeight = 56.0;
-  static const _maxRowHeight = 240.0;
-  static const _defaultRowHeight = 68.0;
+  static const _chartHeight = 220.0;
 
-  /// 每格最小列宽 = 条形宽 + 格间距；表头块高度 = 月份行 + 周行 + 间距。
-  static double get _minCellWidth => _barWidth + _cellGap;
-  static double get _headerBlockHeight =>
-      _monthRowHeight + _weekRowHeight + _headerGap;
+  /// 每周堆叠条宽 + 组间距。
+  static const _barWidth = 22.0;
+  static const _groupSpace = 6.0;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final borderColor = scheme.outlineVariant.withValues(alpha: 0.45);
-
-    // 全局最大周总时长（计划 + 完成），用于高度归一化。
-    var maxMinutes = 1;
-    for (final row in data.values) {
-      for (var i = 0; i < row.planned.length; i++) {
-        final total = row.planned[i] + row.completed[i];
-        if (total > maxMinutes) maxMinutes = total;
-      }
-    }
-
     final weeks = weekStarts.length;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // 横向：每周格宽 = 可用宽度（去目标名列）均分，宽屏铺满消除
-        // 右侧留白；窄窗口回落到最小格宽并靠横向滚动。
-        final evenCell = (constraints.maxWidth - _labelWidth) / weeks;
-        final cellWidth =
-            evenCell >= _minCellWidth ? evenCell : _minCellWidth;
-        final totalWidth = cellWidth * weeks;
-        final barMaxHeight = rowHeight - 14;
+    // 每周总量 + 全局最大值（Y 轴顶）。
+    final totals =
+        List.generate(weeks, (i) => plannedPerWeek[i] + completedPerWeek[i]);
+    var maxTotal = 1;
+    for (final t in totals) {
+      if (t > maxTotal) maxTotal = t;
+    }
+    // 顶部留 20% 余量：长刻度文本（如「74 小时 10 分」）不顶到卡片边缘。
+    final maxY = maxTotal * 1.2;
 
-        // 图体：左目标名列 + 右侧时间轴（横向滚动）。
-        final gridArea = SizedBox(
-          width: totalWidth,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 表头第一行：月份刻度。
-              SizedBox(
-                height: _monthRowHeight,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    for (var w = 0; w < weeks; w++)
-                      _headerCell(
-                        cellWidth: cellWidth,
-                        borderColor: borderColor,
-                        height: _monthRowHeight,
-                        text: _monthLabel(w),
-                        textStyle: const TextStyle(fontSize: 9),
-                      ),
-                  ],
-                ),
-              ),
-              // 表头第二行：ISO 周序号。
-              SizedBox(
-                height: _weekRowHeight,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    for (var w = 0; w < weeks; w++)
-                      _headerCell(
-                        cellWidth: cellWidth,
-                        borderColor: borderColor,
-                        height: _weekRowHeight,
-                        text: 'W${_isoWeekOf(weekStarts[w])}',
-                        textStyle: TextStyle(
-                          fontSize: 9,
-                          color: scheme.outline,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: _headerGap),
-              for (final goal in rows)
-                _goalRow(
-                  goal: goal,
-                  row: data[goal.id]!,
-                  maxMinutes: maxMinutes,
-                  borderColor: borderColor,
-                  cellWidth: cellWidth,
-                  rowHeight: rowHeight,
-                  barMaxHeight: barMaxHeight,
-                ),
-            ],
-          ),
+    final axisStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+          fontSize: 10,
+          color: scheme.outline,
         );
 
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 左列（sticky）：目标名，右侧滚动时保持可见；行高与数据区同步。
-            SizedBox(
-              width: _labelWidth,
-              child: ClipRect(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(height: _headerBlockHeight),
-                    for (final goal in rows)
-                      SizedBox(
-                        height: rowHeight,
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              goal.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: gridArea,
-              ),
+    final barGroups = <BarChartGroupData>[];
+    for (var i = 0; i < weeks; i++) {
+      final planned = plannedPerWeek[i];
+      final completed = completedPerWeek[i];
+      if (planned + completed <= 0) continue; // 无数据周跳过（x 位置固定）
+      final stackItems = <BarChartRodStackItem>[
+        if (completed > 0)
+          BarChartRodStackItem(0, completed.toDouble(), _GanttSection._doneColor),
+        if (planned > 0)
+          BarChartRodStackItem(
+            completed.toDouble(),
+            (completed + planned).toDouble(),
+            _GanttSection._plannedColor,
+          ),
+      ];
+      barGroups.add(
+        BarChartGroupData(
+          x: i,
+          barRods: [
+            BarChartRodData(
+              toY: (completed + planned).toDouble(),
+              width: _barWidth,
+              rodStackItems: stackItems,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
             ),
           ],
-        );
-      },
-    );
-  }
-
-  /// 表头单元格：动态列宽 + 右分隔线（与数据行网格列对齐）。
-  static Widget _headerCell({
-    required double cellWidth,
-    required Color borderColor,
-    required double height,
-    required String text,
-    required TextStyle textStyle,
-  }) {
-    return SizedBox(
-      width: cellWidth,
-      height: height,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border(right: BorderSide(color: borderColor, width: 0.5)),
+          barsSpace: _groupSpace,
         ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: Text(
-            text,
-            maxLines: 1,
-            overflow: TextOverflow.clip,
-            style: textStyle,
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// 该周表头的月份文本：与上一周同月且非一号时留空（避免重复）；
-  /// 1 月带年份（跨年边界可辨）。
-  String _monthLabel(int weekIndex) {
-    final start = weekStarts[weekIndex];
-    if (weekIndex > 0) {
-      final prev = weekStarts[weekIndex - 1];
-      if (start.month == prev.month && start.day != 1) return '';
+      );
     }
-    return start.month == 1
-        ? '${start.year}-${start.month}月'
-        : '${start.month}月';
-  }
 
-  /// ISO 8601 周序号：周四所在的周为当年第几周。
-  static int _isoWeekOf(DateTime date) {
-    final thursday = date.add(Duration(days: 3 - ((date.weekday + 6) % 7)));
-    final jan1 = DateTime(thursday.year, 1, 1);
-    final firstThursday = jan1.add(Duration(days: (11 - jan1.weekday) % 7));
-    return 1 + (thursday.difference(firstThursday).inDays ~/ 7);
-  }
+    // 读屏语义（NFR-4）：状态不只依赖颜色，辅以文本。
+    final plannedTotal = plannedPerWeek.fold<int>(0, (a, b) => a + b);
+    final completedTotal = completedPerWeek.fold<int>(0, (a, b) => a + b);
+    final semanticLabel =
+        StringBuffer('任务耗时图，按周展示未来计划与已完成时长。')
+          ..write('窗口内计划 ${DurationFormat.minutes(plannedTotal)}，')
+          ..write('已完成 ${DurationFormat.minutes(completedTotal)}。');
 
-  /// 单个目标行：每周一格。
-  Widget _goalRow({
-    required Goal goal,
-    required GoalGanttRow row,
-    required int maxMinutes,
-    required Color borderColor,
-    required double cellWidth,
-    required double rowHeight,
-    required double barMaxHeight,
-  }) {
-    return SizedBox(
-      height: rowHeight,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          for (var w = 0; w < weekStarts.length; w++)
-            _weekCell(
-              weekStart: weekStarts[w],
-              planned: row.planned[w],
-              completed: row.completed[w],
-              maxMinutes: maxMinutes,
-              borderColor: borderColor,
-              cellWidth: cellWidth,
-              rowHeight: rowHeight,
-              barMaxHeight: barMaxHeight,
-            ),
-        ],
-      ),
-    );
-  }
+    return Semantics(
+      label: semanticLabel.toString(),
+      child: SizedBox(
+        height: _chartHeight,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // 最小条宽 = 每周 (barWidth + groupSpace)；宽屏铺满、窄窗横向滚动。
+            final minChartWidth = weeks * (_barWidth + _groupSpace);
+            final chartWidth = constraints.maxWidth > minChartWidth
+                ? constraints.maxWidth
+                : minChartWidth;
 
-  /// 单周格：右/下分隔线构成网格线；有数据为双段条形，无数据为空档圆点。
-  ///
-  /// 条形宽度随格宽自适应（格宽 − 间隙，每侧留 2px），居中排布，
-  /// 宽屏拉伸时条形同步变宽；条形高度随行高增长（窗口越高条形越高）。
-  Widget _weekCell({
-    required DateTime weekStart,
-    required int planned,
-    required int completed,
-    required int maxMinutes,
-    required Color borderColor,
-    required double cellWidth,
-    required double rowHeight,
-    required double barMaxHeight,
-  }) {
-    final total = planned + completed;
-    final dateStr = DateFormat('yyyy-MM-dd').format(weekStart);
-    final tooltip = _tooltipText(dateStr, planned, completed);
-    final barWidth = cellWidth - _cellGap;
-    final barMinHeight = 4.0;
-
-    return SizedBox(
-      width: cellWidth,
-      height: rowHeight,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border(
-            right: BorderSide(color: borderColor, width: 0.5),
-            bottom: BorderSide(color: borderColor, width: 0.5),
-          ),
-        ),
-        child: Tooltip(
-          message: tooltip,
-          child: Semantics(
-            // 屏幕阅读器可读（NFR-4）：周起始 + 计划/完成时长。
-            label: tooltip,
-            child: Padding(
-              padding: EdgeInsets.only(
-                top: rowHeight - barMaxHeight - 6,
-                bottom: 6,
-              ),
-              child: Center(
-                child: SizedBox(
-                  height: barMaxHeight,
-                  width: barWidth,
-                  child: total <= 0
-                      // 无数据周：仅留占位圆点，保持网格对齐。
-                      ? Align(
-                          alignment: Alignment.bottomCenter,
-                          child: Container(
-                            width: 4,
-                            height: barMinHeight,
-                            decoration: BoxDecoration(
-                              color: borderColor,
-                              borderRadius: BorderRadius.circular(2),
+            final chart = BarChart(
+              BarChartData(
+                minY: 0,
+                maxY: maxY,
+                barGroups: barGroups,
+                alignment: BarChartAlignment.spaceAround,
+                // 浅色虚线网格（水平 + 垂直），增强参考感。
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: true,
+                  drawHorizontalLine: true,
+                  horizontalInterval: maxY / 4,
+                  verticalInterval: 3,
+                  getDrawingHorizontalLine: (_) => FlLine(
+                    color: scheme.outlineVariant.withValues(alpha: 0.35),
+                    strokeWidth: 1,
+                    dashArray: [4, 4],
+                  ),
+                  getDrawingVerticalLine: (_) => FlLine(
+                    color: scheme.outlineVariant.withValues(alpha: 0.2),
+                    strokeWidth: 1,
+                    dashArray: [4, 4],
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                titlesData: FlTitlesData(
+                  topTitles: const AxisTitles(),
+                  rightTitles: const AxisTitles(),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      // 长中文文本（如「66 小时 40 分」）需足够槽位宽度，
+                      // 否则溢出槽位压到柱状图；104 可容纳最长刻度。
+                      reservedSize: 104,
+                      getTitlesWidget: (value, meta) {
+                        final text = value == 0
+                            ? '0'
+                            : DurationFormat.minutes(value.round());
+                        return SideTitleWidget(
+                          meta: meta,
+                          // 文本与绘图区之间的额外间隙，彻底脱离柱状图。
+                          space: 14,
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Text(text, style: axisStyle),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      // 旋转 45° 后斜文字需要更高占位 + 底部留白。
+                      reservedSize: 48,
+                      interval: 3,
+                      getTitlesWidget: (value, meta) {
+                        final index = value.round();
+                        if (index < 0 || index >= weeks) {
+                          return const SizedBox.shrink();
+                        }
+                        return SideTitleWidget(
+                          meta: meta,
+                          space: 12,
+                          child: Transform.rotate(
+                            angle: -math.pi / 4, // -45°，向左下倾斜
+                            child: Text(
+                              DateFormat('M/d').format(weekStarts[index]),
+                              style: axisStyle,
                             ),
                           ),
-                        )
-                      : Column(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            if (planned > 0)
-                              Container(
-                                width: barWidth,
-                                height:
-                                    _heightFor(planned, maxMinutes, barMaxHeight),
-                                decoration: const BoxDecoration(
-                                  color: _GanttSection._plannedColor,
-                                  borderRadius: BorderRadius.only(
-                                    topLeft: Radius.circular(3),
-                                    topRight: Radius.circular(3),
-                                  ),
-                                ),
-                              ),
-                            if (completed > 0)
-                              Container(
-                                width: barWidth,
-                                height: _heightFor(
-                                    completed, maxMinutes, barMaxHeight),
-                                decoration: const BoxDecoration(
-                                  color: _GanttSection._doneColor,
-                                  borderRadius: BorderRadius.only(
-                                    bottomLeft: Radius.circular(3),
-                                    bottomRight: Radius.circular(3),
-                                  ),
-                                ),
-                              ),
-                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                // 悬停 tooltip：按 group.x 反查闭包捕获的每周数据重建文本。
+                barTouchData: BarTouchData(
+                  touchTooltipData: BarTouchTooltipData(
+                    getTooltipColor: (_) => scheme.inverseSurface,
+                    tooltipBorderRadius: BorderRadius.circular(8),
+                    getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                      final weekIndex = group.x;
+                      if (weekIndex < 0 || weekIndex >= weeks) return null;
+                      final planned = plannedPerWeek[weekIndex];
+                      final completed = completedPerWeek[weekIndex];
+                      final parts = <String>[
+                        if (planned > 0) '计划 ${DurationFormat.minutes(planned)}',
+                        if (completed > 0)
+                          '完成 ${DurationFormat.minutes(completed)}',
+                      ];
+                      return BarTooltipItem(
+                        '${DateFormat('M/d').format(weekStarts[weekIndex])}'
+                        ' 起一周\n${parts.join(' · ')}',
+                        TextStyle(
+                          color: scheme.onInverseSurface,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
                         ),
+                      );
+                    },
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+
+            if (constraints.maxWidth > minChartWidth) {
+              return chart;
+            }
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(width: chartWidth, child: chart),
+            );
+          },
         ),
       ),
     );
-  }
-
-  static String _tooltipText(String dateStr, int planned, int completed) {
-    final parts = <String>[
-      if (planned > 0) '计划 ${DurationFormat.minutes(planned)}',
-      if (completed > 0) '完成 ${DurationFormat.minutes(completed)}',
-    ];
-    return '$dateStr 起一周：${parts.join(' · ')}';
-  }
-
-  /// 条形高度：按时长占比线性映射到 `[0, barMaxHeight - barMinHeight]`。
-  ///
-  /// 最忙周两段高度之和恰为 `barMaxHeight - barMinHeight`，配合外层
-  /// `Padding(top: rowHeight - barMaxHeight - 6)` 顶部留白，不溢出。
-  static double _heightFor(
-    int minutes,
-    int maxMinutes,
-    double barMaxHeight,
-  ) {
-    if (minutes <= 0) return 0;
-    return (minutes / maxMinutes) * (barMaxHeight - 4);
   }
 }

@@ -121,6 +121,18 @@ class GoalRepository {
           .get();
       final subjectIds = subjects.map((s) => s.id).toList();
 
+      // 检查项是任务的子表：先收集目标全部任务 id，在删任务前删检查项，
+      // 防止孤儿检查项（FR-4.1，NFR-2）。
+      final goalTasks = await (_db.select(_db.tasks)
+            ..where((t) => t.goalId.equals(goalId)))
+          .get();
+      final goalTaskIds = goalTasks.map((t) => t.id).toList();
+      if (goalTaskIds.isNotEmpty) {
+        await (_db.delete(_db.checklistItems)
+              ..where((c) => c.taskId.isIn(goalTaskIds)))
+            .go();
+      }
+
       if (subjectIds.isNotEmpty) {
         await (_db.delete(_db.tasks)
               ..where((t) => t.subjectId.isIn(subjectIds)))

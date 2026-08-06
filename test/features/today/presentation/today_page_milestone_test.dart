@@ -1,4 +1,5 @@
 import 'package:drift/native.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -86,5 +87,43 @@ void main() {
 
     expect(find.text('考研'), findsOneWidget);
     expect(find.textContaining('下一里程碑'), findsNothing);
+  });
+
+  testWidgets('勾选完成最近里程碑后，首页卡片刷新为下一个未完成里程碑（回归）', (tester) async {
+    await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    // 两个未完成里程碑：最近（2026-09-15）与较晚（2026-11-01）。
+    await milestones.create(
+      goalId: 1,
+      title: '最近节点',
+      date: '2026-09-15',
+    );
+    await milestones.create(
+      goalId: 1,
+      title: '较晚节点',
+      date: '2026-11-01',
+    );
+
+    await pumpApp(tester);
+    expect(find.textContaining('下一里程碑：最近节点 · 2026-09-15'), findsOneWidget);
+
+    // 进入目标详情页，勾选完成最近的里程碑。
+    await tester.tap(find.text('考研'));
+    await tester.pumpAndSettle();
+    final checkbox = find.byWidgetPredicate(
+      (w) =>
+          w is Checkbox &&
+          w.semanticLabel == '标记里程碑「最近节点」为已完成',
+    );
+    expect(checkbox, findsOneWidget);
+    await tester.tap(checkbox);
+    await tester.pumpAndSettle();
+
+    // 返回今天页：卡片应刷新为下一个未完成里程碑（较晚节点）。
+    // pageBack() 依赖 tooltip 'Back'，zh_CN locale 下为「返回」，故用系统返回。
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('下一里程碑：较晚节点 · 2026-11-01'), findsOneWidget);
+    expect(find.textContaining('下一里程碑：最近节点'), findsNothing);
   });
 }

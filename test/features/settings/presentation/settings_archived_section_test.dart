@@ -1,5 +1,4 @@
 import 'package:drift/native.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -10,9 +9,10 @@ import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 
-/// 设置页「备份与恢复」已归档任务区 Widget 测试。
+/// 设置页「已归档任务」子页 Widget 测试。
 ///
-/// 替换导入时归档保留的已完成旧任务，在设置页数据管理卡中回看/恢复。
+/// 替换导入时归档保留的已完成旧任务，在设置页「已归档任务」菜单项进入的
+/// 独立子页中平铺回看/恢复。
 void main() {
   late AppDatabase db;
   late GoalRepository goals;
@@ -32,11 +32,11 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// 进入设置页并滚动到「备份与恢复」卡片（卡片在列表下方，惰性构建）。
-  Future<void> openDataManagement(WidgetTester tester) async {
+  /// 进入设置页 → 点击「已归档任务」菜单项 → 归档子页。
+  Future<void> openArchivedPage(WidgetTester tester) async {
     await tester.tap(find.text('设置'));
     await tester.pumpAndSettle();
-    await tester.drag(find.byType(ListView).first, const Offset(0, -500));
+    await tester.tap(find.text('已归档任务'));
     await tester.pumpAndSettle();
   }
 
@@ -51,7 +51,7 @@ void main() {
     await db.close();
   });
 
-  testWidgets('已归档任务区显示计数，默认折叠', (tester) async {
+  testWidgets('已归档任务子页平铺展示归档任务（标题 + 完成日期）', (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
     final done = await tasks.create(
       goalId: goal.id,
@@ -63,54 +63,45 @@ void main() {
     await tasks.archiveAllActive(goal.id);
 
     await pumpApp(tester);
-    await openDataManagement(tester);
-
-    expect(find.text('备份与恢复'), findsOneWidget);
-    expect(find.text('已归档任务（1）'), findsOneWidget);
-    // 默认折叠：不展示归档行。
-    expect(find.text('已完成旧任务'), findsNothing);
-  });
-
-  testWidgets('展开归档区显示归档任务（标题 + 完成日期）并可恢复', (tester) async {
-    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
-    final done = await tasks.create(
-      goalId: goal.id,
-      title: '已完成旧任务',
-      plannedDate: '2026-08-01',
-      estimatedMinutes: 60,
-    );
-    await tasks.setDone(done.id, true);
-    await tasks.archiveAllActive(goal.id);
-
-    await pumpApp(tester);
-    await openDataManagement(tester);
-
-    // 展开归档区。
-    await tester.tap(find.byTooltip('展开已归档任务'));
-    await tester.pumpAndSettle();
+    await openArchivedPage(tester);
 
     expect(find.text('已完成旧任务'), findsOneWidget);
     // completedAt 为真实写入时间，只断言「完成」前缀 + 计划日期/时长。
     expect(find.textContaining('完成 '), findsOneWidget);
     expect(find.textContaining('2026-08-01 · 1 小时'), findsOneWidget);
+  });
 
-    // 点击恢复：任务回到当前计划，归档区清空。
+  testWidgets('点击恢复：任务回到当前计划，归档列表清空', (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    final done = await tasks.create(
+      goalId: goal.id,
+      title: '已完成旧任务',
+      plannedDate: '2026-08-01',
+      estimatedMinutes: 60,
+    );
+    await tasks.setDone(done.id, true);
+    await tasks.archiveAllActive(goal.id);
+
+    await pumpApp(tester);
+    await openArchivedPage(tester);
+
     await tester.tap(find.text('恢复'));
     await tester.pumpAndSettle();
 
-    expect(find.text('已归档任务（0）'), findsOneWidget);
+    // 恢复后子页回到空态。
+    expect(find.text('还没有归档任务'), findsOneWidget);
     final active = await tasks.byGoal(goal.id);
     expect(active.map((t) => t.title), contains('已完成旧任务'));
     expect((await tasks.archivedByGoal(goal.id)), isEmpty);
   });
 
-  testWidgets('无归档任务时提示且不可展开', (tester) async {
+  testWidgets('无归档任务时子页展示空态提示', (tester) async {
     await goals.create(title: '考研', deadlineDate: '2026-12-31');
 
     await pumpApp(tester);
-    await openDataManagement(tester);
+    await openArchivedPage(tester);
 
-    expect(find.text('已归档任务（0）'), findsOneWidget);
-    expect(find.byTooltip('展开已归档任务'), findsNothing);
+    expect(find.text('还没有归档任务'), findsOneWidget);
+    expect(find.text('恢复'), findsNothing);
   });
 }

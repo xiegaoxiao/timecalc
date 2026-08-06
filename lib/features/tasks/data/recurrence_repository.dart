@@ -266,9 +266,13 @@ class RecurrenceRepository {
               estimatedMinutes: estimatedMinutes ?? const Value.absent(),
               startDate:
                   startDate == null ? const Value.absent() : Value(startDate),
+              // future 应用时已按新规则从 today 生成到 target：直接把
+              // generatedThroughDate 推进到 target，后续 generateDue 不再
+              // 对同一窗口重复重算（此前写 today-1 每次都要靠 existing
+              // 日期跳过，属重复劳动）。template 应用（不动实例）保持原窗口。
               generatedThroughDate: Value(
                 applyTo == RecurrenceApplyTo.future
-                    ? _minusDays(todayStr, 1) // 触发重新生成
+                    ? target
                     : template.generatedThroughDate,
               ),
               active: const Value(true),
@@ -377,10 +381,6 @@ class RecurrenceRepository {
   static String _plusDays(String yyyyMMdd, int days) {
     // 纯日历加法（date_text）：避免 Duration(days:) 在夏令时切换日偏移。
     return formatLocalDate(addLocalDays(_parse(yyyyMMdd), days));
-  }
-
-  static String _minusDays(String yyyyMMdd, int days) {
-    return formatLocalDate(addLocalDays(_parse(yyyyMMdd), -days));
   }
 
   static bool _dateLess(String a, String b) => a.compareTo(b) < 0;

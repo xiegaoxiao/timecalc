@@ -8,6 +8,7 @@ import '../../../services/duration_format.dart';
 import '../data/recurrence_repository_provider.dart';
 import '../data/task_repository_provider.dart';
 import 'batch_task_form_dialog.dart';
+import 'checklist_dialog.dart';
 import 'recurrence_task_dialog.dart';
 import 'task_form_dialog.dart';
 import 'task_import_dialog.dart';
@@ -332,6 +333,12 @@ class _TaskTile extends ConsumerWidget {
           // 读屏可读的名称（NFR-4）：任务完成复选框不依赖相邻文本推断。
           semanticLabel: done ? '标记未完成' : '标记完成',
           onChanged: (value) async {
+            // FR-4.1：勾选完成且存在未完成检查项时二次确认。
+            if (value == true && !done) {
+              final proceed = await confirmCompleteTask(context, ref, task);
+              if (!proceed) return;
+              if (!context.mounted) return;
+            }
             final repo = ref.read(taskRepositoryProvider);
             final ok = await runDbAction(
               context,
@@ -386,6 +393,7 @@ class _TaskTile extends ConsumerWidget {
               _handleAction(context, ref, action),
           itemBuilder: (_) => [
             const PopupMenuItem(value: 'edit', child: Text('编辑')),
+            const PopupMenuItem(value: 'checklist', child: Text('检查项…')),
             if (task.recurrenceTemplateId != null) ...[
               const PopupMenuItem(value: 'editRecurrence', child: Text('编辑重复规则')),
               const PopupMenuItem(value: 'stopRecurrence', child: Text('停止重复')),
@@ -409,6 +417,10 @@ class _TaskTile extends ConsumerWidget {
           subjects: subjects,
         );
         if (saved) onChanged();
+        break;
+      case 'checklist':
+        await ChecklistDialog.show(context, task: task);
+        break;
       case 'editRecurrence':
         final templateId = task.recurrenceTemplateId;
         if (templateId != null) {
@@ -424,6 +436,7 @@ class _TaskTile extends ConsumerWidget {
             if (saved) onChanged();
           }
         }
+        break;
       case 'stopRecurrence':
         final templateId = task.recurrenceTemplateId;
         if (templateId != null) {
@@ -455,6 +468,7 @@ class _TaskTile extends ConsumerWidget {
             onChanged();
           }
         }
+        break;
       case 'delete':
         final confirmed = await showDialog<bool>(
           context: context,
@@ -481,6 +495,7 @@ class _TaskTile extends ConsumerWidget {
           );
           if (ok) onChanged();
         }
+        break;
     }
   }
 
@@ -611,6 +626,7 @@ class RecurrenceGroupTile extends ConsumerWidget {
           editTemplate: latest,
         );
         if (saved) _refresh(ref);
+        break;
       case 'stopRecurrence':
         final confirmed = await showDialog<bool>(
           context: context,
@@ -638,6 +654,7 @@ class RecurrenceGroupTile extends ConsumerWidget {
         );
         if (!ok) return;
         _refresh(ref);
+        break;
       case 'deleteAll':
         final confirmed = await showDialog<bool>(
           context: context,
@@ -668,6 +685,7 @@ class RecurrenceGroupTile extends ConsumerWidget {
         );
         if (!ok) return;
         _refresh(ref);
+        break;
     }
   }
 

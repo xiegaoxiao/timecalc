@@ -79,13 +79,13 @@ void main() {
       expect(phase, CountdownPhase.terminated);
     });
 
-    test('归档目标仍显示逾期（归档不停止逾期提醒）', () {
+    test('归档目标不计逾期（归档同样停止倒计时与逾期提醒）', () {
       final (phase, _) = service.evaluate(
         deadlineDate: '2026-07-01',
         today: DateTime(2026, 8, 5),
         status: GoalStatus.archived,
       );
-      expect(phase, CountdownPhase.overdue);
+      expect(phase, CountdownPhase.terminated);
     });
   });
 

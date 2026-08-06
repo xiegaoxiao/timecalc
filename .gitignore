@@ -62,5 +62,8 @@ logs/
 # Local tooling state
 .zcode/
 
+# DevTools 本地配置（构建/分析时生成，不随项目提交）
+devtools_options.yaml
+
 # 本地参考模板（他人开源项目，含独立 .git，不随本项目提交）
 ui-template/

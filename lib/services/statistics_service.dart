@@ -201,9 +201,111 @@ class StatisticsService {
     });
   }
 
+  /// 燃尽趋势序列：每日「剩余预估时长」与「理想参考线」（FR-7.3）。
+  ///
+  /// 口径（回顾式燃尽，与甘特图/热力图一致从今天往回看）：
+  /// - 窗口为 [today-（windowDays-1）.. today] 共 [windowDays] 天，升序；
+  /// - 某日剩余 = 当前全部未完成任务时长和 + 已完成任务中「完成日期严格
+  ///   晚于该日」的时长和——表示该日时点仍欠着多少工作量；随日期推进
+  ///   单调递减，**today 点等于当前剩余**（与 FR-7.1 剩余工作量口径一致）；
+  /// - 理想参考线 = 从窗口起点的实际剩余起，按 [endDate]（最晚截止日）
+  ///   线性递减到 0，截取窗口内部分；endDate 不晚于窗口起点时参考线为 0；
+  /// - 无预估时长的任务不计入（FR-7.4），[todoTasks] 只计未完成、
+  ///   [completedTasks] 只计已完成（调用方传入已过滤列表）。
+  static List<BurndownPoint> burndownSeries({
+    required List<Task> todoTasks,
+    required List<Task> completedTasks,
+    required DateTime today,
+    required DateTime endDate,
+    int windowDays = 30,
+  }) {
+    final todayDay = _localDay(today);
+    final start = _localDay(todayDay.subtract(Duration(days: windowDays - 1)));
+    final days = List.generate(
+      windowDays,
+      (i) => start.add(Duration(days: i)),
+    );
+
+    // 已完成任务按「完成日期」桶化（只取窗口起或之后完成的；窗口前完成
+    // 的早已消化，不进入窗口剩余）。
+    final completedMinutesByDay = <String, int>{};
+    for (final task in completedTasks) {
+      final minutes = task.estimatedMinutes;
+      final completedAt = task.completedAt;
+      if (minutes == null || completedAt == null) continue;
+      final day = _localDay(completedAt.toLocal());
+      if (day.isBefore(start)) continue;
+      final key = _formatDate(day);
+      completedMinutesByDay[key] = (completedMinutesByDay[key] ?? 0) + minutes;
+    }
+
+    // 当前未完成时长和（FR-7.4：无时长不计）。
+    var currentRemaining = 0;
+    for (final task in todoTasks) {
+      if (task.status == TaskStatus.done) continue;
+      final minutes = task.estimatedMinutes;
+      if (minutes != null) currentRemaining += minutes;
+    }
+
+    // 窗口起点欠账 = 当前剩余 + 窗口内完成的总时长（这些在起点时点尚未完成）。
+    final int baseRemaining =
+        currentRemaining + completedMinutesByDay.values.fold<int>(0, (sum, v) => sum + v);
+    // 起点时点实际剩余：扣除完成日恰为窗口起点的（起点即已完成）。
+    final int idealStart =
+        baseRemaining - (completedMinutesByDay[_formatDate(start)] ?? 0);
+
+    // 理想参考线：从 idealStart 线性递减到 endDate 归 0。
+    final endDay = _localDay(endDate);
+    final idealTotalDays = endDay.difference(start).inDays;
+    final double idealPerDay = idealTotalDays > 0 ? idealStart / idealTotalDays : 0.0;
+
+    final points = <BurndownPoint>[];
+    var consumed = 0; // 完成日 ≤ 当前日的累计时长（不再欠账）
+    for (final day in days) {
+      final key = _formatDate(day);
+      consumed += completedMinutesByDay[key] ?? 0;
+      final int remaining = baseRemaining - consumed;
+
+      final elapsed = day.difference(start).inDays;
+      final int ideal = idealPerDay > 0
+          ? (idealStart - idealPerDay * elapsed).clamp(0, idealStart).toInt()
+          : 0;
+      points.add(
+        BurndownPoint(
+          date: day,
+          remaining: remaining,
+          ideal: ideal,
+        ),
+      );
+    }
+    return points;
+  }
+
+  static DateTime _localDay(DateTime date) {
+    return DateTime(date.year, date.month, date.day);
+  }
+
   static String _formatDate(DateTime local) {
     final mm = local.month.toString().padLeft(2, '0');
     final dd = local.day.toString().padLeft(2, '0');
     return '${local.year}-$mm-$dd';
   }
+}
+
+/// 燃尽趋势单日数据点（FR-7.3）。
+class BurndownPoint {
+  const BurndownPoint({
+    required this.date,
+    required this.remaining,
+    required this.ideal,
+  });
+
+  /// 该日（本地日历日期）。
+  final DateTime date;
+
+  /// 该日时点仍欠着的预估时长（分钟）。
+  final int remaining;
+
+  /// 理想参考线在该日的值（分钟）。
+  final int ideal;
 }

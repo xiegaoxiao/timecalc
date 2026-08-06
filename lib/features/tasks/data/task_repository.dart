@@ -95,6 +95,17 @@ class TaskRepository {
     return query.get();
   }
 
+  /// 归档任务总数（COUNT 查询）。
+  ///
+  /// 设置页数据管理区折叠态只展示计数，不加载全量列表（懒加载回看：
+  /// 归档多时避免打开设置页即全量查询造成卡顿）。
+  Future<int> countArchived() {
+    final query = _db.selectOnly(_db.tasks)
+      ..addColumns([_db.tasks.id.count()])
+      ..where(_db.tasks.archivedAt.isNotNull());
+    return query.map((row) => row.read(_db.tasks.id.count()) ?? 0).getSingle();
+  }
+
   /// 返回在 [fromUtc]（含）～[toUtc]（含）之间完成、未归档的任务（FR-7.2）。
   ///
   /// 供热力图按「完成日期」统计：completedAt 为 UTC 时间戳，调用方换算为
@@ -234,6 +245,10 @@ class TaskRepository {
             .toList();
         if (todoIds.isNotEmpty) {
           // 未完成的旧任务不保留：替换即弃旧，直接物理删除。
+          // 先删这些任务的检查项，防止孤儿检查项（FR-4.1，NFR-2）。
+          await (_db.delete(_db.checklistItems)
+                ..where((c) => c.taskId.isIn(todoIds)))
+              .go();
           deletedTasks = await (_db.delete(_db.tasks)
                 ..where((t) => t.id.isIn(todoIds)))
               .go();
@@ -455,10 +470,13 @@ class TaskRepository {
   /// 删除重复任务的实例时，将该实例的日期记入模板墓碑
   /// （deletedInstanceDates，schema v5），后续滚动生成跳过这些日期，
   /// 保证用户删除的实例不会随窗口前移「复活」。
+  /// 任务的检查项随任务级联删除，防止孤儿检查项（FR-4.1，NFR-2）。
   Future<void> delete(int id) {
     return _db.transaction(() async {
       final task = await byId(id);
       if (task == null) return;
+      await (_db.delete(_db.checklistItems)..where((c) => c.taskId.equals(id)))
+          .go();
       await (_db.delete(_db.tasks)..where((t) => t.id.equals(id))).go();
       final templateId = task.recurrenceTemplateId;
       if (templateId != null) {

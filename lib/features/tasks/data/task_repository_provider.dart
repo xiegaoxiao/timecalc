@@ -52,6 +52,11 @@ final allArchivedTasksProvider = FutureProvider<List<Task>>((ref) {
   return ref.watch(taskRepositoryProvider).allArchived();
 });
 
+/// 归档任务总数（设置页数据管理区折叠态计数，避免折叠时全量加载）。
+final archivedCountProvider = FutureProvider<int>((ref) {
+  return ref.watch(taskRepositoryProvider).countArchived();
+});
+
 /// 最近 26 周内完成的任务（FR-7.2 热力图数据源，按完成日期统计）。
 ///
 /// 查询时间窗为 UTC，实际归日换算在 StatisticsService 中按本地日期完成。

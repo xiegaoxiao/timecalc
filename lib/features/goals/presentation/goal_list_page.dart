@@ -197,6 +197,7 @@ class _GoalCard extends ConsumerWidget {
     switch (action) {
       case 'edit':
         await GoalFormDialog.show(context, goal: goal);
+        break;
       case 'complete':
         final ok = await runDbAction(
           context,
@@ -209,6 +210,7 @@ class _GoalCard extends ConsumerWidget {
         if (!ok) return;
         _refreshGoalRelated(ref);
         messenger.showSnackBar(SnackBar(content: Text('「${goal.title}」已标记为完成')));
+        break;
       case 'abandon':
         final ok = await runDbAction(
           context,
@@ -217,6 +219,7 @@ class _GoalCard extends ConsumerWidget {
         if (!ok) return;
         _refreshGoalRelated(ref);
         messenger.showSnackBar(SnackBar(content: Text('「${goal.title}」已标记为放弃')));
+        break;
       case 'archive':
         final ok = await runDbAction(
           context,
@@ -225,8 +228,10 @@ class _GoalCard extends ConsumerWidget {
         if (!ok) return;
         _refreshGoalRelated(ref);
         messenger.showSnackBar(SnackBar(content: Text('「${goal.title}」已归档')));
+        break;
       case 'delete':
         await _confirmDelete(context, ref);
+        break;
     }
   }
 

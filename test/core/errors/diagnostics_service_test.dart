@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:timecalc/core/app_version.dart';
 import 'package:timecalc/core/database/database.dart';
 import 'package:timecalc/core/errors/diagnostics_service.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
@@ -48,8 +49,8 @@ void main() {
 
     final content = await file.readAsString();
     expect(content, contains('TimeCalc 诊断信息'));
-    expect(content, contains('应用版本：1.0.0'));
-    expect(content, contains('数据库 schema 版本：7'));
+    expect(content, contains('应用版本：$kAppVersion'));
+    expect(content, contains('数据库 schema 版本：8'));
     expect(content, contains('goals: 1'));
     expect(content, contains('tasks: 1'));
     expect(content, contains('milestones: 0'));

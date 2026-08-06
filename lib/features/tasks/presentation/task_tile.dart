@@ -12,6 +12,7 @@ import '../../settings/data/settings_repository.dart';
 import '../../settings/data/settings_repository_provider.dart';
 import '../data/recurrence_repository_provider.dart';
 import '../data/task_repository_provider.dart';
+import 'checklist_dialog.dart';
 import 'recurrence_task_dialog.dart';
 import 'task_form_dialog.dart';
 
@@ -58,6 +59,12 @@ class TaskTile extends ConsumerWidget {
           // 读屏可读的名称（NFR-4）：任务完成复选框不依赖相邻文本推断。
           semanticLabel: done ? '标记未完成' : '标记完成',
           onChanged: (value) async {
+            // FR-4.1：勾选完成且存在未完成检查项时二次确认。
+            if (value == true && !done) {
+              final proceed = await confirmCompleteTask(context, ref, task);
+              if (!proceed) return;
+              if (!context.mounted) return;
+            }
             final repo = ref.read(taskRepositoryProvider);
             final ok = await runDbAction(
               context,
@@ -111,6 +118,7 @@ class TaskTile extends ConsumerWidget {
           onSelected: (action) => _handleAction(context, ref, action),
           itemBuilder: (_) => [
             const PopupMenuItem(value: 'edit', child: Text('编辑')),
+            const PopupMenuItem(value: 'checklist', child: Text('检查项…')),
             const PopupMenuItem(value: 'deferNext', child: Text('延期至下一可用日')),
             const PopupMenuItem(value: 'deferPick', child: Text('延期…')),
             if (task.recurrenceTemplateId != null) ...[
@@ -129,16 +137,25 @@ class TaskTile extends ConsumerWidget {
     switch (action) {
       case 'edit':
         await _edit(context, ref);
+        break;
+      case 'checklist':
+        await ChecklistDialog.show(context, task: task);
+        break;
       case 'deferNext':
         await _deferToNextAvailable(context, ref);
+        break;
       case 'deferPick':
         await _deferPickDate(context, ref);
+        break;
       case 'editRecurrence':
         await _editRecurrence(context, ref);
+        break;
       case 'stopRecurrence':
         await _stopRecurrence(context, ref);
+        break;
       case 'delete':
         await _delete(context, ref);
+        break;
     }
   }
 
