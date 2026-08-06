@@ -78,8 +78,16 @@ class WebDavClient {
   /// 确保目录存在（MKCOL；已存在返回成功，幂等）。
   Future<void> ensureFolder(String path) async {
     final response = await _send('MKCOL', path);
-    if (_isOk(response) || response.statusCode == 405 || response.statusCode == 301) {
-      return; // 201/204 创建成功；405 目录已存在或服务器不支持 MKCOL。
+    // 201/204 创建成功；405 目录已存在（RFC 4918 标准响应）；
+    // 301/302 服务器重定向后目录可用；409 在部分服务器（Nextcloud、
+    // NAS、Caddy WebDAV 等）上用于表达「目标已存在」，同样视为幂等
+    // 成功——目录真实可用性由随后的 PROPFIND/PUT 兜底验证。
+    if (_isOk(response) ||
+        response.statusCode == 405 ||
+        response.statusCode == 301 ||
+        response.statusCode == 302 ||
+        response.statusCode == 409) {
+      return;
     }
     throw WebDavException(_friendly('创建目录失败', response));
   }

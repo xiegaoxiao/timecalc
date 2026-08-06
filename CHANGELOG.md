@@ -24,6 +24,10 @@
 - `http ^1.6.0` 由传递依赖提升为直接依赖（WebDAV 客户端传输）。
 - 新增 `flutter_secure_storage ^11.0.0`（WebDAV 密码系统凭据存储，Windows DPAPI）。
 
+### 修复
+
+- **MKCOL 409 视为目录已存在（回归）**：部分 WebDAV 服务器（Nextcloud、NAS、Caddy 等）在目录已存在时返回 `409 Conflict` 而非标准的 `405`，「保存并测试连接」会误报「创建目录失败：目标已存在冲突（409）」。现 409/302 与 405 一同按幂等成功处理；目录真实可用性由随后的 PROPFIND/PUT 兜底验证。webdav_client_test 新增 409 用例。
+
 ## [1.4.0] — 2026-08-06
 
 ### 新增（M7：燃尽趋势 FR-7.3）

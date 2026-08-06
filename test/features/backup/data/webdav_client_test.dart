@@ -64,6 +64,12 @@ void main() {
       await client.ensureFolder('webdav_auto');
     });
 
+    test('409 视为目录已存在（部分服务器语义，回归）', () async {
+      // Nextcloud/NAS/Caddy 等在目录已存在时返回 409 而非 405。
+      final client = clientWith(MockClient((_) async => http.Response('', 409)));
+      await client.ensureFolder('webdav_auto');
+    });
+
     test('500 抛可读异常', () async {
       final client = clientWith(MockClient((_) async => http.Response('', 500)));
       await expectLater(
