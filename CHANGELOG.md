@@ -8,6 +8,30 @@
 
 ## [未发布] — 2026-08-06
 
+### 修复（代码审查：P0 状态失控 + P1 数据一致性 + P2 健壮性）
+
+**崩溃/状态失控（P0）**
+- **时长步进长按 Timer 失控**：`DurationStepInput` 的长按一次性 Timer 未跟踪，长按不足 400ms 即松开后周期性自动步进仍会启动，数值持续自增/自减。修复同时发现真正根因是手势层——`GestureDetector` 包裹 `IconButton` 时 InkResponse 抢占手势 arena，`onLongPressStart` 永不触发，原长按连续步进在 Windows 上本就不生效；改为自绘步进按钮（GestureDetector + Tooltip），一次性/周期 Timer 统一跟踪，短长按松开后不再持续步进。
+- **延期日期选择器 `initialDate` 越界**：计划日期早于 `firstDate`（逾期一年以上的未完成任务）时，debug 下 datepicker 断言崩溃、release 下初值错误；`initialDate` 钳制到选择器下界。
+
+**数据一致性（P1）**
+- **覆盖恢复静默重置「关闭行为」**：备份按 FR-9.5 不含 `close_behavior`（桌面层状态），但覆盖恢复会清空重建 settings 行，导致最小化到托盘行为被重置为默认退出；恢复时读取并保留恢复前的 `close_behavior`（备份 JSON 若携带则以备份为准）。
+- **备份恢复后详情/科目/重复任务页显示陈旧数据**：`BackupSection` 恢复后的跨页刷新遗漏 family 型缓存；补 `goalDetailProvider` / `subjectListProvider` / `recurrenceTemplatesProvider` / `recurrenceTemplateProvider` 整族失效。
+- **重复任务结束日期可早于起始日期**：结束日期选择器下界固定为起始日，起始日改动后移时自动清空结束日，保存前兜底校验，不再静默生成 0 个未来实例。
+- **批量添加间隔天数「所见≠所存」**：非法输入（空/0/负值）静默保留旧 `_intervalDays`，预览与实际保存不一致；改为输入框 validator + 保存/预览均以输入框实时解析。
+- **间隔序列规则语义修正**：offsets 此前按「相对间隔累计」解释，默认 1,2,4,7,15,30 实际产生 +1/+3/+7/+14/+29 天，与 UI hint「第 1、2、4、7、15、30 天复习」矛盾；改为按「距起始日的绝对天数」解释，实现与提示一致。
+
+**健壮性 / 可访问性（P2）**
+- 路由畸形参数（非数字 `goalId/subjectId`，外部深链）由 redirect 重定向到首页，不再于 build 途中抛 `FormatException` 红屏。
+- 窗口恢复尺寸下界钳制（≥400×300），损坏的 `window_state.json` 不再恢复出 0/负尺寸的不可见窗口。
+- 全局错误处理器对 `diagnostics.capture` 加异常兜底，防止诊断服务自身抛错时无限递归。
+- 快速添加任务对话框：过期的 `defaultGoalId` 回退到首个可用目标，防 Dropdown `initialValue` 与 items 不匹配断言。
+- 编辑任务/编辑重复规则对话框取消后不再无条件触发跨页刷新（对话框返回保存结果，仅成功时刷新）。
+- 任务完成复选框补 `semanticLabel`（NFR-4，读屏可读名称）。
+- 数据层日期加法收敛到 `core/utils/date_text.dart`（纯日历加法，避免夏令时切换日 `Duration(days:)` 偏移一小时导致日期错位）。
+
+**测试**：新增回归测试 7 项——时长步进长按连续/短长按不失控 ×2、覆盖恢复保留 close_behavior、路由畸形参数 redirect ×2 + 合法参数无回归、窗口恢复尺寸下界钳制；间隔序列相关断言（service/repository/widget 三处）同步更新为绝对复习日语义。全套 **293 项测试通过**。
+
 ### 新增（M4 MVP 发布候选）
 
 - **数据库异常处理（PRD §8 / NFR-2）**：
