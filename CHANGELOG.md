@@ -4,9 +4,46 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循
 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-当前处于 Windows MVP 开发阶段（M1、M2、M3 已完成，正在迭代增强与 M4 规划之间），尚未发布正式版本。
+当前处于 Windows MVP 开发阶段（M1~M3 已完成，M4「MVP 发布候选」已完成），尚未发布正式版本。
 
 ## [未发布] — 2026-08-06
+
+### 新增（M4 MVP 发布候选）
+
+- **数据库异常处理（PRD §8 / NFR-2）**：
+  - 全局错误处理器（`FlutterError.onError` + `PlatformDispatcher.onError`）将未预期错误写入本地诊断日志（内存环 + 应用支持目录文件，容量封顶自动截断，NFR-3），不静默丢失；
+  - 写入失败守卫：所有任务/目标/科目/重复任务/设置等数据库写操作统一走 `runDbAction`，失败时弹「数据保存失败」对话框——说明本次写入未生效（drift 事务已回滚，无半条写入）、应用已停止继续写入，并提供「导出诊断信息」与「前往备份恢复」两个自助入口；
+  - 诊断导出（`DiagnosticsService`）：应用版本、schema 版本、数据库路径、各表行数（守卫读取）与最近错误日志，供排查或提交；
+  - 启动失败兜底：数据库无法打开时不再裸崩溃，运行「数据无法打开」启动错误屏（说明、数据库路径、从备份恢复指引、导出诊断入口）。
+- **读取失败统一错误视图**：各页 `加载失败：$error` 裸文本替换为 `AppErrorView`（图标 + 错误消息 + 重试按钮，invalidate 对应 Provider）；目标详情页内部区块静默 `SizedBox.shrink` 错误态一并补为可见错误提示。
+- **无障碍（NFR-4 / checklists §8）**：
+  - 日历「超出」格在红色文本外附警告图标，状态不只依赖颜色；
+  - 屏幕阅读器语义：日历格（日期/完成数/时长/超出）、热力图色块（日期 + 完成项数）、甘特图条形（周起始 + 计划/完成时长）；
+  - 主题对比度：浅色/深色主题关键色对全部 ≥ 4.5:1（WCAG 2.1 AA），由 `contrast_test` 固化（正文 16.3 / 14.3，错误 6.2 / 10.9，容器对 7.2 等）；
+  - 核心流程键盘可达：Tab 可达「添加任务」等主按钮（focus 可达性 widget 测试）。
+- **日历拖动改期（FR-5.1，P0 补齐）**：选日面板中的任务长按即可拖到月历网格任意日期改期；拖动悬停时目标格高亮；已完成任务不可拖动；改期复用延期语义并记录原计划日期（FR-3.3 验收）；失败时弹数据库错误对话框、任务保持原日期。
+- **Windows 发布资产**：
+  - `timecalc.exe` 版本元数据：ProductName/FileDescription「TimeCalc 时间计算器」、CompanyName「TimeCalc」、简体中文 StringFileInfo 块（Runner.rc + 窗口标题，UTF-8 BOM 保证 MSVC 中文编译）；
+  - `tool/create_signing_cert.ps1`：自签名代码签名测试证书生成（导出 PFX 至 `build/signing/`，证书不入库）；
+  - `tool/release.sh`：`flutter build windows --release` → signtool 自签名（SHA256 + 时间戳，失败不阻断）→ 整理发布目录（exe + dlls + data + LICENSE + CHANGELOG + SIGNING-NOTE）→ zip 打包（PowerShell Compress-Archive）→ 生成 SHA256SUMS。
+- **发布演练**：自签名 + 签名验证 + zip + SHA256 校验通过；Windows 构建冒烟启动正常。
+
+### 修复
+
+- **目标删除/标记完成后 SnackBar 二次出现（P2）**：`runDbAction` 失败早退后，`_handleAction` 中残留的 `return` 缺失会继续弹成功提示；已补 `if (!ok) return`。
+- 启动流程：`AppDatabase.open()` 不再裸抛崩溃，失败进入启动错误屏。
+
+### 已知限制
+
+- **代码签名**：当前为自签名测试证书（非受信 CA），Windows SmartScreen 仍可能提示；正式发布渠道要求 Authenticode 签名时，改用受信任代码签名证书后重跑 `tool/release.sh`（流程不变）。
+- **DPI**：100/125/150/200% 各档未逐档实测（manifest 已声明 PerMonitorV2），发布前补充。
+- **无安装器**：当前发布形式为便携 zip（按 M4 决策），MSIX/安装器待发布渠道确认后补充。
+- **托盘图标**为程序化生成的简单图形，发布前可替换设计资源。
+- **检查项与里程碑（P1）**：任务检查项（FR-4.1）、目标里程碑（FR-2）未实现。
+- **进度与数据保障后续（P1）**：燃尽趋势（FR-7.3）、自动备份（FR-9.4）、精简悬浮窗（FR-8.4）与全局快捷键（FR-8.5）未实现。
+- **AI 计划草稿（P1 / M5）**：未实现。
+
+## [未发布] — 2026-08-05
 
 ### 新增（M3 进度与数据保障）
 
