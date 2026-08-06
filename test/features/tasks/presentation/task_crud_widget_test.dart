@@ -83,9 +83,9 @@ void main() {
     await tester.pumpAndSettle();
 
     // 任务出现在目标详情（任务条目标注预估时长）。创建对话框默认计划日期
-    // 为下一可用日（2026-08-06）。
+    // 为注入时钟的今天（2026-08-05，clockProvider 固定）。
     expect(find.text('完成第一章'), findsOneWidget);
-    expect(find.text('2026-08-06 · 2 小时'), findsOneWidget);
+    expect(find.text('2026-08-05 · 2 小时'), findsOneWidget);
   });
 
   testWidgets('预估时长步进与无时长切换（FR-3 验收）', (tester) async {

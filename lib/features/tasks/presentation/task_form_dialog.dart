@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
+import '../../../core/providers/clock_provider.dart';
 import '../../../shared/widgets/duration_step_input.dart';
 import '../data/task_repository_provider.dart';
 
@@ -65,7 +66,7 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
     final task = widget.task;
     _titleController = TextEditingController(text: task?.title ?? '');
     _noteController.text = task?.note ?? '';
-    _plannedDate = task == null ? DateTime.now() : _parseDate(task.plannedDate);
+    _plannedDate = task == null ? ref.read(clockProvider)() : _parseDate(task.plannedDate);
     // 编辑模式沿用任务原科目；创建模式默认归属 defaultSubjectId（科目页入口）。
     _subjectId = task?.subjectId ?? widget.defaultSubjectId;
     _estimatedMinutes = task?.estimatedMinutes;
@@ -85,7 +86,7 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
   }
 
   Future<void> _pickDate() async {
-    final now = DateTime.now();
+    final now = ref.read(clockProvider)();
     final picked = await showDatePicker(
       context: context,
       initialDate: _plannedDate ?? now,

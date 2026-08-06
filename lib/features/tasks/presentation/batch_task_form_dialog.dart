@@ -52,7 +52,7 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
   final _formKey = GlobalKey<FormState>();
   final _titlesController = TextEditingController();
   final _intervalController = TextEditingController(text: '1');
-  DateTime _startDate = DateTime.now();
+  late DateTime _startDate;
   bool _useInterval = false;
   int? _subjectId;
   int? _estimatedMinutes;
