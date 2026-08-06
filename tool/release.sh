@@ -94,7 +94,10 @@ powershell -NoProfile -Command \
   # 目录内文件逐项校验清单（便于单文件哈希核验）。
   # 路径按发布根目录相对路径写入，`sha256sum -c SHA256SUMS` 在根目录直接可验。
   # GNU sha256sum 输出为 `hash *file`，用 awk 给文件名加目录前缀。
-  (cd "$dir_name" && sha256sum timecalc.exe *.dll data/* 2>/dev/null | sort) \
+  # 注意：data/* 会展开到 data/flutter_assets 等子目录，sha256sum 对目录
+  # 返回非零（stderr 已被吞），pipefail 下会让整条管道失败——用 `|| true`
+  # 兜底，其余文件的哈希照常输出。
+  (cd "$dir_name" && sha256sum timecalc.exe *.dll data/* 2>/dev/null | sort || true) \
     | awk -v d="$dir_name/" '{if ($2 ~ /^\*/) print $1 " *" d substr($2,2); else print $1 "  " d $2}' \
     >> SHA256SUMS
 )
