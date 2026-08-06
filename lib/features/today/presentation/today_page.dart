@@ -208,6 +208,20 @@ class _TodayPageState extends ConsumerState<TodayPage> {
           ),
           const SizedBox(height: 8),
         ],
+        // 过期任务区块（FR-3.7 扩展）：红条下方逐条列出昨日及更早未完成
+        // 任务，复用 TaskTile 的完成/编辑/延期/删除操作；与红条共用
+        // unfinished 数据源，任何操作经 onChanged 联动刷新。
+        // 数据驱动显示：无过期任务即隐藏；「保留原日期」只关横幅，区块
+        // 保留以便用户仍可逐条处理。
+        if (unfinished.isNotEmpty) ...[
+          _OverdueTasksSection(
+            tasks: unfinished,
+            goalsById: goalsById,
+            today: today,
+            onChanged: onChanged,
+          ),
+          const SizedBox(height: 8),
+        ],
         Row(
           children: [
             Text('今日任务', style: Theme.of(context).textTheme.titleMedium),
@@ -379,6 +393,98 @@ class _UnfinishedBanner extends StatelessWidget {
   }
 }
 
+/// 过期任务区块（FR-3.7 扩展）。
+///
+/// 红条下方浅红背景逐条列出昨日及更早未完成任务：每条展示原计划日期与
+/// 已逾期天数，并复用 [TaskTile] 的完成/编辑/延期/删除操作。数据来自与
+/// 红条相同的 [unfinished] 列表，任何操作经 [onChanged] 联动刷新（红条
+/// 计数与本区块同步消失）。
+class _OverdueTasksSection extends StatelessWidget {
+  const _OverdueTasksSection({
+    required this.tasks,
+    required this.goalsById,
+    required this.today,
+    required this.onChanged,
+  });
+
+  final List<Task> tasks;
+  final Map<int, Goal> goalsById;
+  final DateTime today;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    // 浅红背景：在 banner 的 errorContainer 之上叠加低透明度，视觉更轻。
+    final background = Color.alphaBlend(
+      scheme.errorContainer.withValues(alpha: 0.30),
+      scheme.surface,
+    );
+    return Card(
+      color: background,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: scheme.error.withValues(alpha: 0.30),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.error_outline, size: 18, color: scheme.error),
+                const SizedBox(width: 8),
+                Text(
+                  '过期任务',
+                  style: TextStyle(
+                    color: scheme.error,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '${tasks.length} 个未处理',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: scheme.error),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '以下任务原计划日期已过，请逐条延期或完成',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 4),
+            for (final task in tasks) ...[
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  '原计划 ${DateFormat('yyyy-MM-dd').format(_parseDate(task.plannedDate))}'
+                  ' · 已逾期 ${_overdueDays(today, task.plannedDate)} 天',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: scheme.error),
+                ),
+              ),
+              TaskTile(
+                task: task,
+                goalTitle: goalsById[task.goalId]?.title,
+                onChanged: onChanged,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// 今日无任务空态（PRD §8：提供与页面相关的首个操作，非纯说明页）。
 class _TodayEmptyView extends StatelessWidget {
   const _TodayEmptyView({required this.onAddTask});
@@ -483,11 +589,6 @@ class _CountdownCard extends ConsumerWidget {
       ),
     );
   }
-
-  static DateTime _parseDate(String yyyyMMdd) {
-    final parts = yyyyMMdd.split('-');
-    return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
-  }
 }
 
 class _EmptyView extends StatelessWidget {
@@ -518,4 +619,16 @@ class _EmptyView extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 解析 `yyyy-MM-dd` 文本为本地日期。
+DateTime _parseDate(String yyyyMMdd) {
+  final parts = yyyyMMdd.split('-');
+  return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+}
+
+/// 任务逾期天数：计划日期距今经过的整天数（计划日期必早于 [today]）。
+int _overdueDays(DateTime today, String plannedDate) {
+  final planned = _parseDate(plannedDate);
+  return DateUtils.dateOnly(today).difference(DateUtils.dateOnly(planned)).inDays;
 }

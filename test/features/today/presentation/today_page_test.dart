@@ -130,9 +130,99 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('昨日及更早有 1 个未完成任务'), findsNothing);
+    // 联动：过期任务区块与红条一并消失。
+    expect(find.text('过期任务'), findsNothing);
     final fetched = await tasks.byId(old.id);
     expect(fetched?.plannedDate, '2026-08-06');
     expect(fetched?.originalPlannedDate, '2026-08-04');
+  });
+
+  testWidgets('过期任务区块：逐条展示标题与已逾期天数，今日任务不在其中', (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    await tasks.create(
+      goalId: goal.id,
+      title: '昨日任务',
+      plannedDate: '2026-08-04',
+      estimatedMinutes: 30,
+    );
+    await tasks.create(
+      goalId: goal.id,
+      title: '今日任务A',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 30,
+    );
+
+    await pumpApp(tester);
+
+    expect(find.text('过期任务'), findsOneWidget);
+    expect(find.text('1 个未处理'), findsOneWidget);
+    expect(find.text('原计划 2026-08-04 · 已逾期 1 天'), findsOneWidget);
+    // 过期任务标题在页面上；今日任务在区块下方，滚动后再断言。
+    expect(find.text('昨日任务'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('今日任务A'), 100);
+    expect(find.text('今日任务A'), findsOneWidget);
+  });
+
+  testWidgets('无过期任务时区块隐藏', (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    await tasks.create(
+      goalId: goal.id,
+      title: '今日任务A',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 30,
+    );
+
+    await pumpApp(tester);
+
+    expect(find.text('过期任务'), findsNothing);
+    expect(find.textContaining('已逾期'), findsNothing);
+  });
+
+  testWidgets('区块内完成过期任务后区块与红条联动消失（FR-3.7 扩展）', (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    final old = await tasks.create(
+      goalId: goal.id,
+      title: '昨日任务',
+      plannedDate: '2026-08-04',
+      estimatedMinutes: 30,
+    );
+
+    await pumpApp(tester);
+    expect(find.text('过期任务'), findsOneWidget);
+    expect(find.text('昨日及更早有 1 个未完成任务'), findsOneWidget);
+
+    // 区块内 TaskTile 的完成复选框。
+    await tester.tap(find.byType(Checkbox));
+    await tester.pumpAndSettle();
+
+    expect(find.text('过期任务'), findsNothing);
+    expect(find.text('昨日及更早有 1 个未完成任务'), findsNothing);
+    expect((await tasks.byId(old.id))?.status, 'done');
+  });
+
+  testWidgets('区块内单个任务可经菜单延期，联动刷新（FR-3.7 扩展）', (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    final old = await tasks.create(
+      goalId: goal.id,
+      title: '昨日任务',
+      plannedDate: '2026-08-04',
+      estimatedMinutes: 30,
+    );
+
+    await pumpApp(tester);
+
+    await tester.tap(find.byTooltip('任务操作'));
+    await tester.pumpAndSettle();
+    // 菜单项与红条按钮同名，用 PopupMenuItem 精确匹配菜单项。
+    await tester.tap(
+      find.widgetWithText(PopupMenuItem<String>, '延期至下一可用日'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('过期任务'), findsNothing);
+    expect(find.text('昨日及更早有 1 个未完成任务'), findsNothing);
+    final fetched = await tasks.byId(old.id);
+    expect(fetched?.plannedDate, '2026-08-06');
   });
 
   testWidgets('FR-3.7：保留原日期不改变任务计划（仅本会话关闭横幅）', (tester) async {
