@@ -210,4 +210,32 @@ void main() {
     expect(find.text('完成热力图'), findsOneWidget);
     expect(find.text('任务耗时甘特图'), findsOneWidget);
   });
+
+  testWidgets('甘特图最忙周条形不溢出（回归：planned+completed 达最大值）',
+      (tester) async {
+    final goal =
+        await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    // 本周同时存在计划与完成，且二者合计为全局最大值，触发归一化满高。
+    // 计划 120 分钟（2026-08-05 当周）；完成 120 分钟（同周）。
+    await tasks.create(
+      goalId: goal.id,
+      title: '计划任务',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 120,
+    );
+    await completeTask(
+      goalId: goal.id,
+      title: '完成任务',
+      minutes: 120,
+      completedAtUtc: fixedNow.toUtc(),
+    );
+
+    await pumpApp(tester);
+    await openProgress(tester);
+
+    // 最忙周两段条形高度之和等于 (maxBarHeight - minBarHeight)，不应触发
+    // RenderFlex overflow。pump 后无未处理异常即视为通过。
+    expect(tester.takeException(), isNull);
+    expect(find.text('任务耗时甘特图'), findsOneWidget);
+  });
 }

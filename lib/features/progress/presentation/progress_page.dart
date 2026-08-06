@@ -737,10 +737,15 @@ class _GoalBarRow extends StatelessWidget {
     return '$dateStr 起一周：${parts.join(' · ')}';
   }
 
+  /// 条形高度：按时长占比线性映射到 `[0, maxBarHeight - minBarHeight]`。
+  ///
+  /// 仅按比例分配，不逐段叠加基础偏移：最忙周（planned + completed ==
+  /// maxMinutes）两段高度之和恰为 `maxBarHeight - minBarHeight`，配合外层
+  /// `SizedBox(height: maxBarHeight)` + `MainAxisAlignment.end` 贴底对齐，
+  /// 顶部留白、不溢出。`minBarHeight` 仅用于无数据周的空档占位。
   double _heightFor(int minutes) {
     if (minutes <= 0) return 0;
-    return _GanttGrid._minBarHeight +
-        (minutes / maxMinutes) *
-            (_GanttGrid._maxBarHeight - _GanttGrid._minBarHeight);
+    return (minutes / maxMinutes) *
+        (_GanttGrid._maxBarHeight - _GanttGrid._minBarHeight);
   }
 }

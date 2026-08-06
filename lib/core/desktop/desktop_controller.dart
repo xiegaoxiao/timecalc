@@ -75,6 +75,19 @@ class DesktopController with WindowListener implements TrayListener {
     }
   }
 
+  /// 重新应用关闭行为（FR-8.1：设置页变更后实时生效）。
+  ///
+  /// 读取最新设置并据此开关 [WindowManager.setPreventClose]。平台不可用
+  /// 时静默降级（与 [initialize] 一致）。供设置页保存后调用，使「退出 ↔
+  /// 最小化到托盘」切换无需重启即生效。
+  Future<void> applyCloseBehavior() async {
+    try {
+      await _applyCloseBehavior();
+    } catch (_) {
+      // 平台不可用时静默降级，不影响设置保存。
+    }
+  }
+
   /// 根据设置应用关闭行为（FR-8.1）。
   ///
   /// exit：允许关闭（默认）；minimize_to_tray：拦截关闭事件并在首次触发

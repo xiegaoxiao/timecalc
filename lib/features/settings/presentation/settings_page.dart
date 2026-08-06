@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/database/tables.dart';
+import '../../../core/desktop/desktop_providers.dart';
 import '../../../shared/widgets/duration_step_input.dart';
 import '../../backup/presentation/backup_section.dart';
 import '../data/settings_repository.dart';
@@ -212,6 +213,8 @@ class _CloseBehaviorSectionState extends ConsumerState<_CloseBehaviorSection> {
           .read(settingsRepositoryProvider)
           .updateCloseBehavior(_behavior);
       ref.invalidate(settingsProvider);
+      // FR-8.1：保存后实时应用窗口拦截行为，切换无需重启即生效。
+      await ref.read(desktopControllerProvider)?.applyCloseBehavior();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('关闭行为已保存')),

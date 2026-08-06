@@ -8,8 +8,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:timecalc/app.dart';
 import 'package:timecalc/core/database/database.dart';
 import 'package:timecalc/core/database/database_provider.dart';
+import 'package:timecalc/core/desktop/desktop_controller.dart';
+import 'package:timecalc/core/desktop/desktop_providers.dart';
+import 'package:timecalc/core/desktop/window_state_store.dart';
 import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/backup/data/backup_file_picker.dart';
+import 'package:timecalc/features/settings/data/settings_repository.dart';
 
 /// 设置页 Widget 测试（FR-8.1 关闭行为 / FR-9 备份与恢复入口）。
 ///
@@ -29,6 +33,8 @@ void main() {
           databaseProvider.overrideWithValue(db),
           clockProvider.overrideWithValue(() => fixedNow),
           backupFilePickerProvider.overrideWithValue(picker),
+          // widget 测试中桌面能力禁用（不触碰 windowManager/trayManager）。
+          desktopControllerProvider.overrideWithValue(null),
         ],
         child: const TimeCalcApp(),
       ),
@@ -84,6 +90,38 @@ void main() {
     final settings = await db.select(db.settings).getSingle();
     expect(settings.closeBehavior, 'minimize_to_tray');
   });
+
+  testWidgets('保存关闭行为后实时应用到桌面层（FR-8.1 无需重启）', (tester) async {
+    final controller = _RecordingDesktopController(SettingsRepository(db));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          clockProvider.overrideWithValue(() => fixedNow),
+          backupFilePickerProvider.overrideWithValue(picker),
+          desktopControllerProvider.overrideWithValue(controller),
+        ],
+        child: const TimeCalcApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await openSettings(tester);
+
+    await tester.drag(find.byType(ListView).first, const Offset(0, -300));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('最小化到托盘'));
+    await tester.pumpAndSettle();
+
+    // 保存前未应用关闭行为。
+    expect(controller.applyCalls, 0);
+
+    await tester.tap(find.text('保存').last);
+    await tester.pumpAndSettle();
+
+    // 保存后桌面层收到 applyCloseBehavior 调用，切换实时生效。
+    expect(controller.applyCalls, 1);
+    expect(find.text('关闭行为已保存'), findsOneWidget);
+  });
 }
 
 /// 假文件选择器：记录调用，返回空（取消），避免触碰平台对话框。
@@ -101,5 +139,30 @@ class FakeBackupFilePicker implements BackupFilePicker {
   Future<File?> openBackupFile() async {
     openCalls++;
     return null;
+  }
+}
+
+/// 记录 applyCloseBehavior 调用次数的 DesktopController 替身。
+///
+/// 继承真实控制器以保留类型，仅 override 公开方法记录调用，避免在测试中
+/// 触碰 windowManager / trayManager 平台 API。设置仓库复用真实实现，
+/// 保证构造合法且不触碰平台。
+class _RecordingDesktopController extends DesktopController {
+  _RecordingDesktopController(SettingsRepository settings)
+      : super(
+          stateStore: WindowStateStore(),
+          settingsRepository: settings,
+        );
+
+  int applyCalls = 0;
+
+  @override
+  Future<void> applyCloseBehavior() async {
+    applyCalls++;
+  }
+
+  @override
+  Future<void> initialize() async {
+    // 测试中不初始化平台能力。
   }
 }
