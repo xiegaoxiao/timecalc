@@ -308,4 +308,21 @@ void main() {
     // 无布局溢出。
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('进度页顶部展示计划偏好入口卡（摘要 + 点击进入独立页）', (tester) async {
+    await goals.create(title: '考研', deadlineDate: '2026-12-31');
+
+    await pumpApp(tester);
+    await openProgress(tester);
+
+    // 入口卡默认摘要：每日可用 2 小时 · 每周 7 天。
+    expect(find.text('计划偏好'), findsOneWidget);
+    expect(find.text('每日可用 2 小时 · 每周 7 天'), findsOneWidget);
+
+    // 点击进入独立偏好编辑页。
+    await tester.tap(find.text('计划偏好'));
+    await tester.pumpAndSettle();
+    expect(find.text('每周可用日'), findsOneWidget);
+    expect(find.byType(BackButton), findsOneWidget);
+  });
 }

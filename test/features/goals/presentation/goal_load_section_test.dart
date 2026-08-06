@@ -54,6 +54,14 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// 进度页「计划偏好」入口卡 → 独立偏好编辑页（计划偏好已移出设置页）。
+  Future<void> openPlanPreference(WidgetTester tester) async {
+    await tester.tap(find.text('进度'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('计划偏好'));
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('目标详情展示剩余任务时长、剩余可用天数和建议日均时长（FR-5.3）', (tester) async {
     // 截止 08-08（周五），距 08-05 还有 4 天全可用；任务共 360 分钟。
     final goal = await goals.create(title: '考研', deadlineDate: '2026-08-08');
@@ -110,9 +118,8 @@ void main() {
     // 默认 120 分钟：今日负载 150 超 30。
     expect(find.text('超出 30 分，请调整任务或可用时间'), findsOneWidget);
 
-    // 设置页用步进器改为 3 小时（小时加 1）。
-    await tester.tap(find.text('设置'));
-    await tester.pumpAndSettle();
+    // 偏好页用步进器改为 3 小时（小时加 1）。
+    await openPlanPreference(tester);
     await tester.tap(find.byTooltip('小时加'));
     await tester.pumpAndSettle();
     expect(find.text('当前共 3 小时'), findsOneWidget);
@@ -121,7 +128,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('计划偏好已保存'), findsOneWidget);
 
-    // 回到今天页：150 分钟不再超出。
+    // 偏好页是独立路由（无底部导航），返回进度页后再切今天页。
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('今天'));
     await tester.pumpAndSettle();
     expect(find.text('今日任务总计 2 小时 30 分'), findsOneWidget);
@@ -151,10 +160,9 @@ void main() {
     expect(fetched?.originalPlannedDate, '2026-08-05');
   });
 
-  testWidgets('设置页步进器边界：小时不超过 24、分钟不低过 0、可回退', (tester) async {
+  testWidgets('偏好页步进器边界：小时不超过 24、分钟不低过 0、可回退', (tester) async {
     await pumpApp(tester);
-    await tester.tap(find.text('设置'));
-    await tester.pumpAndSettle();
+    await openPlanPreference(tester);
 
     // 默认 2 小时 / 0 分。
     expect(find.text('当前共 2 小时'), findsOneWidget);
@@ -205,8 +213,7 @@ void main() {
     );
 
     await pumpApp(tester);
-    await tester.tap(find.text('设置'));
-    await tester.pumpAndSettle();
+    await openPlanPreference(tester);
 
     // 点击小时步进器的数字区域进入编辑态。
     final hourInput = find.descendant(
@@ -223,8 +230,10 @@ void main() {
 
     expect(find.text('当前共 5 小时'), findsOneWidget);
 
-    // 保存后今天页可用时长变为 5 小时。
+    // 保存后返回进度页，再切今天页：可用时长变为 5 小时。
     await tester.tap(find.text('保存').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
     await tester.tap(find.text('今天'));
     await tester.pumpAndSettle();
@@ -234,8 +243,7 @@ void main() {
 
   testWidgets('编辑输入超出范围时夹取到边界（小时 30 → 24）', (tester) async {
     await pumpApp(tester);
-    await tester.tap(find.text('设置'));
-    await tester.pumpAndSettle();
+    await openPlanPreference(tester);
 
     final hourInput = find.descendant(
       of: find.byKey(const Key('hourStepField')),

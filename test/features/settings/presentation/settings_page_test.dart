@@ -77,9 +77,7 @@ void main() {
     await pumpApp(tester);
     await openSettings(tester);
 
-    // 关闭行为区在计划偏好区下方，先滚动到可见再操作。
-    await tester.drag(find.byType(ListView).first, const Offset(0, -300));
-    await tester.pumpAndSettle();
+    // 关闭行为是设置页第一个区块（计划偏好已移至进度页入口）。
     await tester.tap(find.text('最小化到托盘'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('保存').last);
@@ -107,8 +105,7 @@ void main() {
     await tester.pumpAndSettle();
     await openSettings(tester);
 
-    await tester.drag(find.byType(ListView).first, const Offset(0, -300));
-    await tester.pumpAndSettle();
+    // 关闭行为是设置页第一个区块，直接可见。
     await tester.tap(find.text('最小化到托盘'));
     await tester.pumpAndSettle();
 
