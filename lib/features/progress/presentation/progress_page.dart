@@ -588,10 +588,12 @@ class _GanttGrid extends StatelessWidget {
   final Map<int, GoalGanttRow> data;
   final List<DateTime> weekStarts;
 
-  static const _labelWidth = 96.0;
-  static const _barWidth = 14.0;
-  static const _maxBarHeight = 26.0;
-  static const _minBarHeight = 3.0;
+  // 正常图表尺寸（此前 14×26 迷你条形过小，难以阅读）：条形宽度与
+  // 高度成倍放大，周间保留 4px 间距，月份刻度/图例随常量自动适配。
+  static const _labelWidth = 110.0;
+  static const _barWidth = 24.0;
+  static const _maxBarHeight = 48.0;
+  static const _minBarHeight = 6.0;
 
   @override
   Widget build(BuildContext context) {
@@ -634,10 +636,10 @@ class _GanttGrid extends StatelessWidget {
     // 只在本周首日是一号，或与上一周跨月时显示月份。
     if (weekStart.day != 1 &&
         weekStart.month == weekStart.subtract(const Duration(days: 7)).month) {
-      return const SizedBox(width: _barWidth + 3);
+      return const SizedBox(width: _barWidth + 6);
     }
     return SizedBox(
-      width: _barWidth + 3,
+      width: _barWidth + 6,
       child: Text(
         '${weekStart.month}月',
         style: const TextStyle(fontSize: 9),
@@ -689,7 +691,7 @@ class _GoalBarRow extends StatelessWidget {
     if (total <= 0) {
       // 无数据的周：空档。
       return Padding(
-        padding: const EdgeInsets.only(right: 3),
+        padding: const EdgeInsets.only(right: 6),
         child: SizedBox(
           width: _GanttGrid._barWidth,
           height: _GanttGrid._minBarHeight,
@@ -731,7 +733,7 @@ class _GoalBarRow extends StatelessWidget {
     ];
 
     return Padding(
-      padding: const EdgeInsets.only(right: 3),
+      padding: const EdgeInsets.only(right: 6),
       child: Tooltip(
         message: _tooltipText(dateStr, planned, completed),
         child: Semantics(
