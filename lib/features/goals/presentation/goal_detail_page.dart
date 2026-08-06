@@ -50,41 +50,96 @@ class GoalDetailPage extends ConsumerWidget {
   }
 }
 
-class GoalDetailBody extends ConsumerWidget {
+class GoalDetailBody extends ConsumerStatefulWidget {
   const GoalDetailBody({super.key, required this.goal});
 
   final Goal goal;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<GoalDetailBody> createState() => _GoalDetailBodyState();
+}
+
+class _GoalDetailBodyState extends ConsumerState<GoalDetailBody> {
+  /// 已展开的重复模板 id 集合（手风琴局部状态，TaskListSection 懒加载
+  /// 的 SliverList itemCount 据此决定）。
+  final Set<int> _expandedTemplates = {};
+
+  Goal get goal => widget.goal;
+
+  void _toggleTemplate(int templateId) {
+    setState(() {
+      if (!_expandedTemplates.remove(templateId)) {
+        _expandedTemplates.add(templateId);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final subjectsAsync = ref.watch(subjectListProvider(goal.id));
     final tasksAsync = ref.watch(taskListProvider(goal.id));
     final archivedAsync = ref.watch(archivedTaskListProvider(goal.id));
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        _GoalHeader(goal: goal),
-        const Divider(height: 32),
-        // 里程碑区（FR-2）：目标概览 → 里程碑 → 任务（PRD §7 层级）。
-        MilestoneSection(goalId: goal.id, deadlineDate: goal.deadlineDate),
-        const Divider(height: 32),
-        // 负载区（FR-5.3）：剩余任务时长、剩余可用天数、建议日均与计划风险。
-        tasksAsync.when(
-          loading: () => const SizedBox.shrink(),
-          error: (error, _) => AppErrorView(error: error),
-          data: (tasks) => _LoadSection(goal: goal, tasks: tasks),
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          sliver: SliverToBoxAdapter(child: _GoalHeader(goal: goal)),
         ),
-        const Divider(height: 32),
-        SubjectManager(goalId: goal.id),
-        const Divider(height: 32),
+        const SliverToBoxAdapter(child: Divider(height: 32)),
+        // 里程碑区（FR-2）：目标概览 → 里程碑 → 任务（PRD §7 层级）。
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverToBoxAdapter(
+            child: MilestoneSection(
+              goalId: goal.id,
+              deadlineDate: goal.deadlineDate,
+            ),
+          ),
+        ),
+        const SliverToBoxAdapter(child: Divider(height: 32)),
+        // 负载区（FR-5.3）：剩余任务时长、剩余可用天数、建议日均与计划风险。
+        ...tasksAsync.when(
+          loading: () => const <Widget>[],
+          error: (error, _) => [
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverToBoxAdapter(child: AppErrorView(error: error)),
+            ),
+          ],
+          data: (tasks) => [
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverToBoxAdapter(
+                child: _LoadSection(goal: goal, tasks: tasks),
+              ),
+            ),
+          ],
+        ),
+        const SliverToBoxAdapter(child: Divider(height: 32)),
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverToBoxAdapter(child: SubjectManager(goalId: goal.id)),
+        ),
+        const SliverToBoxAdapter(child: Divider(height: 32)),
         // 未归属科目的任务在详情页直接管理（无科目页可进）。
-        subjectsAsync.when(
-          loading: () => const SizedBox.shrink(),
-          error: (error, _) => AppErrorView(error: error),
+        // 任务区以 sliver 形态懒加载，只构建视口内的任务行（含重复实例）。
+        ...subjectsAsync.when(
+          loading: () => const <Widget>[],
+          error: (error, _) => [
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverToBoxAdapter(child: AppErrorView(error: error)),
+            ),
+          ],
           data: (subjects) => tasksAsync.when(
-            loading: () => const SizedBox.shrink(),
-            error: (error, _) => AppErrorView(error: error),
+            loading: () => const <Widget>[],
+            error: (error, _) => [
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                sliver: SliverToBoxAdapter(child: AppErrorView(error: error)),
+              ),
+            ],
             data: (tasks) {
               final unassigned =
                   tasks.where((t) => t.subjectId == null).toList();
@@ -99,21 +154,37 @@ class GoalDetailBody extends ConsumerWidget {
                 description: '不归属特定科目的安排，如科目复习/复盘、考研报名等',
                 emptyText: '还没有此类任务。可点「添加任务」或「批量添加」创建',
                 onChanged: () => ref.invalidate(taskListProvider(goal.id)),
+              ).buildSlivers(
+                context,
+                expandedTemplateIds: _expandedTemplates,
+                onToggleTemplate: _toggleTemplate,
               );
             },
           ),
         ),
-        const Divider(height: 32),
+        const SliverToBoxAdapter(child: Divider(height: 32)),
         // 历史任务区：JSON 导入替换时归档保留的旧任务，可手动恢复。
-        archivedAsync.when(
-          loading: () => const SizedBox.shrink(),
-          error: (error, _) => AppErrorView(error: error),
+        ...archivedAsync.when(
+          loading: () => const <Widget>[],
+          error: (error, _) => [
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverToBoxAdapter(child: AppErrorView(error: error)),
+            ),
+          ],
           data: (archived) {
-            if (archived.isEmpty) return const SizedBox.shrink();
-            return _ArchivedSection(
-              goalId: goal.id,
-              archived: archived,
-            );
+            if (archived.isEmpty) return const <Widget>[];
+            return [
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                sliver: SliverToBoxAdapter(
+                  child: _ArchivedSection(
+                    goalId: goal.id,
+                    archived: archived,
+                  ),
+                ),
+              ),
+            ];
           },
         ),
       ],

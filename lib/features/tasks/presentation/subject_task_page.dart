@@ -10,14 +10,33 @@ import 'task_list_section.dart';
 /// 科目任务页：展示某一科目下的全部任务（点击科目进入）。
 ///
 /// 任务创建默认归属当前科目；也可改为其他科目或无科目（移动任务）。
-class SubjectTaskPage extends ConsumerWidget {
+class SubjectTaskPage extends ConsumerStatefulWidget {
   const SubjectTaskPage({super.key, required this.goalId, required this.subjectId});
 
   final int goalId;
   final int subjectId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SubjectTaskPage> createState() => _SubjectTaskPageState();
+}
+
+class _SubjectTaskPageState extends ConsumerState<SubjectTaskPage> {
+  /// 已展开的重复模板 id 集合（手风琴局部状态）。
+  final Set<int> _expandedTemplates = {};
+
+  int get goalId => widget.goalId;
+  int get subjectId => widget.subjectId;
+
+  void _toggleTemplate(int templateId) {
+    setState(() {
+      if (!_expandedTemplates.remove(templateId)) {
+        _expandedTemplates.add(templateId);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final subjectsAsync = ref.watch(subjectListProvider(goalId));
     final tasksAsync = ref.watch(taskListProvider(goalId));
     final subject = subjectsAsync.valueOrNull
@@ -41,20 +60,31 @@ class SubjectTaskPage extends ConsumerWidget {
             data: (tasks) {
               final subjectTasks =
                   tasks.where((t) => t.subjectId == subjectId).toList();
-              return ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  // 科目概览：任务数/完成数（不只依赖颜色，NFR-4）。
-                  _SubjectSummary(subject: subject, tasks: subjectTasks),
-                  const Divider(height: 32),
-                  TaskListSection(
+              return CustomScrollView(
+                slivers: [
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                    sliver: SliverToBoxAdapter(
+                      // 科目概览：任务数/完成数（不只依赖颜色，NFR-4）。
+                      child: _SubjectSummary(
+                        subject: subject,
+                        tasks: subjectTasks,
+                      ),
+                    ),
+                  ),
+                  const SliverToBoxAdapter(child: Divider(height: 32)),
+                  // 任务区（sliver 形态懒加载，含重复实例折叠）。
+                  ...TaskListSection(
                     goalId: goalId,
                     subjects: _allSubjects(ref),
                     tasks: subjectTasks,
                     title: '任务',
                     defaultSubjectId: subjectId,
-                    onChanged: () =>
-                        ref.invalidate(taskListProvider(goalId)),
+                    onChanged: () => ref.invalidate(taskListProvider(goalId)),
+                  ).buildSlivers(
+                    context,
+                    expandedTemplateIds: _expandedTemplates,
+                    onToggleTemplate: _toggleTemplate,
                   ),
                 ],
               );

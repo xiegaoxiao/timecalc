@@ -14,9 +14,14 @@ import 'task_import_dialog.dart';
 
 /// 任务列表区域（FR-3.1/FR-3.2）：创建、编辑、删除、完成任务。
 ///
-/// 父级负责按上下文过滤 [tasks]（如科目任务页只传该科目任务，
-/// 目标详情页只传未分类任务），并处理 [onChanged] 触发数据刷新。
-class TaskListSection extends ConsumerWidget {
+/// 以 sliver 形态供页面 [CustomScrollView] 嵌入（[buildSlivers]），任务列表
+/// 使用 [SliverList.builder] **懒加载**——只构建视口内的任务行，避免几十个
+/// 重复实例行一次性全量实例化造成进入页面/展开收起卡顿。
+///
+/// 父级负责按上下文过滤 [tasks]（如科目任务页只传该科目任务，目标详情页
+/// 只传未分类任务），并处理 [onChanged] 触发数据刷新。
+/// 手风琴展开状态由宿主页面管理（[expandedTemplateIds]/[onToggleTemplate]）。
+class TaskListSection extends StatelessWidget {
   const TaskListSection({
     super.key,
     required this.goalId,
@@ -47,102 +52,193 @@ class TaskListSection extends ConsumerWidget {
   /// 全部任务；默认取本区域的 [tasks]）。
   final List<Task>? currentTasks;
 
+  /// 本组件为 sliver 形态，必须通过 [buildSlivers] 嵌入页面
+  /// [CustomScrollView]；直接 [build] 渲染无意义，返回占位。
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (title != null) ...[
-          Row(
-            children: [
-              Text(title!, style: Theme.of(context).textTheme.titleMedium),
-              if (showAddButton) ...[
-                const Spacer(),
-                TextButton.icon(
-                  onPressed: () => TaskFormDialog.show(
-                    context,
-                    goalId: goalId,
-                    subjects: subjects,
-                    defaultSubjectId: defaultSubjectId,
-                  ),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('添加任务'),
-                ),
-                TextButton.icon(
-                  onPressed: () => BatchTaskFormDialog.show(
-                    context,
-                    goalId: goalId,
-                    subjects: subjects,
-                    defaultSubjectId: defaultSubjectId,
-                  ),
-                  icon: const Icon(Icons.playlist_add, size: 18),
-                  label: const Text('批量添加'),
-                ),
-                TextButton.icon(
-                  onPressed: () => TaskImportDialog.show(
-                    context,
-                    goalId: goalId,
-                    subjects: subjects,
-                    // JSON 导入为「替换」语义：传入将被替换并保留为历史的
-                    // 目标当前任务清单。
-                    currentTasks: currentTasks ?? tasks,
-                  ),
-                  icon: const Icon(Icons.upload_file, size: 18),
-                  label: const Text('JSON 导入'),
-                ),
-                TextButton.icon(
-                  onPressed: () => RecurrenceTaskDialog.show(
-                    context,
-                    goalId: goalId,
-                    subjects: subjects,
-                  ),
-                  icon: const Icon(Icons.autorenew, size: 18),
-                  label: const Text('重复任务'),
-                ),
-              ],
-            ],
+  Widget build(BuildContext context) {
+    throw UnsupportedError(
+      'TaskListSection 是 sliver 形态组件，请通过 buildSlivers() 嵌入 CustomScrollView。',
+    );
+  }
+
+  /// 生成嵌入页面 [CustomScrollView] 的 slivers：区块头（标题/按钮/描述）
+  /// + 懒加载任务列表。
+  ///
+  /// [expandedTemplateIds] 为已展开的重复模板 id 集合（折叠/展开的行结构
+  /// 决定 SliverList 的 itemCount），[onToggleTemplate] 切换单个模板展开态。
+  List<Widget> buildSlivers(
+    BuildContext context, {
+    required Set<int> expandedTemplateIds,
+    required ValueChanged<int> onToggleTemplate,
+  }) {
+    final units = _groupTasks(tasks);
+    return [
+      if (title != null)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _header(context),
           ),
-          const SizedBox(height: 8),
-        ],
-        if (description != null) ...[
-          const SizedBox(height: 2),
-          Text(
-            description!,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
+        ),
+      if (description != null)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _description(context),
           ),
-        ],
-        if (tasks.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
+        ),
+      if (tasks.isEmpty)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             child: Text(emptyText),
-          )
-        else
-          Column(
-            children: [
-              // 重复任务折叠（手风琴）：同一模板实例数 ≥ 2 时合并为父卡片，
-              // 其余保持普通任务行；整体按最早计划日期升序。
-              for (final unit in _groupTasks(tasks))
-                if (unit.isGroup)
-                  RecurrenceGroupTile(
-                    goalId: goalId,
-                    templateId: unit.templateId!,
-                    instances: unit.instances,
-                    subjects: subjects,
-                    onChanged: onChanged,
-                  )
-                else
-                  _TaskTile(
-                    goalId: goalId,
-                    task: unit.task!,
-                    subjects: subjects,
-                    onChanged: onChanged,
-                  ),
-            ],
           ),
+        )
+      else
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverList.builder(
+            itemCount: _rowCount(units, expandedTemplateIds),
+            itemBuilder: (context, index) => _buildRow(
+              context,
+              units,
+              expandedTemplateIds,
+              onToggleTemplate,
+              index,
+            ),
+          ),
+        ),
+    ];
+  }
+
+  Widget _header(BuildContext context) {
+    return Row(
+      children: [
+        Text(title!, style: Theme.of(context).textTheme.titleMedium),
+        if (showAddButton) ...[
+          const Spacer(),
+          TextButton.icon(
+            onPressed: () => TaskFormDialog.show(
+              context,
+              goalId: goalId,
+              subjects: subjects,
+              defaultSubjectId: defaultSubjectId,
+            ),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('添加任务'),
+          ),
+          TextButton.icon(
+            onPressed: () => BatchTaskFormDialog.show(
+              context,
+              goalId: goalId,
+              subjects: subjects,
+              defaultSubjectId: defaultSubjectId,
+            ),
+            icon: const Icon(Icons.playlist_add, size: 18),
+            label: const Text('批量添加'),
+          ),
+          TextButton.icon(
+            onPressed: () => TaskImportDialog.show(
+              context,
+              goalId: goalId,
+              subjects: subjects,
+              // JSON 导入为「替换」语义：传入将被替换并保留为历史的
+              // 目标当前任务清单。
+              currentTasks: currentTasks ?? tasks,
+            ),
+            icon: const Icon(Icons.upload_file, size: 18),
+            label: const Text('JSON 导入'),
+          ),
+          TextButton.icon(
+            onPressed: () => RecurrenceTaskDialog.show(
+              context,
+              goalId: goalId,
+              subjects: subjects,
+            ),
+            icon: const Icon(Icons.autorenew, size: 18),
+            label: const Text('重复任务'),
+          ),
+        ],
       ],
     );
+  }
+
+  Widget _description(BuildContext context) {
+    return Text(
+      description!,
+      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.outline,
+          ),
+    );
+  }
+
+  /// 当前行数：折叠组计 1 行（父卡片头），展开组计 1 + N 行（实例行）。
+  static int _rowCount(List<_ListUnit> units, Set<int> expandedTemplateIds) {
+    var count = 0;
+    for (final unit in units) {
+      if (!unit.isGroup) {
+        count += 1;
+        continue;
+      }
+      count += 1;
+      if (expandedTemplateIds.contains(unit.templateId)) {
+        count += unit.instances.length;
+      }
+    }
+    return count;
+  }
+
+  /// 把扁平行 index 映射到具体行 widget（懒加载的 itemBuilder 每次只构建
+  /// 可见的那几行，滚动时才按需实例化其余行）。
+  Widget _buildRow(
+    BuildContext context,
+    List<_ListUnit> units,
+    Set<int> expandedTemplateIds,
+    ValueChanged<int> onToggleTemplate,
+    int index,
+  ) {
+    for (final unit in units) {
+      if (!unit.isGroup) {
+        if (index == 0) {
+          return _TaskTile(
+            goalId: goalId,
+            task: unit.task!,
+            subjects: subjects,
+            onChanged: onChanged,
+          );
+        }
+        index -= 1;
+        continue;
+      }
+      final templateId = unit.templateId!;
+      final expanded = expandedTemplateIds.contains(templateId);
+      // 父卡片头行。
+      if (index == 0) {
+        return RecurrenceGroupTile(
+          goalId: goalId,
+          templateId: templateId,
+          instances: unit.instances,
+          subjects: subjects,
+          expanded: expanded,
+          onToggle: () => onToggleTemplate(templateId),
+          onChanged: onChanged,
+        );
+      }
+      index -= 1;
+      // 展开态：实例行。
+      if (expanded) {
+        if (index < unit.instances.length) {
+          return _TaskTile(
+            goalId: goalId,
+            task: unit.instances[index],
+            subjects: subjects,
+            onChanged: onChanged,
+          );
+        }
+        index -= unit.instances.length;
+      }
+    }
+    throw StateError('row index out of range: $index');
   }
 
   /// 把任务列表按重复模板分组（FR-4 迭代：手风琴折叠）。
@@ -381,154 +477,120 @@ class _TaskTile extends ConsumerWidget {
   }
 }
 
-/// 重复任务折叠父卡片（FR-4 迭代：手风琴折叠）。
+/// 重复任务折叠父卡片头（FR-4 迭代：手风琴折叠）。
 ///
-/// 将同一模板的多个实例合并为一张父卡片，默认折叠；点击整卡或右侧展开
-/// 图标后向下展开，以子列表形式展示区间内每个日期的具体实例（子任务
-/// 保持原有交互：复选框/日期/更多菜单，视觉内缩）。
+/// 仅渲染父卡片一行（标题 + 日期区间 + N 个任务 + 展开/收起图标 + 模板级
+/// 操作菜单）。展开后的实例行由宿主 [SliverList] 懒加载渲染，本组件不做
+/// 全量子列表，避免几十个实例行一次性实例化导致卡顿。
 ///
-/// 父卡片提供操作菜单（模板级）：编辑重复规则、停止重复、删除整个重复
-/// （模板 + 全部实例）。实例数 < 2 的模板不进入本组件（见 [_groupTasks]）。
-class RecurrenceGroupTile extends ConsumerStatefulWidget {
+/// 模板级菜单：编辑重复规则、停止重复（已停止时隐藏）、删除整个重复
+/// （模板 + 全部实例，二次确认）。
+class RecurrenceGroupTile extends ConsumerWidget {
   const RecurrenceGroupTile({
     super.key,
     required this.goalId,
     required this.templateId,
     required this.instances,
     required this.subjects,
+    required this.expanded,
+    required this.onToggle,
     required this.onChanged,
   });
 
   final int goalId;
   final int templateId;
 
-  /// 该模板的全部实例（已按计划日期升序，见 [_groupTasks]）。
+  /// 该模板的全部实例（已按计划日期升序，见 [TaskListSection._groupTasks]）。
   final List<Task> instances;
   final List<Subject> subjects;
+
+  /// 当前是否展开（由宿主页面维护）。
+  final bool expanded;
+
+  /// 切换展开状态（宿主 setState 后 SliverList itemCount 随之变化）。
+  final VoidCallback onToggle;
   final VoidCallback onChanged;
 
   @override
-  ConsumerState<RecurrenceGroupTile> createState() => _RecurrenceGroupTileState();
-}
-
-class _RecurrenceGroupTileState extends ConsumerState<RecurrenceGroupTile> {
-  /// 手风琴展开状态（默认折叠）。
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final instances = widget.instances;
+  Widget build(BuildContext context, WidgetRef ref) {
     // 模板信息（标题/是否停止）：加载中或读取失败时回退到实例首行标题。
     final template =
-        ref.watch(recurrenceTemplateProvider(widget.templateId)).valueOrNull;
+        ref.watch(recurrenceTemplateProvider(templateId)).valueOrNull;
     final title = template?.title ?? instances.first.title;
     final stopped = template != null && !template.active;
-    final scheme = Theme.of(context).colorScheme;
     final first = _parseDate(instances.first.plannedDate);
     final last = _parseDate(instances.last.plannedDate);
 
-    return Column(
-      children: [
-        Card(
-          margin: EdgeInsets.only(bottom: _expanded ? 0 : 8),
-          child: ListTile(
-            onTap: () => setState(() => _expanded = !_expanded),
-            leading: const Tooltip(
-              message: '重复任务',
-              child: Icon(Icons.autorenew, size: 20),
-            ),
-            title: Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: Text(
-              '${DateFormat('yyyy-MM-dd').format(first)} ~ '
-              '${DateFormat('yyyy-MM-dd').format(last)} · '
-              '${instances.length} 个任务'
-              '${stopped ? ' · 已停止' : ''}',
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  // NFR-4：展开/收起状态以图标旋转 + tooltip 双重表达。
-                  tooltip: _expanded ? '收起重复任务' : '展开重复任务',
-                  onPressed: () =>
-                      setState(() => _expanded = !_expanded),
-                  icon: AnimatedRotation(
-                    turns: _expanded ? 0.25 : 0,
-                    duration: const Duration(milliseconds: 150),
-                    child: const Icon(Icons.chevron_right, size: 20),
-                  ),
-                ),
-                PopupMenuButton<String>(
-                  tooltip: '任务操作',
-                  onSelected: (action) => _handleAction(context, action),
-                  itemBuilder: (_) => [
-                    const PopupMenuItem(
-                      value: 'editRecurrence',
-                      child: Text('编辑重复规则'),
-                    ),
-                    if (!stopped)
-                      const PopupMenuItem(
-                        value: 'stopRecurrence',
-                        child: Text('停止重复'),
-                      ),
-                    const PopupMenuItem(
-                      value: 'deleteAll',
-                      child: Text('删除'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        onTap: onToggle,
+        leading: const Tooltip(
+          message: '重复任务',
+          child: Icon(Icons.autorenew, size: 20),
         ),
-        // 展开的子任务列表：内缩 + 左缘竖引导线，表明隶属于父卡片。
-        //
-        // 性能说明：此处不使用 AnimatedSize 包裹。AnimatedSize 在动画期间
-        // 对子节点逐帧重新测量/布局——含几十个实例的子列表会导致展开/收起
-        // 明显卡顿（且外层页面 ListView 随高度变化每帧重算 extent）。
-        // 改为条件渲染瞬时切换，只在展开/收起时布局一次；状态变化仍由
-        // 图标旋转（AnimatedRotation）提供视觉反馈。
-        if (_expanded)
-          Container(
-            margin: const EdgeInsets.only(left: 24, bottom: 8),
-            decoration: BoxDecoration(
-              border: Border(
-                left: BorderSide(color: scheme.outlineVariant, width: 2),
+        title: Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          '${DateFormat('yyyy-MM-dd').format(first)} ~ '
+          '${DateFormat('yyyy-MM-dd').format(last)} · '
+          '${instances.length} 个任务'
+          '${stopped ? ' · 已停止' : ''}',
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              // NFR-4：展开/收起状态以图标旋转 + tooltip 双重表达。
+              tooltip: expanded ? '收起重复任务' : '展开重复任务',
+              onPressed: onToggle,
+              icon: AnimatedRotation(
+                turns: expanded ? 0.25 : 0,
+                duration: const Duration(milliseconds: 150),
+                child: const Icon(Icons.chevron_right, size: 20),
               ),
             ),
-            child: Column(
-              children: [
-                for (final task in instances)
-                  _TaskTile(
-                    goalId: widget.goalId,
-                    task: task,
-                    subjects: widget.subjects,
-                    onChanged: widget.onChanged,
+            PopupMenuButton<String>(
+              tooltip: '任务操作',
+              onSelected: (action) => _handleAction(context, ref, action),
+              itemBuilder: (_) => [
+                const PopupMenuItem(
+                  value: 'editRecurrence',
+                  child: Text('编辑重复规则'),
+                ),
+                if (!stopped)
+                  const PopupMenuItem(
+                    value: 'stopRecurrence',
+                    child: Text('停止重复'),
                   ),
+                const PopupMenuItem(
+                  value: 'deleteAll',
+                  child: Text('删除'),
+                ),
               ],
             ),
-          ),
-      ],
+          ],
+        ),
+      ),
     );
   }
 
-  Future<void> _handleAction(BuildContext context, String action) async {
+  Future<void> _handleAction(BuildContext context, WidgetRef ref, String action) async {
     switch (action) {
       case 'editRecurrence':
         final template = await ref
-            .read(recurrenceTemplateProvider(widget.templateId).future);
+            .read(recurrenceTemplateProvider(templateId).future);
         if (template == null || !context.mounted) return;
         final saved = await RecurrenceTaskDialog.show(
           context,
-          goalId: widget.goalId,
-          subjects: widget.subjects,
+          goalId: goalId,
+          subjects: subjects,
           editTemplate: template,
         );
-        if (saved) _refresh();
+        if (saved) _refresh(ref);
       case 'stopRecurrence':
         final confirmed = await showDialog<bool>(
           context: context,
@@ -552,17 +614,17 @@ class _RecurrenceGroupTileState extends ConsumerState<RecurrenceGroupTile> {
         final ok = await runDbAction(
           context,
           action: () =>
-              ref.read(recurrenceRepositoryProvider).stop(widget.templateId),
+              ref.read(recurrenceRepositoryProvider).stop(templateId),
         );
         if (!ok) return;
-        _refresh();
+        _refresh(ref);
       case 'deleteAll':
         final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: Text('删除重复任务「${widget.instances.first.title}」？'),
+            title: Text('删除重复任务「${instances.first.title}」？'),
             content: Text(
-              '将同时删除 ${widget.instances.length} 个任务实例，此操作不可撤销。',
+              '将同时删除 ${instances.length} 个任务实例，此操作不可撤销。',
             ),
             actions: [
               TextButton(
@@ -582,17 +644,17 @@ class _RecurrenceGroupTileState extends ConsumerState<RecurrenceGroupTile> {
           context,
           action: () => ref
               .read(recurrenceRepositoryProvider)
-              .deleteWithInstances(widget.templateId),
+              .deleteWithInstances(templateId),
         );
         if (!ok) return;
-        _refresh();
+        _refresh(ref);
     }
   }
 
   /// 模板级操作成功后刷新：模板缓存族失效 + 通知父级刷新任务列表。
-  void _refresh() {
-    ref.invalidate(recurrenceTemplatesProvider(widget.goalId));
-    widget.onChanged();
+  void _refresh(WidgetRef ref) {
+    ref.invalidate(recurrenceTemplatesProvider(goalId));
+    onChanged();
   }
 
   static DateTime _parseDate(String yyyyMMdd) {
