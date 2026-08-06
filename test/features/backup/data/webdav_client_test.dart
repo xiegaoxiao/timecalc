@@ -49,14 +49,57 @@ void main() {
   });
 
   group('ensureFolder', () {
-    test('201 创建成功', () async {
+    test('201 逐级创建成功（先建 baseUrl 路径段，再建目标）', () async {
+      final requested = <String>[];
       final client = clientWith(MockClient((req) async {
         expect(req.method, 'MKCOL');
-        expect(req.url.toString(), 'https://dav.example.com/dav/webdav_auto');
         expect(req.headers['Authorization'], startsWith('Basic '));
+        requested.add(req.url.toString());
         return http.Response('', 201);
       }));
       await client.ensureFolder('webdav_auto');
+      // baseUrl 含 /dav（认证根，跳过）：只建 dav/webdav_auto。
+      expect(requested, ['https://dav.example.com/dav/webdav_auto']);
+    });
+
+    test('多级 baseUrl（/dav/timecalc）逐级创建直到目标（回归）', () async {
+      // 用户地址带 /timecalc 时，父目录不存在导致 MKCOL 一次建两层返回 409：
+      // ensureFolder 必须沿完整路径逐级创建。首个段（/dav 认证根）跳过，
+      // 依次创建 timecalc → webdav_auto。
+      final requested = <String>[];
+      final client = WebDavClient(
+        client: MockClient((req) async {
+          expect(req.method, 'MKCOL');
+          requested.add(req.url.toString());
+          return http.Response('', 201);
+        }),
+        baseUrl: 'https://dav.jianguoyun.com/dav/timecalc',
+        username: 'a',
+        password: 'b',
+      );
+      await client.ensureFolder('webdav_auto');
+      expect(requested, [
+        'https://dav.jianguoyun.com/dav/timecalc',
+        'https://dav.jianguoyun.com/dav/timecalc/webdav_auto',
+      ]);
+    });
+
+    test('认证根段不尝试创建（根 MKCOL 403 不报错，回归）', () async {
+      // 坚果云等对 MKCOL 用户 WebDAV 根（/dav）返回 403；ensureFolder
+      // 必须跳过首个段，只在其余段上 MKCOL。
+      final requested = <String>[];
+      final client = WebDavClient(
+        client: MockClient((req) async {
+          requested.add(req.url.path);
+          // 首个（且仅有的）请求是 webdav_auto，根从未被尝试。
+          return http.Response('', 201);
+        }),
+        baseUrl: 'https://dav.jianguoyun.com/dav',
+        username: 'a',
+        password: 'b',
+      );
+      await client.ensureFolder('webdav_auto');
+      expect(requested, ['/dav/webdav_auto']);
     });
 
     test('405 视为目录已存在（幂等）', () async {

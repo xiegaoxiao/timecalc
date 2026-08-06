@@ -28,6 +28,7 @@
 
 - **MKCOL 409 视为目录已存在（回归）**：部分 WebDAV 服务器（Nextcloud、NAS、Caddy 等）在目录已存在时返回 `409 Conflict` 而非标准的 `405`，「保存并测试连接」会误报「创建目录失败：目标已存在冲突（409）」。现 409/302 与 405 一同按幂等成功处理；目录真实可用性由随后的 PROPFIND/PUT 兜底验证。webdav_client_test 新增 409 用例。
 - **PROPFIND 409 自动建目录重试**：「读取目录失败：目标已存在冲突（409）」来自 PROPFIND 分支——部分服务器对「刚创建但尚未就绪/不存在的目录」返回 409。现 `list` 遇 409 先 `ensureFolder` 再重试一次，仍失败才报错（异常携带 `statusCode` 供排查），不掩盖真实错误；webdav_client_test 新增「409 重试成功」与「重试仍 409 抛异常」两用例。
+- **多级路径逐级建目录（核心修复）**：用户 WebDAV 地址携带非根路径（如 `https://dav.jianguoyun.com/dav/timecalc`）时，MKCOL 一次创建多层（`timecalc/webdav_auto`）会因中间父目录不存在而返回 409（RFC 4918 标准行为）。现 `ensureFolder` 沿完整 URL 路径**逐级 MKCOL**：首个段是用户认证根（跳过不试，避免 401/403），其余段依次创建，每段 2xx/405/409/301/302 视为已就绪——既解决坚果云/NAS 的 409，又不会在用户根目录上产生无效写操作。已用真实坚果云账户 + `dav/timecalc` 地址全流程验证（建目录 → 上传 → 列目录 → 清理），webdav_client_test 新增「多级 baseUrl 逐级创建」与「认证根不创建」两用例。
 
 ## [1.4.0] — 2026-08-06
 

@@ -78,21 +78,38 @@ class WebDavClient {
     return '$_baseUrl/$encoded';
   }
 
-  /// 确保目录存在（MKCOL；已存在返回成功，幂等）。
+  /// 确保目录存在（沿完整 URL 路径逐级 MKCOL，幂等）。
+  ///
+  /// RFC 4918 的 MKCOL 无法一次创建中间目录缺失的多级路径（返回 409）：
+  /// 例如 baseUrl 为 `https://host/dav/timecalc`、path 为 `webdav_auto` 时，
+  /// 直接 MKCOL `.../timecalc/webdav_auto` 会因 `timecalc` 不存在而 409
+  /// （坚果云/NAS 等合规服务器行为）。这里把 baseUrl 路径段与相对 path 段
+  /// 合并，从 baseUrl 第二段起逐级 MKCOL：
+  /// - 第一个路径段是用户的认证 WebDAV 根（如 `/dav`），必然存在且不可
+  ///   创建（MKCOL 返回 401/403），跳过不试；
+  /// - 其余段逐级创建，每段 2xx/405/409/301/302 视为该段已就绪；
+  /// - 目录真实可用性仍由随后的 PROPFIND/PUT 兜底验证（NFR-2）。
   Future<void> ensureFolder(String path) async {
-    final response = await _send('MKCOL', path);
-    // 201/204 创建成功；405 目录已存在（RFC 4918 标准响应）；
-    // 301/302 服务器重定向后目录可用；409 在部分服务器（Nextcloud、
-    // NAS、Caddy WebDAV 等）上用于表达「目标已存在」，同样视为幂等
-    // 成功——目录真实可用性由随后的 PROPFIND/PUT 兜底验证。
-    if (_isOk(response) ||
-        response.statusCode == 405 ||
-        response.statusCode == 301 ||
-        response.statusCode == 302 ||
-        response.statusCode == 409) {
-      return;
+    final baseUri = Uri.parse(_baseUrl);
+    final segments = [
+      ...baseUri.pathSegments.where((s) => s.isNotEmpty),
+      ...path.split('/').where((s) => s.isNotEmpty),
+    ];
+
+    var current = baseUri.origin;
+    for (var i = 0; i < segments.length; i++) {
+      current = '$current/${Uri.encodeComponent(segments[i])}';
+      if (i == 0) continue; // WebDAV 根：跳过，不尝试创建。
+      final response = await _sendUri('MKCOL', Uri.parse(current));
+      if (_isOk(response) ||
+          response.statusCode == 405 ||
+          response.statusCode == 301 ||
+          response.statusCode == 302 ||
+          response.statusCode == 409) {
+        continue; // 创建成功或该段已存在/已就绪，尝试下一级。
+      }
+      throw _friendly('创建目录失败', response);
     }
-    throw _friendly('创建目录失败', response);
   }
 
   /// 上传文件（PUT）。
@@ -167,8 +184,22 @@ class WebDavClient {
     String path, {
     List<int>? bodyBytes,
     Map<String, String>? extraHeaders,
+  }) {
+    return _sendUri(
+      method,
+      Uri.parse(href(path)),
+      bodyBytes: bodyBytes,
+      extraHeaders: extraHeaders,
+    );
+  }
+
+  Future<http.Response> _sendUri(
+    String method,
+    Uri uri, {
+    List<int>? bodyBytes,
+    Map<String, String>? extraHeaders,
   }) async {
-    final request = http.Request(method, Uri.parse(href(path)));
+    final request = http.Request(method, uri);
     request.headers['Authorization'] =
         'Basic ${base64Encode(utf8.encode('$username:$password'))}';
     if (extraHeaders != null) request.headers.addAll(extraHeaders);
