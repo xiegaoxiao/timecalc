@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../services/defer_service.dart';
 import '../../../services/duration_format.dart';
@@ -56,8 +57,11 @@ class TaskTile extends ConsumerWidget {
           value: done,
           onChanged: (value) async {
             final repo = ref.read(taskRepositoryProvider);
-            await repo.setDone(task.id, value ?? false);
-            onChanged();
+            final ok = await runDbAction(
+              context,
+              action: () => repo.setDone(task.id, value ?? false),
+            );
+            if (ok) onChanged();
           },
         ),
         title: Row(
@@ -175,8 +179,13 @@ class TaskTile extends ConsumerWidget {
       ),
     );
     if (confirmed != true) return;
+    if (!context.mounted) return;
     final repo = ref.read(recurrenceRepositoryProvider);
-    await repo.stop(templateId);
+    final ok = await runDbAction(
+      context,
+      action: () => repo.stop(templateId),
+    );
+    if (!ok) return;
     ref.invalidate(recurrenceTemplatesProvider(task.goalId));
     onChanged();
   }
@@ -196,6 +205,7 @@ class TaskTile extends ConsumerWidget {
 
   Future<void> _deferToNextAvailable(BuildContext context, WidgetRef ref) async {
     final settings = await ref.read(settingsProvider.future);
+    if (!context.mounted) return;
     final today = ref.read(clockProvider)();
     final next = _defer.nextAvailableDate(
       today: today,
@@ -204,8 +214,11 @@ class TaskTile extends ConsumerWidget {
       ),
     );
     final repo = ref.read(taskRepositoryProvider);
-    await repo.defer(task.id, next);
-    onChanged();
+    final ok = await runDbAction(
+      context,
+      action: () => repo.defer(task.id, next),
+    );
+    if (ok) onChanged();
   }
 
   Future<void> _deferPickDate(BuildContext context, WidgetRef ref) async {
@@ -218,9 +231,13 @@ class TaskTile extends ConsumerWidget {
       helpText: '选择延期日期',
     );
     if (picked == null) return;
+    if (!context.mounted) return;
     final repo = ref.read(taskRepositoryProvider);
-    await repo.defer(task.id, DateFormat('yyyy-MM-dd').format(picked));
-    onChanged();
+    final ok = await runDbAction(
+      context,
+      action: () => repo.defer(task.id, DateFormat('yyyy-MM-dd').format(picked)),
+    );
+    if (ok) onChanged();
   }
 
   Future<void> _delete(BuildContext context, WidgetRef ref) async {
@@ -242,9 +259,13 @@ class TaskTile extends ConsumerWidget {
       ),
     );
     if (confirmed != true) return;
+    if (!context.mounted) return;
     final repo = ref.read(taskRepositoryProvider);
-    await repo.delete(task.id);
-    onChanged();
+    final ok = await runDbAction(
+      context,
+      action: () => repo.delete(task.id),
+    );
+    if (ok) onChanged();
   }
 
   static DateTime _parseDate(String yyyyMMdd) {

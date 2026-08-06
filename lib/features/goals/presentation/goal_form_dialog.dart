@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/errors/app_guard.dart';
 import '../data/goal_repository_provider.dart';
 
 /// 创建/编辑目标对话框（FR-1.1：名称与截止日期为必填项）。
@@ -102,24 +103,30 @@ class _GoalFormDialogState extends ConsumerState<GoalFormDialog> {
       final repo = ref.read(goalRepositoryProvider);
       final dateText = DateFormat('yyyy-MM-dd').format(deadline);
       int? createdId;
-      if (_isEdit) {
-        await repo.update(
-          id: widget.goal!.id,
-          title: title,
-          deadlineDate: dateText,
-          description: Value(_descriptionController.text.trim()),
-        );
-      } else {
-        final goal = await repo.createWithSubjects(
-          title: title,
-          deadlineDate: dateText,
-          description: _descriptionController.text.trim().isEmpty
-              ? null
-              : _descriptionController.text.trim(),
-          subjectNames: _subjectNames,
-        );
-        createdId = goal.id;
-      }
+      final ok = await runDbAction(
+        context,
+        action: () async {
+          if (_isEdit) {
+            await repo.update(
+              id: widget.goal!.id,
+              title: title,
+              deadlineDate: dateText,
+              description: Value(_descriptionController.text.trim()),
+            );
+          } else {
+            final goal = await repo.createWithSubjects(
+              title: title,
+              deadlineDate: dateText,
+              description: _descriptionController.text.trim().isEmpty
+                  ? null
+                  : _descriptionController.text.trim(),
+              subjectNames: _subjectNames,
+            );
+            createdId = goal.id;
+          }
+        },
+      );
+      if (!ok) return;
       ref.invalidate(goalListProvider);
       // 详情页独立缓存，编辑保存后必须同时刷新，标题/截止日期才能即时更新。
       if (_isEdit) {

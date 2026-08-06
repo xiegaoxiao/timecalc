@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/tables.dart';
 import '../../../core/desktop/desktop_providers.dart';
+import '../../../core/errors/app_guard.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/duration_step_input.dart';
 import '../../backup/presentation/backup_section.dart';
 import '../data/settings_repository.dart';
@@ -22,7 +24,10 @@ class SettingsPage extends ConsumerWidget {
       appBar: AppBar(title: const Text('设置')),
       body: settingsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('加载失败：$error')),
+        error: (error, _) => AppErrorView(
+          error: error,
+          onRetry: () => ref.invalidate(settingsProvider),
+        ),
         data: (settings) => ListView(
           padding: const EdgeInsets.all(16),
           children: [
@@ -87,9 +92,15 @@ class _PlanPreferenceSectionState extends ConsumerState<_PlanPreferenceSection> 
     }
     setState(() => _saving = true);
     try {
-      final repo = ref.read(settingsRepositoryProvider);
-      await repo.updateDailyAvailableMinutes(total);
-      await repo.updateAvailableWeekdays(_weekdays);
+      final ok = await runDbAction(
+        context,
+        action: () async {
+          final repo = ref.read(settingsRepositoryProvider);
+          await repo.updateDailyAvailableMinutes(total);
+          await repo.updateAvailableWeekdays(_weekdays);
+        },
+      );
+      if (!ok) return;
       ref.invalidate(settingsProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -209,9 +220,15 @@ class _CloseBehaviorSectionState extends ConsumerState<_CloseBehaviorSection> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      await ref
-          .read(settingsRepositoryProvider)
-          .updateCloseBehavior(_behavior);
+      final ok = await runDbAction(
+        context,
+        action: () async {
+          await ref
+              .read(settingsRepositoryProvider)
+              .updateCloseBehavior(_behavior);
+        },
+      );
+      if (!ok) return;
       ref.invalidate(settingsProvider);
       // FR-8.1：保存后实时应用窗口拦截行为，切换无需重启即生效。
       await ref.read(desktopControllerProvider)?.applyCloseBehavior();

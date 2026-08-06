@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../services/countdown_service.dart';
 import '../../../services/duration_format.dart';
 import '../../../services/load_service.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../settings/data/settings_repository.dart';
 import '../../settings/data/settings_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
@@ -31,7 +33,10 @@ class GoalDetailPage extends ConsumerWidget {
       appBar: AppBar(title: const Text('目标详情')),
       body: goalAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('加载失败：$error')),
+        error: (error, _) => AppErrorView(
+          error: error,
+          onRetry: () => ref.invalidate(goalDetailProvider(int.parse(goalId))),
+        ),
         data: (goal) {
           if (goal == null) {
             return const Center(child: Text('目标不存在'));
@@ -62,7 +67,7 @@ class GoalDetailBody extends ConsumerWidget {
         // 负载区（FR-5.3）：剩余任务时长、剩余可用天数、建议日均与计划风险。
         tasksAsync.when(
           loading: () => const SizedBox.shrink(),
-          error: (_, _) => const SizedBox.shrink(),
+          error: (error, _) => AppErrorView(error: error),
           data: (tasks) => _LoadSection(goal: goal, tasks: tasks),
         ),
         const Divider(height: 32),
@@ -71,10 +76,10 @@ class GoalDetailBody extends ConsumerWidget {
         // 未归属科目的任务在详情页直接管理（无科目页可进）。
         subjectsAsync.when(
           loading: () => const SizedBox.shrink(),
-          error: (_, _) => const SizedBox.shrink(),
+          error: (error, _) => AppErrorView(error: error),
           data: (subjects) => tasksAsync.when(
             loading: () => const SizedBox.shrink(),
-            error: (_, _) => const SizedBox.shrink(),
+            error: (error, _) => AppErrorView(error: error),
             data: (tasks) {
               final unassigned =
                   tasks.where((t) => t.subjectId == null).toList();
@@ -97,7 +102,7 @@ class GoalDetailBody extends ConsumerWidget {
         // 历史任务区：JSON 导入替换时归档保留的旧任务，可手动恢复。
         archivedAsync.when(
           loading: () => const SizedBox.shrink(),
-          error: (_, _) => const SizedBox.shrink(),
+          error: (error, _) => AppErrorView(error: error),
           data: (archived) {
             if (archived.isEmpty) return const SizedBox.shrink();
             return _ArchivedSection(
@@ -129,7 +134,7 @@ class _LoadSection extends ConsumerWidget {
     final settingsAsync = ref.watch(settingsProvider);
     return settingsAsync.when(
       loading: () => const SizedBox.shrink(),
-      error: (_, _) => const SizedBox.shrink(),
+      error: (error, _) => AppErrorView(error: error),
       data: (settings) {
         final today = ref.watch(clockProvider)();
         final weekdays = SettingsRepository.decodeWeekdays(
@@ -237,7 +242,11 @@ class _ArchivedSection extends ConsumerWidget {
               trailing: TextButton.icon(
                 onPressed: () async {
                   final repo = ref.read(taskRepositoryProvider);
-                  await repo.restoreArchived(task.id);
+                  final ok = await runDbAction(
+                    context,
+                    action: () => repo.restoreArchived(task.id),
+                  );
+                  if (!ok) return;
                   ref.invalidate(archivedTaskListProvider(goalId));
                   ref.invalidate(taskListProvider(goalId));
                 },

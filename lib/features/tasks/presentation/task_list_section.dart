@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/errors/app_guard.dart';
 import '../../../services/duration_format.dart';
 import '../data/recurrence_repository_provider.dart';
 import '../data/task_repository_provider.dart';
@@ -164,8 +165,11 @@ class _TaskTile extends ConsumerWidget {
           value: done,
           onChanged: (value) async {
             final repo = ref.read(taskRepositoryProvider);
-            await repo.setDone(task.id, value ?? false);
-            onChanged();
+            final ok = await runDbAction(
+              context,
+              action: () => repo.setDone(task.id, value ?? false),
+            );
+            if (ok) onChanged();
           },
         ),
         title: Row(
@@ -273,7 +277,12 @@ class _TaskTile extends ConsumerWidget {
             ),
           );
           if (confirmed == true) {
-            await ref.read(recurrenceRepositoryProvider).stop(templateId);
+            if (!context.mounted) return;
+            final ok = await runDbAction(
+              context,
+              action: () => ref.read(recurrenceRepositoryProvider).stop(templateId),
+            );
+            if (!ok) return;
             ref.invalidate(recurrenceTemplatesProvider(goalId));
             onChanged();
           }
@@ -297,8 +306,12 @@ class _TaskTile extends ConsumerWidget {
           ),
         );
         if (confirmed == true) {
-          await repo.delete(task.id);
-          onChanged();
+          if (!context.mounted) return;
+          final ok = await runDbAction(
+            context,
+            action: () => repo.delete(task.id),
+          );
+          if (ok) onChanged();
         }
     }
   }

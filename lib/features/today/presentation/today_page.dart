@@ -4,12 +4,14 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../services/countdown_service.dart';
 import '../../../services/defer_service.dart';
 import '../../../services/duration_format.dart';
 import '../../../services/load_service.dart';
 import '../../../services/statistics_service.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../../goals/presentation/goal_form_dialog.dart';
 import '../../settings/data/settings_repository.dart';
@@ -56,19 +58,34 @@ class _TodayPageState extends ConsumerState<TodayPage> {
       appBar: AppBar(title: const Text('今天')),
       body: goalsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('加载失败：$error')),
+        error: (error, _) => AppErrorView(
+          error: error,
+          onRetry: () => ref.invalidate(goalListProvider),
+        ),
         data: (goals) => settingsAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => Center(child: Text('加载失败：$error')),
+          error: (error, _) => AppErrorView(
+            error: error,
+            onRetry: () => ref.invalidate(settingsProvider),
+          ),
           data: (settings) => tasksAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => Center(child: Text('加载失败：$error')),
+            error: (error, _) => AppErrorView(
+              error: error,
+              onRetry: () => ref.invalidate(tasksByDateProvider),
+            ),
             data: (tasks) => unfinishedAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => Center(child: Text('加载失败：$error')),
+              error: (error, _) => AppErrorView(
+                error: error,
+                onRetry: () => ref.invalidate(unfinishedBeforeProvider),
+              ),
               data: (unfinished) => todoAsync.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, _) => Center(child: Text('加载失败：$error')),
+                error: (error, _) => AppErrorView(
+                  error: error,
+                  onRetry: () => ref.invalidate(allTodoTasksProvider),
+                ),
                 data: (todo) => _buildBody(
                   goals: goals,
                   settings: settings,
@@ -158,10 +175,13 @@ class _TodayPageState extends ConsumerState<TodayPage> {
                 today: today,
                 availableWeekdays: weekdays,
               );
-              await ref
-                  .read(taskRepositoryProvider)
-                  .deferMany(unfinished.map((t) => t.id).toList(), next);
-              onChanged();
+              final ok = await runDbAction(
+                context,
+                action: () => ref
+                    .read(taskRepositoryProvider)
+                    .deferMany(unfinished.map((t) => t.id).toList(), next),
+              );
+              if (ok) onChanged();
             },
             onDeferPickDate: () async {
               final now = DateTime.now();
@@ -173,11 +193,15 @@ class _TodayPageState extends ConsumerState<TodayPage> {
                 helpText: '选择延期日期',
               );
               if (picked == null) return;
-              await ref.read(taskRepositoryProvider).deferMany(
-                    unfinished.map((t) => t.id).toList(),
-                    DateFormat('yyyy-MM-dd').format(picked),
-                  );
-              onChanged();
+              if (!mounted) return;
+              final ok = await runDbAction(
+                context,
+                action: () => ref.read(taskRepositoryProvider).deferMany(
+                      unfinished.map((t) => t.id).toList(),
+                      DateFormat('yyyy-MM-dd').format(picked),
+                    ),
+              );
+              if (ok) onChanged();
             },
             onKeepOriginal: () => setState(() => _bannerDismissed = true),
           ),

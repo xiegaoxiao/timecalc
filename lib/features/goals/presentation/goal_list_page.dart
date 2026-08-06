@@ -4,8 +4,10 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../services/countdown_service.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../tasks/data/recurrence_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
 import '../data/goal_repository_provider.dart';
@@ -53,7 +55,10 @@ class GoalListBody extends ConsumerWidget {
     final goalsAsync = ref.watch(goalListProvider);
     return goalsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => _ErrorView(error: error),
+      error: (error, _) => AppErrorView(
+        error: error,
+        onRetry: () => ref.invalidate(goalListProvider),
+      ),
       data: (goals) {
         if (goals.isEmpty) {
           return _EmptyView(onCreateGoal: onCreateGoal);
@@ -104,28 +109,6 @@ class _EmptyView extends StatelessWidget {
             icon: const Icon(Icons.add),
             label: const Text('创建目标'),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ErrorView extends StatelessWidget {
-  const _ErrorView({required this.error});
-
-  final Object error;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.error_outline, size: 48),
-          const SizedBox(height: 8),
-          const Text('加载目标失败'),
-          const SizedBox(height: 4),
-          Text('$error'),
         ],
       ),
     );
@@ -215,15 +198,31 @@ class _GoalCard extends ConsumerWidget {
       case 'edit':
         await GoalFormDialog.show(context, goal: goal);
       case 'complete':
-        await repo.update(id: goal.id, status: 'completed', completedAt: DateTime.now().toUtc());
+        final ok = await runDbAction(
+          context,
+          action: () => repo.update(
+            id: goal.id,
+            status: 'completed',
+            completedAt: DateTime.now().toUtc(),
+          ),
+        );
+        if (!ok) return;
         _refreshGoalRelated(ref);
         messenger.showSnackBar(SnackBar(content: Text('「${goal.title}」已标记为完成')));
       case 'abandon':
-        await repo.update(id: goal.id, status: 'abandoned');
+        final ok = await runDbAction(
+          context,
+          action: () => repo.update(id: goal.id, status: 'abandoned'),
+        );
+        if (!ok) return;
         _refreshGoalRelated(ref);
         messenger.showSnackBar(SnackBar(content: Text('「${goal.title}」已标记为放弃')));
       case 'archive':
-        await repo.update(id: goal.id, status: 'archived');
+        final ok = await runDbAction(
+          context,
+          action: () => repo.update(id: goal.id, status: 'archived'),
+        );
+        if (!ok) return;
         _refreshGoalRelated(ref);
         messenger.showSnackBar(SnackBar(content: Text('「${goal.title}」已归档')));
       case 'delete':
@@ -253,9 +252,14 @@ class _GoalCard extends ConsumerWidget {
       ),
     );
     if (confirmed != true) return;
+    if (!context.mounted) return;
 
     final repo = ref.read(goalRepositoryProvider);
-    await repo.deleteWithCascade(goal.id);
+    final ok = await runDbAction(
+      context,
+      action: () => repo.deleteWithCascade(goal.id),
+    );
+    if (!ok) return;
     _refreshGoalRelated(ref);
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

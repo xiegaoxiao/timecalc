@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../services/duration_format.dart';
 import '../../../shared/widgets/duration_step_input.dart';
@@ -102,14 +103,18 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
     setState(() => _saving = true);
     try {
       final repo = ref.read(taskRepositoryProvider);
-      await repo.batchCreate(
-        goalId: widget.goalId,
-        subjectId: _subjectId,
-        titles: lines,
-        startDate: DateFormat('yyyy-MM-dd').format(_startDate),
-        dateIntervalDays: _useInterval ? _intervalDays : 0,
-        estimatedMinutes: minutes,
+      final ok = await runDbAction(
+        context,
+        action: () => repo.batchCreate(
+          goalId: widget.goalId,
+          subjectId: _subjectId,
+          titles: lines,
+          startDate: DateFormat('yyyy-MM-dd').format(_startDate),
+          dateIntervalDays: _useInterval ? _intervalDays : 0,
+          estimatedMinutes: minutes,
+        ),
       );
+      if (!ok) return;
       if (minutes != null) {
         ref.read(lastMinutesProvider.notifier).state = minutes;
       }

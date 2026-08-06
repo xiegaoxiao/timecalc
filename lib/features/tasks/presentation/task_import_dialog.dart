@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/errors/db_error_dialog.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../services/duration_format.dart';
 import '../../goals/data/subject_repository_provider.dart';
@@ -170,6 +171,10 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
         );
         Navigator.of(context).pop();
       }
+    } on Exception catch (e) {
+      // JSON 校验已拦截非法输入；此处兜底数据库异常（PRD §8）。
+      if (!mounted) return;
+      await showDbErrorDialog(context, error: e);
     } finally {
       if (mounted) setState(() => _importing = false);
     }

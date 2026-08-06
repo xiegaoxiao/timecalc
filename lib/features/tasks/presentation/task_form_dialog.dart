@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/errors/app_guard.dart';
 import '../../../shared/widgets/duration_step_input.dart';
 import '../data/task_repository_provider.dart';
 
@@ -107,30 +108,36 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
     try {
       final repo = ref.read(taskRepositoryProvider);
       final dateText = DateFormat('yyyy-MM-dd').format(_plannedDate!);
-      if (_isEdit) {
-        await repo.update(
-          id: widget.task!.id,
-          title: title,
-          // 空备注显式置空（Value(null)）：编辑时清空备注必须落库。
-          note: Value(_noteController.text.trim().isEmpty
-              ? null
-              : _noteController.text.trim()),
-          plannedDate: dateText,
-          estimatedMinutes: Value(minutes),
-          subjectId: Value(_subjectId),
-        );
-      } else {
-        await repo.create(
-          goalId: widget.goalId,
-          subjectId: _subjectId,
-          title: title,
-          note: _noteController.text.trim().isEmpty
-              ? null
-              : _noteController.text.trim(),
-          plannedDate: dateText,
-          estimatedMinutes: minutes,
-        );
-      }
+      final ok = await runDbAction(
+        context,
+        action: () async {
+          if (_isEdit) {
+            await repo.update(
+              id: widget.task!.id,
+              title: title,
+              // 空备注显式置空（Value(null)）：编辑时清空备注必须落库。
+              note: Value(_noteController.text.trim().isEmpty
+                  ? null
+                  : _noteController.text.trim()),
+              plannedDate: dateText,
+              estimatedMinutes: Value(minutes),
+              subjectId: Value(_subjectId),
+            );
+          } else {
+            await repo.create(
+              goalId: widget.goalId,
+              subjectId: _subjectId,
+              title: title,
+              note: _noteController.text.trim().isEmpty
+                  ? null
+                  : _noteController.text.trim(),
+              plannedDate: dateText,
+              estimatedMinutes: minutes,
+            );
+          }
+        },
+      );
+      if (!ok) return;
       // 跨页刷新（FR-3 验收）：任务日期/状态变更影响今天页、日历、逾期横幅。
       ref.invalidate(taskListProvider(widget.goalId));
       ref.invalidate(tasksByDateProvider);

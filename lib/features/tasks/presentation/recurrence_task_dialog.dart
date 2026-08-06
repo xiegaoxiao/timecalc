@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../services/recurrence_service.dart';
 import '../../../shared/widgets/duration_step_input.dart';
@@ -245,31 +246,37 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
     try {
       final repo = ref.read(recurrenceRepositoryProvider);
       final today = ref.read(clockProvider)();
-      if (_isEdit) {
-        await repo.updateRule(
-          templateId: widget.editTemplate!.id,
-          rule: rule,
-          endDate: endDate,
-          applyTo: applyTo!,
-          today: today,
-          // 编辑模式的标题/科目/时长/起始日期在对话框中可编辑（FR-4）。
-          title: _titleController.text.trim(),
-          subjectId: Value(_subjectId),
-          estimatedMinutes: Value(_estimatedMinutes),
-          startDate: startDate,
-        );
-      } else {
-        await repo.create(
-          goalId: widget.goalId,
-          subjectId: _subjectId,
-          title: _titleController.text.trim(),
-          estimatedMinutes: _estimatedMinutes,
-          rule: rule,
-          startDate: startDate,
-          endDate: endDate,
-          today: today,
-        );
-      }
+      final ok = await runDbAction(
+        context,
+        action: () async {
+          if (_isEdit) {
+            await repo.updateRule(
+              templateId: widget.editTemplate!.id,
+              rule: rule,
+              endDate: endDate,
+              applyTo: applyTo!,
+              today: today,
+              // 编辑模式的标题/科目/时长/起始日期在对话框中可编辑（FR-4）。
+              title: _titleController.text.trim(),
+              subjectId: Value(_subjectId),
+              estimatedMinutes: Value(_estimatedMinutes),
+              startDate: startDate,
+            );
+          } else {
+            await repo.create(
+              goalId: widget.goalId,
+              subjectId: _subjectId,
+              title: _titleController.text.trim(),
+              estimatedMinutes: _estimatedMinutes,
+              rule: rule,
+              startDate: startDate,
+              endDate: endDate,
+              today: today,
+            );
+          }
+        },
+      );
+      if (!ok) return;
       _refresh();
       if (mounted) Navigator.of(context).pop();
     } finally {

@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/errors/app_guard.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../data/subject_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
 
@@ -37,7 +39,7 @@ class SubjectManager extends ConsumerWidget {
         const SizedBox(height: 8),
         subjectsAsync.when(
           loading: () => const LinearProgressIndicator(),
-          error: (error, _) => Text('科目加载失败：$error'),
+          error: (error, _) => AppErrorView(error: error),
           data: (subjects) {
             final taskCounts = <int, List<Task>>{};
             final tasks = tasksAsync.valueOrNull ?? const <Task>[];
@@ -106,13 +108,18 @@ class SubjectManager extends ConsumerWidget {
       ),
     );
     if (name == null || name.isEmpty) return;
+    if (!context.mounted) return;
 
     final repo = ref.read(subjectRepositoryProvider);
-    await repo.create(
-      goalId: goalId,
-      name: name,
-      color: '#3F6C51', // M1 使用默认颜色，自定义颜色后续迭代提供。
+    final ok = await runDbAction(
+      context,
+      action: () => repo.create(
+        goalId: goalId,
+        name: name,
+        color: '#3F6C51', // M1 使用默认颜色，自定义颜色后续迭代提供。
+      ),
     );
+    if (!ok) return;
     ref.invalidate(subjectListProvider(goalId));
   }
 
@@ -146,9 +153,14 @@ class SubjectManager extends ConsumerWidget {
       ),
     );
     if (name == null || name.isEmpty || name == subject.name) return;
+    if (!context.mounted) return;
 
     final repo = ref.read(subjectRepositoryProvider);
-    await repo.rename(id: subject.id, name: name);
+    final ok = await runDbAction(
+      context,
+      action: () => repo.rename(id: subject.id, name: name),
+    );
+    if (!ok) return;
     ref.invalidate(subjectListProvider(goalId));
   }
 
@@ -172,9 +184,14 @@ class SubjectManager extends ConsumerWidget {
       ),
     );
     if (confirmed != true) return;
+    if (!context.mounted) return;
 
     final repo = ref.read(subjectRepositoryProvider);
-    await repo.delete(subject.id);
+    final ok = await runDbAction(
+      context,
+      action: () => repo.delete(subject.id),
+    );
+    if (!ok) return;
     ref.invalidate(subjectListProvider(goalId));
     ref.invalidate(taskListProvider(goalId));
   }

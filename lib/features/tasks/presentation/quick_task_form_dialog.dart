@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/errors/app_guard.dart';
 import '../../../shared/widgets/duration_step_input.dart';
 import '../data/task_repository_provider.dart';
 
@@ -78,15 +79,19 @@ class _QuickTaskFormDialogState extends ConsumerState<QuickTaskFormDialog> {
     setState(() => _saving = true);
     try {
       final repo = ref.read(taskRepositoryProvider);
-      await repo.create(
-        goalId: goalId,
-        title: _titleController.text.trim(),
-        note: _noteController.text.trim().isEmpty
-            ? null
-            : _noteController.text.trim(),
-        plannedDate: DateFormat('yyyy-MM-dd').format(widget.date),
-        estimatedMinutes: minutes,
+      final ok = await runDbAction(
+        context,
+        action: () => repo.create(
+          goalId: goalId,
+          title: _titleController.text.trim(),
+          note: _noteController.text.trim().isEmpty
+              ? null
+              : _noteController.text.trim(),
+          plannedDate: DateFormat('yyyy-MM-dd').format(widget.date),
+          estimatedMinutes: minutes,
+        ),
       );
+      if (!ok) return;
       if (mounted) Navigator.of(context).pop();
     } finally {
       if (mounted) setState(() => _saving = false);
