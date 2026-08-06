@@ -48,6 +48,7 @@ class RestoreConfirmDialog extends StatelessWidget {
           ),
           _InfoRow(label: '目标数', value: '${manifest.goalCount}'),
           _InfoRow(label: '任务数', value: '${manifest.taskCount}'),
+          _InfoRow(label: '里程碑', value: '${manifest.milestoneCount}'),
           const Divider(height: 24),
           const Text('请选择恢复方式：'),
           const SizedBox(height: 8),

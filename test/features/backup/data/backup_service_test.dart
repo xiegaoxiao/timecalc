@@ -10,6 +10,7 @@ import 'package:timecalc/core/database/tables.dart';
 import 'package:timecalc/features/backup/data/backup_manifest.dart';
 import 'package:timecalc/features/backup/data/backup_service.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
+import 'package:timecalc/features/goals/data/milestone_repository.dart';
 import 'package:timecalc/features/goals/data/subject_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 
@@ -25,6 +26,7 @@ void main() {
   late GoalRepository goals;
   late SubjectRepository subjects;
   late TaskRepository tasks;
+  late MilestoneRepository milestones;
   late BackupService backup;
   late Directory tempDir;
 
@@ -33,6 +35,7 @@ void main() {
     goals = GoalRepository(db);
     subjects = SubjectRepository(db);
     tasks = TaskRepository(db);
+    milestones = MilestoneRepository(db);
     backup = BackupService(db);
     tempDir = Directory.systemTemp.createTempSync('timecalc-backup-test');
   });
@@ -44,7 +47,7 @@ void main() {
 
   File tempFile(String name) => File('${tempDir.path}${Platform.pathSeparator}$name');
 
-  /// 造一份含目标/科目/任务/模板的基础数据。
+  /// 造一份含目标/科目/任务/模板/里程碑的基础数据。
   Future<void> seedBaseData() async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
     final subject = await subjects.create(
@@ -60,6 +63,12 @@ void main() {
       estimatedMinutes: 120,
     );
     await tasks.setDone(created.id, true);
+    // 里程碑（FR-2，schema v7）：进入业务备份。
+    await milestones.create(
+      goalId: goal.id,
+      title: '完成一轮复习',
+      date: '2026-09-30',
+    );
   }
 
   /// 目标下的未归档任务。
@@ -91,6 +100,11 @@ void main() {
       expect(restoredTasks.single.title, '完成第一章');
       expect(restoredTasks.single.status, 'done');
       expect(restoredTasks.single.estimatedMinutes, 120);
+      // 里程碑随备份覆盖恢复。
+      final restoredMilestones = await milestones.byGoal(restoredGoals.single.id);
+      expect(restoredMilestones.single.title, '完成一轮复习');
+      expect(restoredMilestones.single.date, '2026-09-30');
+      expect(restoredMilestones.single.status, MilestoneStatus.todo);
     });
 
     test('导出 → 合并恢复 → 备份数据追加且当前数据保留', () async {
@@ -123,6 +137,27 @@ void main() {
       expect(allGoals, hasLength(1));
       final tasks = await tasksFor(allGoals.single.id);
       expect(tasks, hasLength(2));
+    });
+
+    test('合并恢复：备份中的里程碑追加到映射后的目标下（FR-2/FR-9.1）', () async {
+      await seedBaseData();
+      final file = tempFile('backup.timecalc');
+      await backup.exportBackup(file);
+
+      // 备份到另一份空库（合并模式）：里程碑随目标映射写入新目标 id。
+      final db2 = AppDatabase(NativeDatabase.memory());
+      final backup2 = BackupService(db2);
+      final milestones2 = MilestoneRepository(db2);
+      try {
+        await backup2.restoreBackup(file, mode: RestoreMode.merge);
+
+        final goal = (await db2.select(db2.goals).get()).single;
+        final restored = await milestones2.byGoal(goal.id);
+        expect(restored.single.title, '完成一轮复习');
+        expect(restored.single.date, '2026-09-30');
+      } finally {
+        await db2.close();
+      }
     });
   });
 
@@ -187,6 +222,7 @@ void main() {
       expect(manifest.goalCount, 1);
       expect(manifest.taskCount, 1);
       expect(manifest.subjectCount, 1);
+      expect(manifest.milestoneCount, 1);
       expect(manifest.validate(), isNull);
     });
 

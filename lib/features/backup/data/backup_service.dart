@@ -26,6 +26,7 @@ class BackupPayload {
     required this.subjects,
     required this.tasks,
     required this.templates,
+    required this.milestones,
     required this.settings,
   });
 
@@ -34,6 +35,7 @@ class BackupPayload {
   final List<Map<String, Object?>> subjects;
   final List<Map<String, Object?>> tasks;
   final List<Map<String, Object?>> templates;
+  final List<Map<String, Object?>> milestones;
   final List<Map<String, Object?>> settings;
 }
 
@@ -69,12 +71,14 @@ class BackupService {
       final subjects = await _db.select(_db.subjects).get();
       final tasks = await _db.select(_db.tasks).get();
       final templates = await _db.select(_db.recurrenceTemplates).get();
+      final milestones = await _db.select(_db.milestones).get();
       final settings = await _db.select(_db.settings).get();
       return (
         goals: goals,
         subjects: subjects,
         tasks: tasks,
         templates: templates,
+        milestones: milestones,
         settings: settings,
       );
     });
@@ -90,6 +94,7 @@ class BackupService {
       subjectCount: snapshot.subjects.length,
       taskCount: snapshot.tasks.length,
       recurrenceTemplateCount: snapshot.templates.length,
+      milestoneCount: snapshot.milestones.length,
     );
 
     final archive = Archive()
@@ -112,6 +117,10 @@ class BackupService {
       ..addFile(ArchiveFile.string(
         '$_dataDir${_jsonFileName('recurrence_templates')}',
         jsonEncode(snapshot.templates.map(_codec.templateToJson).toList()),
+      ))
+      ..addFile(ArchiveFile.string(
+        '$_dataDir${_jsonFileName('milestones')}',
+        jsonEncode(snapshot.milestones.map(_codec.milestoneToJson).toList()),
       ))
       ..addFile(ArchiveFile.string(
         '$_dataDir${_jsonFileName('settings')}',
@@ -217,6 +226,15 @@ class BackupService {
         subjectKeyToId[_subjectKey(newGoalId, name)] = subjectId;
       }
 
+      // 里程碑：追加（FR-2，schema v7），goalId 经目标映射转换。
+      for (final json in payload.milestones) {
+        final newGoalId = oldGoalToNew[json['goalId'] as int];
+        if (newGoalId == null) continue; // 目标不在备份目标列表，跳过该里程碑。
+        await _db.into(_db.milestones).insert(
+              _codec.milestoneFromJson(json, goalId: newGoalId),
+            );
+      }
+
       // 重复模板：追加，外键映射。
       final oldTemplateToNew = <int, int>{};
       for (final json in payload.templates) {
@@ -259,18 +277,26 @@ class BackupService {
 
   /// 覆盖模式：单事务清空业务表并写入备份数据（settings 一并恢复）。
   ///
-  /// 清空按子表→父表顺序（tasks → recurrence_templates → subjects →
-  /// goals），写入按父表→子表顺序并保留原 ID，保证外键一致。
+  /// 清空按子表→父表顺序（tasks → recurrence_templates → milestones →
+  /// subjects → goals），写入按父表→子表顺序并保留原 ID，保证外键一致。
   Future<void> _overwriteRestore(BackupPayload payload) async {
     await _db.transaction(() async {
       await _db.delete(_db.tasks).go();
       await _db.delete(_db.recurrenceTemplates).go();
+      await _db.delete(_db.milestones).go();
       await _db.delete(_db.subjects).go();
       await _db.delete(_db.goals).go();
 
       for (final json in payload.goals) {
         await _db.into(_db.goals).insert(
               _codec.goalFromJson(json, keepId: true),
+              mode: InsertMode.insertOrReplace,
+            );
+      }
+      for (final json in payload.milestones) {
+        final goalId = json['goalId'] as int;
+        await _db.into(_db.milestones).insert(
+              _codec.milestoneFromJson(json, goalId: goalId, keepId: true),
               mode: InsertMode.insertOrReplace,
             );
       }
@@ -361,17 +387,28 @@ class BackupService {
       return (decoded as List).cast<Map<String, Object?>>();
     }
 
+    List<Map<String, Object?>> readJsonOptional(String name) {
+      final entry = archive.findFile('$_dataDir$name');
+      if (entry == null) return const [];
+      final decoded = jsonDecode(_decodeUtf8(entry.content as List<int>));
+      return (decoded as List).cast<Map<String, Object?>>();
+    }
+
     final goals = readJson(_jsonFileName('goals'));
     final subjects = readJson(_jsonFileName('subjects'));
     final tasks = readJson(_jsonFileName('tasks'));
     final templates = readJson(_jsonFileName('recurrence_templates'));
+    // 旧版本备份（v1 格式早期）不含 milestones.json；缺失时按空处理，
+    // 里程碑计数随 manifest 的 milestoneCount（缺失为 0）保持一致。
+    final milestones = readJsonOptional(_jsonFileName('milestones'));
     final settings = readJson(_jsonFileName('settings'));
 
     // 计数校验：manifest 声明的数量必须与实际数组长度一致（NFR-2）。
     if (goals.length != manifest.goalCount ||
         subjects.length != manifest.subjectCount ||
         tasks.length != manifest.taskCount ||
-        templates.length != manifest.recurrenceTemplateCount) {
+        templates.length != manifest.recurrenceTemplateCount ||
+        milestones.length != manifest.milestoneCount) {
       throw const BackupException('备份文件内容与清单不一致，已拒绝恢复');
     }
 
@@ -381,6 +418,7 @@ class BackupService {
       subjects: subjects,
       tasks: tasks,
       templates: templates,
+      milestones: milestones,
       settings: settings,
     );
   }

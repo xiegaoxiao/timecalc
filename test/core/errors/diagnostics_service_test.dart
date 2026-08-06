@@ -49,9 +49,10 @@ void main() {
     final content = await file.readAsString();
     expect(content, contains('TimeCalc 诊断信息'));
     expect(content, contains('应用版本：1.0.0'));
-    expect(content, contains('数据库 schema 版本：6'));
+    expect(content, contains('数据库 schema 版本：7'));
     expect(content, contains('goals: 1'));
     expect(content, contains('tasks: 1'));
+    expect(content, contains('milestones: 0'));
     expect(content, contains('测试错误'));
   });
 

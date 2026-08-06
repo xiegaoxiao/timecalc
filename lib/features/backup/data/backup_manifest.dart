@@ -52,6 +52,7 @@ class BackupManifest {
     required this.subjectCount,
     required this.taskCount,
     required this.recurrenceTemplateCount,
+    required this.milestoneCount,
   });
 
   final String format;
@@ -64,6 +65,7 @@ class BackupManifest {
   final int subjectCount;
   final int taskCount;
   final int recurrenceTemplateCount;
+  final int milestoneCount;
 
   /// 校验备份文件的格式、版本与类型（恢复前第一步，NFR-2）。
   ///
@@ -73,7 +75,7 @@ class BackupManifest {
     if (version != BackupFormat.version) return '备份版本不受支持（$version）';
     if (type != BackupType.full) return '不支持的备份类型';
     if (goalCount < 0 || subjectCount < 0 || taskCount < 0 ||
-        recurrenceTemplateCount < 0) {
+        recurrenceTemplateCount < 0 || milestoneCount < 0) {
       return '备份计数非法';
     }
     return null;
@@ -92,6 +94,7 @@ class BackupManifest {
         'subjects': subjectCount,
         'tasks': taskCount,
         'recurrenceTemplates': recurrenceTemplateCount,
+        'milestones': milestoneCount,
       },
     };
   }
@@ -111,6 +114,7 @@ class BackupManifest {
       taskCount: (counts['tasks'] as num?)?.toInt() ?? 0,
       recurrenceTemplateCount:
           (counts['recurrenceTemplates'] as num?)?.toInt() ?? 0,
+      milestoneCount: (counts['milestones'] as num?)?.toInt() ?? 0,
     );
   }
 }

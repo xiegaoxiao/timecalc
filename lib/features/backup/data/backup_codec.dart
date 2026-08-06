@@ -84,6 +84,18 @@ class BackupCodec {
         'availableWeekdays': row.availableWeekdays,
       };
 
+  /// 里程碑行 → JSON（FR-2，schema v7）。
+  Map<String, Object?> milestoneToJson(Milestone row) => {
+        'id': row.id,
+        'goalId': row.goalId,
+        'title': row.title,
+        'date': row.date,
+        'status': row.status,
+        'sortOrder': row.sortOrder,
+        'createdAt': row.createdAt.toUtc().toIso8601String(),
+        'updatedAt': row.updatedAt.toUtc().toIso8601String(),
+      };
+
   /// JSON → GoalsCompanion（[keepId] 为 true 时保留原 id 供覆盖恢复）。
   GoalsCompanion goalFromJson(Map<String, Object?> json, {bool keepId = false}) {
     final now = DateTime.now().toUtc();
@@ -205,6 +217,25 @@ class BackupCodec {
           : Value(closeBehavior),
       createdAt: now,
       updatedAt: now,
+    );
+  }
+
+  /// JSON → MilestonesCompanion（FR-2，schema v7）。
+  MilestonesCompanion milestoneFromJson(
+    Map<String, Object?> json, {
+    required int goalId,
+    bool keepId = false,
+  }) {
+    final now = DateTime.now().toUtc();
+    return MilestonesCompanion.insert(
+      id: keepId ? Value(json['id'] as int) : const Value.absent(),
+      goalId: goalId,
+      title: json['title'] as String,
+      date: json['date'] as String,
+      status: Value(json['status'] as String? ?? 'todo'),
+      sortOrder: Value(json['sortOrder'] as int? ?? 0),
+      createdAt: _parseUtc(json['createdAt']) ?? now,
+      updatedAt: _parseUtc(json['updatedAt']) ?? now,
     );
   }
 

@@ -117,6 +117,8 @@ class DiagnosticsService {
           'settings', () async => (await db.select(db.settings).get()).length);
       await writeRowCount('recurrence_templates',
           () async => (await db.select(db.recurrenceTemplates).get()).length);
+      await writeRowCount(
+          'milestones', () async => (await db.select(db.milestones).get()).length);
     }
 
     buffer
