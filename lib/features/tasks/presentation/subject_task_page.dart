@@ -10,33 +10,14 @@ import 'task_list_section.dart';
 /// 科目任务页：展示某一科目下的全部任务（点击科目进入）。
 ///
 /// 任务创建默认归属当前科目；也可改为其他科目或无科目（移动任务）。
-class SubjectTaskPage extends ConsumerStatefulWidget {
+class SubjectTaskPage extends ConsumerWidget {
   const SubjectTaskPage({super.key, required this.goalId, required this.subjectId});
 
   final int goalId;
   final int subjectId;
 
   @override
-  ConsumerState<SubjectTaskPage> createState() => _SubjectTaskPageState();
-}
-
-class _SubjectTaskPageState extends ConsumerState<SubjectTaskPage> {
-  /// 已展开的重复模板 id 集合（手风琴局部状态）。
-  final Set<int> _expandedTemplates = {};
-
-  int get goalId => widget.goalId;
-  int get subjectId => widget.subjectId;
-
-  void _toggleTemplate(int templateId) {
-    setState(() {
-      if (!_expandedTemplates.remove(templateId)) {
-        _expandedTemplates.add(templateId);
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final subjectsAsync = ref.watch(subjectListProvider(goalId));
     final tasksAsync = ref.watch(taskListProvider(goalId));
     final subject = subjectsAsync.valueOrNull
@@ -73,18 +54,15 @@ class _SubjectTaskPageState extends ConsumerState<SubjectTaskPage> {
                     ),
                   ),
                   const SliverToBoxAdapter(child: Divider(height: 32)),
-                  // 任务区（sliver 形态懒加载，含重复实例折叠）。
-                  ...TaskListSection(
+                  // TaskListSection 自身是 SliverMainAxisGroup（含懒加载
+                  // SliverList，展开状态内部维护），直接作为一条 sliver 嵌入。
+                  TaskListSection(
                     goalId: goalId,
                     subjects: _allSubjects(ref),
                     tasks: subjectTasks,
                     title: '任务',
                     defaultSubjectId: subjectId,
                     onChanged: () => ref.invalidate(taskListProvider(goalId)),
-                  ).buildSlivers(
-                    context,
-                    expandedTemplateIds: _expandedTemplates,
-                    onToggleTemplate: _toggleTemplate,
                   ),
                 ],
               );

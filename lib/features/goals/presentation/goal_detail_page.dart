@@ -50,32 +50,13 @@ class GoalDetailPage extends ConsumerWidget {
   }
 }
 
-class GoalDetailBody extends ConsumerStatefulWidget {
+class GoalDetailBody extends ConsumerWidget {
   const GoalDetailBody({super.key, required this.goal});
 
   final Goal goal;
 
   @override
-  ConsumerState<GoalDetailBody> createState() => _GoalDetailBodyState();
-}
-
-class _GoalDetailBodyState extends ConsumerState<GoalDetailBody> {
-  /// 已展开的重复模板 id 集合（手风琴局部状态，TaskListSection 懒加载
-  /// 的 SliverList itemCount 据此决定）。
-  final Set<int> _expandedTemplates = {};
-
-  Goal get goal => widget.goal;
-
-  void _toggleTemplate(int templateId) {
-    setState(() {
-      if (!_expandedTemplates.remove(templateId)) {
-        _expandedTemplates.add(templateId);
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final subjectsAsync = ref.watch(subjectListProvider(goal.id));
     final tasksAsync = ref.watch(taskListProvider(goal.id));
     final archivedAsync = ref.watch(archivedTaskListProvider(goal.id));
@@ -123,7 +104,8 @@ class _GoalDetailBodyState extends ConsumerState<GoalDetailBody> {
         ),
         const SliverToBoxAdapter(child: Divider(height: 32)),
         // 未归属科目的任务在详情页直接管理（无科目页可进）。
-        // 任务区以 sliver 形态懒加载，只构建视口内的任务行（含重复实例）。
+        // TaskListSection 自身是 SliverMainAxisGroup（含懒加载 SliverList，
+        // 展开状态内部维护），直接作为一条 sliver 嵌入。
         ...subjectsAsync.when(
           loading: () => const <Widget>[],
           error: (error, _) => [
@@ -143,22 +125,20 @@ class _GoalDetailBodyState extends ConsumerState<GoalDetailBody> {
             data: (tasks) {
               final unassigned =
                   tasks.where((t) => t.subjectId == null).toList();
-              return TaskListSection(
-                goalId: goal.id,
-                subjects: subjects,
-                tasks: unassigned,
-                // JSON 导入为「替换」语义：替换整个目标的任务计划，
-                // 因此传入目标全部未归档任务供对话框展示将被替换的清单。
-                currentTasks: tasks,
-                title: '未分类任务',
-                description: '不归属特定科目的安排，如科目复习/复盘、考研报名等',
-                emptyText: '还没有此类任务。可点「添加任务」或「批量添加」创建',
-                onChanged: () => ref.invalidate(taskListProvider(goal.id)),
-              ).buildSlivers(
-                context,
-                expandedTemplateIds: _expandedTemplates,
-                onToggleTemplate: _toggleTemplate,
-              );
+              return [
+                TaskListSection(
+                  goalId: goal.id,
+                  subjects: subjects,
+                  tasks: unassigned,
+                  // JSON 导入为「替换」语义：替换整个目标的任务计划，
+                  // 因此传入目标全部未归档任务供对话框展示将被替换的清单。
+                  currentTasks: tasks,
+                  title: '未分类任务',
+                  description: '不归属特定科目的安排，如科目复习/复盘、考研报名等',
+                  emptyText: '还没有此类任务。可点「添加任务」或「批量添加」创建',
+                  onChanged: () => ref.invalidate(taskListProvider(goal.id)),
+                ),
+              ];
             },
           ),
         ),

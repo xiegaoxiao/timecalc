@@ -14,14 +14,18 @@ import 'task_import_dialog.dart';
 
 /// 任务列表区域（FR-3.1/FR-3.2）：创建、编辑、删除、完成任务。
 ///
-/// 以 sliver 形态供页面 [CustomScrollView] 嵌入（[buildSlivers]），任务列表
-/// 使用 [SliverList.builder] **懒加载**——只构建视口内的任务行，避免几十个
-/// 重复实例行一次性全量实例化造成进入页面/展开收起卡顿。
+/// 以单个 [SliverMainAxisGroup] 的形式嵌入页面 [CustomScrollView]（任务区
+/// 作为一条 sliver），任务列表使用 [SliverList.builder] **懒加载**——只构建
+/// 视口内的任务行，避免几十个重复实例行一次性全量实例化。
+///
+/// 手风琴展开状态在本组件内部维护（[State]），点展开/收起只重建任务区
+/// slivers，不重建页面其他区块（里程碑/负载/科目），避免卡顿。
+/// 模板信息一次批量查询（[recurrenceTemplatesProvider]），父卡片直接取
+/// map，避免每张父卡片独立查询数据库（N+1）。
 ///
 /// 父级负责按上下文过滤 [tasks]（如科目任务页只传该科目任务，目标详情页
 /// 只传未分类任务），并处理 [onChanged] 触发数据刷新。
-/// 手风琴展开状态由宿主页面管理（[expandedTemplateIds]/[onToggleTemplate]）。
-class TaskListSection extends StatelessWidget {
+class TaskListSection extends ConsumerStatefulWidget {
   const TaskListSection({
     super.key,
     required this.goalId,
@@ -52,77 +56,86 @@ class TaskListSection extends StatelessWidget {
   /// 全部任务；默认取本区域的 [tasks]）。
   final List<Task>? currentTasks;
 
-  /// 本组件为 sliver 形态，必须通过 [buildSlivers] 嵌入页面
-  /// [CustomScrollView]；直接 [build] 渲染无意义，返回占位。
   @override
-  Widget build(BuildContext context) {
-    throw UnsupportedError(
-      'TaskListSection 是 sliver 形态组件，请通过 buildSlivers() 嵌入 CustomScrollView。',
-    );
+  ConsumerState<TaskListSection> createState() => _TaskListSectionState();
+}
+
+class _TaskListSectionState extends ConsumerState<TaskListSection> {
+  /// 已展开的重复模板 id 集合（手风琴局部状态）。本组件内部维护，
+  /// 展开/收起只触发任务区重建，不波及页面其他区块。
+  final Set<int> _expandedTemplates = {};
+
+  void _toggleTemplate(int templateId) {
+    setState(() {
+      if (!_expandedTemplates.remove(templateId)) {
+        _expandedTemplates.add(templateId);
+      }
+    });
   }
 
-  /// 生成嵌入页面 [CustomScrollView] 的 slivers：区块头（标题/按钮/描述）
-  /// + 懒加载任务列表。
-  ///
-  /// [expandedTemplateIds] 为已展开的重复模板 id 集合（折叠/展开的行结构
-  /// 决定 SliverList 的 itemCount），[onToggleTemplate] 切换单个模板展开态。
-  List<Widget> buildSlivers(
-    BuildContext context, {
-    required Set<int> expandedTemplateIds,
-    required ValueChanged<int> onToggleTemplate,
-  }) {
-    final units = _groupTasks(tasks);
-    return [
-      if (title != null)
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _header(context),
-          ),
-        ),
-      if (description != null)
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _description(context),
-          ),
-        ),
-      if (tasks.isEmpty)
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: Text(emptyText),
-          ),
-        )
-      else
-        SliverPadding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          sliver: SliverList.builder(
-            itemCount: _rowCount(units, expandedTemplateIds),
-            itemBuilder: (context, index) => _buildRow(
-              context,
-              units,
-              expandedTemplateIds,
-              onToggleTemplate,
-              index,
+  @override
+  Widget build(BuildContext context) {
+    final units = _groupTasks(widget.tasks);
+    // 一次批量查询目标下全部模板，父卡片按 id 取（避免每张父卡片各自
+    // watch 单个模板 provider 造成 N+1 数据库查询）。
+    final templates = ref
+            .watch(recurrenceTemplatesProvider(widget.goalId))
+            .valueOrNull ??
+        const <RecurrenceTemplate>[];
+    final templatesById = {for (final t in templates) t.id: t};
+
+    return SliverMainAxisGroup(
+      slivers: [
+        if (widget.title != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _header(context),
             ),
           ),
-        ),
-    ];
+        if (widget.description != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _description(context),
+            ),
+          ),
+        if (widget.tasks.isEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              child: Text(widget.emptyText),
+            ),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            sliver: SliverList.builder(
+              itemCount: _rowCount(units),
+              itemBuilder: (context, index) => _buildRow(
+                context,
+                units,
+                templatesById,
+                index,
+              ),
+            ),
+          ),
+      ],
+    );
   }
 
   Widget _header(BuildContext context) {
     return Row(
       children: [
-        Text(title!, style: Theme.of(context).textTheme.titleMedium),
-        if (showAddButton) ...[
+        Text(widget.title!, style: Theme.of(context).textTheme.titleMedium),
+        if (widget.showAddButton) ...[
           const Spacer(),
           TextButton.icon(
             onPressed: () => TaskFormDialog.show(
               context,
-              goalId: goalId,
-              subjects: subjects,
-              defaultSubjectId: defaultSubjectId,
+              goalId: widget.goalId,
+              subjects: widget.subjects,
+              defaultSubjectId: widget.defaultSubjectId,
             ),
             icon: const Icon(Icons.add, size: 18),
             label: const Text('添加任务'),
@@ -130,9 +143,9 @@ class TaskListSection extends StatelessWidget {
           TextButton.icon(
             onPressed: () => BatchTaskFormDialog.show(
               context,
-              goalId: goalId,
-              subjects: subjects,
-              defaultSubjectId: defaultSubjectId,
+              goalId: widget.goalId,
+              subjects: widget.subjects,
+              defaultSubjectId: widget.defaultSubjectId,
             ),
             icon: const Icon(Icons.playlist_add, size: 18),
             label: const Text('批量添加'),
@@ -140,11 +153,11 @@ class TaskListSection extends StatelessWidget {
           TextButton.icon(
             onPressed: () => TaskImportDialog.show(
               context,
-              goalId: goalId,
-              subjects: subjects,
+              goalId: widget.goalId,
+              subjects: widget.subjects,
               // JSON 导入为「替换」语义：传入将被替换并保留为历史的
               // 目标当前任务清单。
-              currentTasks: currentTasks ?? tasks,
+              currentTasks: widget.currentTasks ?? widget.tasks,
             ),
             icon: const Icon(Icons.upload_file, size: 18),
             label: const Text('JSON 导入'),
@@ -152,8 +165,8 @@ class TaskListSection extends StatelessWidget {
           TextButton.icon(
             onPressed: () => RecurrenceTaskDialog.show(
               context,
-              goalId: goalId,
-              subjects: subjects,
+              goalId: widget.goalId,
+              subjects: widget.subjects,
             ),
             icon: const Icon(Icons.autorenew, size: 18),
             label: const Text('重复任务'),
@@ -165,7 +178,7 @@ class TaskListSection extends StatelessWidget {
 
   Widget _description(BuildContext context) {
     return Text(
-      description!,
+      widget.description!,
       style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: Theme.of(context).colorScheme.outline,
           ),
@@ -173,7 +186,7 @@ class TaskListSection extends StatelessWidget {
   }
 
   /// 当前行数：折叠组计 1 行（父卡片头），展开组计 1 + N 行（实例行）。
-  static int _rowCount(List<_ListUnit> units, Set<int> expandedTemplateIds) {
+  int _rowCount(List<_ListUnit> units) {
     var count = 0;
     for (final unit in units) {
       if (!unit.isGroup) {
@@ -181,7 +194,7 @@ class TaskListSection extends StatelessWidget {
         continue;
       }
       count += 1;
-      if (expandedTemplateIds.contains(unit.templateId)) {
+      if (_expandedTemplates.contains(unit.templateId)) {
         count += unit.instances.length;
       }
     }
@@ -193,35 +206,35 @@ class TaskListSection extends StatelessWidget {
   Widget _buildRow(
     BuildContext context,
     List<_ListUnit> units,
-    Set<int> expandedTemplateIds,
-    ValueChanged<int> onToggleTemplate,
+    Map<int, RecurrenceTemplate> templatesById,
     int index,
   ) {
     for (final unit in units) {
       if (!unit.isGroup) {
         if (index == 0) {
           return _TaskTile(
-            goalId: goalId,
+            goalId: widget.goalId,
             task: unit.task!,
-            subjects: subjects,
-            onChanged: onChanged,
+            subjects: widget.subjects,
+            onChanged: widget.onChanged,
           );
         }
         index -= 1;
         continue;
       }
       final templateId = unit.templateId!;
-      final expanded = expandedTemplateIds.contains(templateId);
+      final expanded = _expandedTemplates.contains(templateId);
       // 父卡片头行。
       if (index == 0) {
         return RecurrenceGroupTile(
-          goalId: goalId,
+          goalId: widget.goalId,
           templateId: templateId,
+          template: templatesById[templateId],
           instances: unit.instances,
-          subjects: subjects,
+          subjects: widget.subjects,
           expanded: expanded,
-          onToggle: () => onToggleTemplate(templateId),
-          onChanged: onChanged,
+          onToggle: () => _toggleTemplate(templateId),
+          onChanged: widget.onChanged,
         );
       }
       index -= 1;
@@ -229,10 +242,10 @@ class TaskListSection extends StatelessWidget {
       if (expanded) {
         if (index < unit.instances.length) {
           return _TaskTile(
-            goalId: goalId,
+            goalId: widget.goalId,
             task: unit.instances[index],
-            subjects: subjects,
-            onChanged: onChanged,
+            subjects: widget.subjects,
+            onChanged: widget.onChanged,
           );
         }
         index -= unit.instances.length;
@@ -485,11 +498,15 @@ class _TaskTile extends ConsumerWidget {
 ///
 /// 模板级菜单：编辑重复规则、停止重复（已停止时隐藏）、删除整个重复
 /// （模板 + 全部实例，二次确认）。
+///
+/// 模板信息由宿主一次批量查询后传入（[template]），本组件不 watch 单个
+/// 模板 provider，避免每张父卡片触发一次数据库查询（N+1）。
 class RecurrenceGroupTile extends ConsumerWidget {
   const RecurrenceGroupTile({
     super.key,
     required this.goalId,
     required this.templateId,
+    required this.template,
     required this.instances,
     required this.subjects,
     required this.expanded,
@@ -500,11 +517,15 @@ class RecurrenceGroupTile extends ConsumerWidget {
   final int goalId;
   final int templateId;
 
+  /// 宿主批量查询到的模板（可能为 null：模板加载中或已被删除），
+  /// 为 null 时回退到实例首行标题。
+  final RecurrenceTemplate? template;
+
   /// 该模板的全部实例（已按计划日期升序，见 [TaskListSection._groupTasks]）。
   final List<Task> instances;
   final List<Subject> subjects;
 
-  /// 当前是否展开（由宿主页面维护）。
+  /// 当前是否展开（由宿主维护）。
   final bool expanded;
 
   /// 切换展开状态（宿主 setState 后 SliverList itemCount 随之变化）。
@@ -513,9 +534,7 @@ class RecurrenceGroupTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 模板信息（标题/是否停止）：加载中或读取失败时回退到实例首行标题。
-    final template =
-        ref.watch(recurrenceTemplateProvider(templateId)).valueOrNull;
+    final template = this.template;
     final title = template?.title ?? instances.first.title;
     final stopped = template != null && !template.active;
     final first = _parseDate(instances.first.plannedDate);
@@ -581,14 +600,15 @@ class RecurrenceGroupTile extends ConsumerWidget {
   Future<void> _handleAction(BuildContext context, WidgetRef ref, String action) async {
     switch (action) {
       case 'editRecurrence':
-        final template = await ref
+        // 用户点击编辑时按需读一次最新模板（非 watch，无 N+1）。
+        final latest = await ref
             .read(recurrenceTemplateProvider(templateId).future);
-        if (template == null || !context.mounted) return;
+        if (latest == null || !context.mounted) return;
         final saved = await RecurrenceTaskDialog.show(
           context,
           goalId: goalId,
           subjects: subjects,
-          editTemplate: template,
+          editTemplate: latest,
         );
         if (saved) _refresh(ref);
       case 'stopRecurrence':
