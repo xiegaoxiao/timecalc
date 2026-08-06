@@ -199,4 +199,170 @@ void main() {
     expect(find.text('编辑重复任务'), findsOneWidget);
     expect(find.text('每天'), findsWidgets);
   });
+
+  group('重复任务列表手风琴折叠（FR-4 迭代）', () {
+    /// 建一个 daily 模板（startDate 今天 → 30 天窗口实例）。
+    Future<void> seedDailyTemplate() async {
+      await recurrence.create(
+        goalId: goalId,
+        title: '背单词',
+        rule: RecurrenceRule.fromMap(ruleType: 'daily', json: const {}),
+        startDate: '2026-08-05',
+        today: fixedNow,
+      );
+    }
+
+    testWidgets('多实例折叠：详情页只显示一张父卡片（区间 + N 个任务），不显示平铺实例', (tester) async {
+      await seedDailyTemplate();
+      expect((await tasks.byGoal(goalId)).length, greaterThanOrEqualTo(2));
+
+      await pumpApp(tester);
+      await openGoalDetail(tester);
+
+      // 父卡片：标题 + 区间 + 实例数；重复标记一次。
+      expect(find.text('背单词'), findsOneWidget);
+      expect(find.textContaining('~'), findsOneWidget);
+      expect(find.textContaining('个任务'), findsOneWidget);
+      expect(find.byTooltip('重复任务'), findsOneWidget);
+      // 折叠状态不渲染任何子任务行（无复选框）。
+      expect(find.byType(Checkbox), findsNothing);
+    });
+
+    testWidgets('单实例模板不折叠：以普通任务行展示（FR-4 折叠边界）', (tester) async {
+      await seedDailyTemplate();
+      // 先停用模板（防止 bootstrap 补生成新实例），再删除多余实例，
+      // 仅保留最早的一个 → 单实例模板。
+      final template = (await recurrence.byGoal(goalId)).single;
+      await recurrence.stop(template.id);
+      final instances = await tasks.byGoal(goalId);
+      for (final instance in instances.skip(1)) {
+        await tasks.delete(instance.id);
+      }
+      expect((await tasks.byGoal(goalId)), hasLength(1));
+
+      await pumpApp(tester);
+      await openGoalDetail(tester);
+
+      // 普通任务行：有复选框与日期，无父卡片区间文案。
+      expect(find.byType(Checkbox), findsOneWidget);
+      expect(find.textContaining('个任务'), findsNothing);
+    });
+
+    testWidgets('点击父卡片展开子任务列表（内缩、含复选框与日期），再次点击收起', (tester) async {
+      await seedDailyTemplate();
+
+      await pumpApp(tester);
+      await openGoalDetail(tester);
+
+      // 默认折叠，无子任务。
+      expect(find.byType(Checkbox), findsNothing);
+      expect(find.byTooltip('展开重复任务'), findsOneWidget);
+
+      // 点击展开图标 → 子任务出现（含复选框与日期）。
+      await tester.tap(find.byTooltip('展开重复任务'));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('收起重复任务'), findsOneWidget);
+      expect(find.byType(Checkbox), findsWidgets);
+      expect(find.textContaining('2026-08-05'), findsWidgets);
+
+      // 再次点击收起 → 子任务消失。
+      await tester.tap(find.byTooltip('收起重复任务'));
+      await tester.pumpAndSettle();
+      expect(find.byType(Checkbox), findsNothing);
+    });
+
+    testWidgets('点击父卡片主体同样可展开/收起（整卡可点）', (tester) async {
+      await seedDailyTemplate();
+
+      await pumpApp(tester);
+      await openGoalDetail(tester);
+      expect(find.byType(Checkbox), findsNothing);
+
+      // 折叠态父卡片标题唯一（展开前只有一个「背单词」）。
+      await tester.tap(find.text('背单词'));
+      await tester.pumpAndSettle();
+      expect(find.byType(Checkbox), findsWidgets);
+
+      // 展开后子任务标题同名，用 .first 命中父卡片标题再收起。
+      await tester.tap(find.text('背单词').first);
+      await tester.pumpAndSettle();
+      expect(find.byType(Checkbox), findsNothing);
+    });
+
+    testWidgets('展开后勾选子任务复选框：写入完成状态并刷新', (tester) async {
+      await seedDailyTemplate();
+
+      await pumpApp(tester);
+      await openGoalDetail(tester);
+      await tester.tap(find.byTooltip('展开重复任务'));
+      await tester.pumpAndSettle();
+
+      // 勾选第一个实例（最早日期 2026-08-05）。
+      final firstCheckbox = find.byType(Checkbox).first;
+      expect(tester.widget<Checkbox>(firstCheckbox).value, isFalse);
+      await tester.tap(firstCheckbox);
+      await tester.pumpAndSettle();
+
+      // 数据库断言：最早实例已标记完成。
+      final instances = await tasks.byGoal(goalId);
+      expect(instances.first.plannedDate, '2026-08-05');
+      expect(instances.first.status, 'done');
+      // UI 复选框响应为已完成。
+      expect(tester.widget<Checkbox>(find.byType(Checkbox).first).value, isTrue);
+    });
+
+    testWidgets('父卡片菜单删除：二次确认后模板与全部实例一并删除', (tester) async {
+      await seedDailyTemplate();
+      final template = (await recurrence.byGoal(goalId)).single;
+
+      await pumpApp(tester);
+      await openGoalDetail(tester);
+
+      // 父卡片菜单 → 删除。
+      await tester.tap(find.byTooltip('任务操作').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('删除'));
+      await tester.pumpAndSettle();
+      // 二次确认提示将删除实例。
+      expect(find.textContaining('将同时删除'), findsOneWidget);
+      expect(find.textContaining('个任务实例'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, '删除'));
+      await tester.pumpAndSettle();
+
+      // 数据库断言：模板不存在、实例为空。
+      expect(await recurrence.byId(template.id), isNull);
+      expect(await tasks.byGoal(goalId), isEmpty);
+      // UI：父卡片消失。
+      expect(find.text('背单词'), findsNothing);
+    });
+
+    testWidgets('父卡片菜单编辑重复规则：可打开模板编辑对话框（FR-4.4）', (tester) async {
+      await seedDailyTemplate();
+
+      await pumpApp(tester);
+      await openGoalDetail(tester);
+
+      await tester.tap(find.byTooltip('任务操作').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('编辑重复规则'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('编辑重复任务'), findsOneWidget);
+    });
+
+    testWidgets('模板停止后父卡片标记「已停止」，菜单不再提供停止重复', (tester) async {
+      await seedDailyTemplate();
+      final template = (await recurrence.byGoal(goalId)).single;
+      await recurrence.stop(template.id);
+
+      await pumpApp(tester);
+      await openGoalDetail(tester);
+
+      expect(find.textContaining('已停止'), findsOneWidget);
+      await tester.tap(find.byTooltip('任务操作').first);
+      await tester.pumpAndSettle();
+      expect(find.text('停止重复'), findsNothing);
+    });
+  });
 }

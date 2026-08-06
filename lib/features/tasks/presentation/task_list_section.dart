@@ -121,18 +121,75 @@ class TaskListSection extends ConsumerWidget {
         else
           Column(
             children: [
-              for (final task in tasks)
-                _TaskTile(
-                  goalId: goalId,
-                  task: task,
-                  subjects: subjects,
-                  onChanged: onChanged,
-                ),
+              // 重复任务折叠（手风琴）：同一模板实例数 ≥ 2 时合并为父卡片，
+              // 其余保持普通任务行；整体按最早计划日期升序。
+              for (final unit in _groupTasks(tasks))
+                if (unit.isGroup)
+                  RecurrenceGroupTile(
+                    goalId: goalId,
+                    templateId: unit.templateId!,
+                    instances: unit.instances,
+                    subjects: subjects,
+                    onChanged: onChanged,
+                  )
+                else
+                  _TaskTile(
+                    goalId: goalId,
+                    task: unit.task!,
+                    subjects: subjects,
+                    onChanged: onChanged,
+                  ),
             ],
           ),
       ],
     );
   }
+
+  /// 把任务列表按重复模板分组（FR-4 迭代：手风琴折叠）。
+  ///
+  /// - 同一模板的实例数 ≥ 2 → 折叠为一个父卡片单元；
+  /// - 单实例重复任务与普通任务 → 各自保持独立任务行；
+  /// - 输出按「每组/每任务最早计划日期」升序，保持列表按日期递增观感。
+  static List<_ListUnit> _groupTasks(List<Task> tasks) {
+    final groups = <int?, List<Task>>{};
+    for (final task in tasks) {
+      groups.putIfAbsent(task.recurrenceTemplateId, () => []).add(task);
+    }
+
+    final units = <_ListUnit>[];
+    for (final entry in groups.entries) {
+      final templateId = entry.key;
+      final instances = entry.value
+        ..sort((a, b) => a.plannedDate.compareTo(b.plannedDate));
+      if (templateId != null && instances.length >= 2) {
+        units.add(_ListUnit.group(templateId, instances));
+      } else {
+        for (final task in instances) {
+          units.add(_ListUnit.single(task));
+        }
+      }
+    }
+    units.sort((a, b) => a.minDate.compareTo(b.minDate));
+    return units;
+  }
+}
+
+/// 任务列表展示单元：单个任务行或一组重复实例（父卡片）。
+class _ListUnit {
+  const _ListUnit.single(Task this.task)
+      : instances = const [],
+        templateId = null;
+
+  const _ListUnit.group(this.templateId, this.instances) : task = null;
+
+  final Task? task;
+  final int? templateId;
+  final List<Task> instances;
+
+  bool get isGroup => templateId != null;
+
+  /// 最早计划日期（`yyyy-MM-dd`，字符串序即时间序）。
+  String get minDate => task?.plannedDate ?? instances.first.plannedDate;
 }
 
 class _TaskTile extends ConsumerWidget {
@@ -316,6 +373,226 @@ class _TaskTile extends ConsumerWidget {
           if (ok) onChanged();
         }
     }
+  }
+
+  static DateTime _parseDate(String yyyyMMdd) {
+    final parts = yyyyMMdd.split('-');
+    return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+  }
+}
+
+/// 重复任务折叠父卡片（FR-4 迭代：手风琴折叠）。
+///
+/// 将同一模板的多个实例合并为一张父卡片，默认折叠；点击整卡或右侧展开
+/// 图标后向下展开，以子列表形式展示区间内每个日期的具体实例（子任务
+/// 保持原有交互：复选框/日期/更多菜单，视觉内缩）。
+///
+/// 父卡片提供操作菜单（模板级）：编辑重复规则、停止重复、删除整个重复
+/// （模板 + 全部实例）。实例数 < 2 的模板不进入本组件（见 [_groupTasks]）。
+class RecurrenceGroupTile extends ConsumerStatefulWidget {
+  const RecurrenceGroupTile({
+    super.key,
+    required this.goalId,
+    required this.templateId,
+    required this.instances,
+    required this.subjects,
+    required this.onChanged,
+  });
+
+  final int goalId;
+  final int templateId;
+
+  /// 该模板的全部实例（已按计划日期升序，见 [_groupTasks]）。
+  final List<Task> instances;
+  final List<Subject> subjects;
+  final VoidCallback onChanged;
+
+  @override
+  ConsumerState<RecurrenceGroupTile> createState() => _RecurrenceGroupTileState();
+}
+
+class _RecurrenceGroupTileState extends ConsumerState<RecurrenceGroupTile> {
+  /// 手风琴展开状态（默认折叠）。
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final instances = widget.instances;
+    // 模板信息（标题/是否停止）：加载中或读取失败时回退到实例首行标题。
+    final template =
+        ref.watch(recurrenceTemplateProvider(widget.templateId)).valueOrNull;
+    final title = template?.title ?? instances.first.title;
+    final stopped = template != null && !template.active;
+    final scheme = Theme.of(context).colorScheme;
+    final first = _parseDate(instances.first.plannedDate);
+    final last = _parseDate(instances.last.plannedDate);
+
+    return Column(
+      children: [
+        Card(
+          margin: EdgeInsets.only(bottom: _expanded ? 0 : 8),
+          child: ListTile(
+            onTap: () => setState(() => _expanded = !_expanded),
+            leading: const Tooltip(
+              message: '重复任务',
+              child: Icon(Icons.autorenew, size: 20),
+            ),
+            title: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(
+              '${DateFormat('yyyy-MM-dd').format(first)} ~ '
+              '${DateFormat('yyyy-MM-dd').format(last)} · '
+              '${instances.length} 个任务'
+              '${stopped ? ' · 已停止' : ''}',
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  // NFR-4：展开/收起状态以图标旋转 + tooltip 双重表达。
+                  tooltip: _expanded ? '收起重复任务' : '展开重复任务',
+                  onPressed: () =>
+                      setState(() => _expanded = !_expanded),
+                  icon: AnimatedRotation(
+                    turns: _expanded ? 0.25 : 0,
+                    duration: const Duration(milliseconds: 150),
+                    child: const Icon(Icons.chevron_right, size: 20),
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  tooltip: '任务操作',
+                  onSelected: (action) => _handleAction(context, action),
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: 'editRecurrence',
+                      child: Text('编辑重复规则'),
+                    ),
+                    if (!stopped)
+                      const PopupMenuItem(
+                        value: 'stopRecurrence',
+                        child: Text('停止重复'),
+                      ),
+                    const PopupMenuItem(
+                      value: 'deleteAll',
+                      child: Text('删除'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        // 展开的子任务列表：内缩 + 左缘竖引导线，表明隶属于父卡片。
+        AnimatedSize(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeInOut,
+          alignment: Alignment.topCenter,
+          child: _expanded
+              ? Container(
+                  margin: const EdgeInsets.only(left: 24, bottom: 8),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      left: BorderSide(color: scheme.outlineVariant, width: 2),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      for (final task in instances)
+                        _TaskTile(
+                          goalId: widget.goalId,
+                          task: task,
+                          subjects: widget.subjects,
+                          onChanged: widget.onChanged,
+                        ),
+                    ],
+                  ),
+                )
+              : const SizedBox(width: double.infinity),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _handleAction(BuildContext context, String action) async {
+    switch (action) {
+      case 'editRecurrence':
+        final template = await ref
+            .read(recurrenceTemplateProvider(widget.templateId).future);
+        if (template == null || !context.mounted) return;
+        final saved = await RecurrenceTaskDialog.show(
+          context,
+          goalId: widget.goalId,
+          subjects: widget.subjects,
+          editTemplate: template,
+        );
+        if (saved) _refresh();
+      case 'stopRecurrence':
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('停止重复？'),
+            content: const Text('停止后不再生成新的重复任务，已生成的任务保留。'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('停止重复'),
+              ),
+            ],
+          ),
+        );
+        if (confirmed != true) return;
+        if (!context.mounted) return;
+        final ok = await runDbAction(
+          context,
+          action: () =>
+              ref.read(recurrenceRepositoryProvider).stop(widget.templateId),
+        );
+        if (!ok) return;
+        _refresh();
+      case 'deleteAll':
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('删除重复任务「${widget.instances.first.title}」？'),
+            content: Text(
+              '将同时删除 ${widget.instances.length} 个任务实例，此操作不可撤销。',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('删除'),
+              ),
+            ],
+          ),
+        );
+        if (confirmed != true) return;
+        if (!context.mounted) return;
+        final ok = await runDbAction(
+          context,
+          action: () => ref
+              .read(recurrenceRepositoryProvider)
+              .deleteWithInstances(widget.templateId),
+        );
+        if (!ok) return;
+        _refresh();
+    }
+  }
+
+  /// 模板级操作成功后刷新：模板缓存族失效 + 通知父级刷新任务列表。
+  void _refresh() {
+    ref.invalidate(recurrenceTemplatesProvider(widget.goalId));
+    widget.onChanged();
   }
 
   static DateTime _parseDate(String yyyyMMdd) {
