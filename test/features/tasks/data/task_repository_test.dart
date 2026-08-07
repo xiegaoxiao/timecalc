@@ -127,6 +127,26 @@ void main() {
       await tasks.delete(created.id);
       expect(await tasks.byId(created.id), isNull);
     });
+
+    test('批量删除任务（deleteMany，单事务）', () async {
+      final goal = await goals.create(title: '目标', deadlineDate: '2026-01-01');
+      final a = await tasks.create(goalId: goal.id, title: '任务A', plannedDate: '2026-01-01');
+      final b = await tasks.create(goalId: goal.id, title: '任务B', plannedDate: '2026-01-01');
+      final c = await tasks.create(goalId: goal.id, title: '任务C', plannedDate: '2026-01-01');
+
+      await tasks.deleteMany([a.id, c.id]);
+
+      expect(await tasks.byId(a.id), isNull);
+      expect(await tasks.byId(c.id), isNull);
+      expect(await tasks.byId(b.id), isNotNull);
+    });
+
+    test('批量删除：空列表为 no-op，不抛异常', () async {
+      final goal = await goals.create(title: '目标', deadlineDate: '2026-01-01');
+      final created = await tasks.create(goalId: goal.id, title: '任务', plannedDate: '2026-01-01');
+      await tasks.deleteMany(const []);
+      expect(await tasks.byId(created.id), isNotNull);
+    });
   });
 
   group('完成任务状态切换（FR-3.2）', () {

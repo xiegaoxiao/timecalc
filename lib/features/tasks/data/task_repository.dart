@@ -480,6 +480,29 @@ class TaskRepository {
     });
   }
 
+  /// 批量删除任务（单事务，NFR-2）。
+  ///
+  /// 与 [delete] 同语义：检查项级联删除、重复实例日期记入模板墓碑。
+  /// 全部删除在单个事务内完成，任一条失败整体回滚，无半删除。
+  /// 空列表为 no-op。
+  Future<void> deleteMany(List<int> ids) {
+    if (ids.isEmpty) return Future.value();
+    return _db.transaction(() async {
+      for (final id in ids) {
+        final task = await byId(id);
+        if (task == null) continue;
+        await (_db.delete(_db.checklistItems)
+              ..where((c) => c.taskId.equals(id)))
+            .go();
+        await (_db.delete(_db.tasks)..where((t) => t.id.equals(id))).go();
+        final templateId = task.recurrenceTemplateId;
+        if (templateId != null) {
+          await _recordDeletedInstance(templateId, task.plannedDate);
+        }
+      }
+    });
+  }
+
   /// 把 [date] 记入模板墓碑（同一事务内调用，删除实例后写入）。
   Future<void> _recordDeletedInstance(int templateId, String date) async {
     final template = await (_db.select(_db.recurrenceTemplates)
