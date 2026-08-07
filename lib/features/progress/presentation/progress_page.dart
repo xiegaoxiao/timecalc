@@ -13,6 +13,8 @@ import '../../../core/utils/date_text.dart';
 import '../../../services/duration_format.dart';
 import '../../../services/statistics_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
+import '../../../shared/widgets/chart_empty_state.dart';
+import '../../../shared/widgets/section_header.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../../settings/data/settings_repository.dart';
 import '../../settings/data/settings_repository_provider.dart';
@@ -204,100 +206,6 @@ class ProgressPage extends ConsumerWidget {
   }
 }
 
-/// 统一卡片容器：微透明边框 + 柔和阴影 + 圆角 12。
-///
-/// clipBehavior: Clip.none：fl_chart 悬停 tooltip 会浮出图表区域，若卡片
-/// 裁剪，边缘数据点的气泡会被截断。内部仍是 Material Card（测试以
-/// `widgetWithText(Card, ...)` 定位各区块）。
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({required this.padding, required this.child});
-
-  final EdgeInsetsGeometry padding;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      clipBehavior: Clip.none,
-      elevation: 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.4)),
-      ),
-      child: Padding(padding: padding, child: child),
-    );
-  }
-}
-
-/// 统一区块头：图标（20px 主色）+ 标题 + 可选副标题 + 可选右侧内容。
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({
-    required this.icon,
-    required this.title,
-    this.subtitle,
-    this.trailing,
-  });
-
-  final IconData icon;
-  final String title;
-  final String? subtitle;
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: 20, color: scheme.primary),
-            const SizedBox(width: 8),
-            Expanded(child: Text(title, style: textTheme.titleMedium)),
-            ?trailing,
-          ],
-        ),
-        if (subtitle != null) ...[
-          const SizedBox(height: 4),
-          Text(subtitle!, style: textTheme.bodySmall),
-        ],
-      ],
-    );
-  }
-}
-
-/// 统一空态：outline 色 40px 图标 + 主文案 + bodySmall 副文案。
-class _ChartEmptyState extends StatelessWidget {
-  const _ChartEmptyState({
-    required this.icon,
-    required this.title,
-    required this.caption,
-  });
-
-  final IconData icon;
-  final String title;
-  final String caption;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 24),
-      child: Column(
-        children: [
-          Icon(icon, size: 40, color: scheme.outline),
-          const SizedBox(height: 8),
-          Text(title),
-          const SizedBox(height: 4),
-          Text(caption, style: Theme.of(context).textTheme.bodySmall),
-        ],
-      ),
-    );
-  }
-}
-
 /// 统一图例色块：圆角方块 12×12，可带描边（燃尽实际线保留白描边语义）。
 class _LegendDot extends StatelessWidget {
   const _LegendDot({required this.color, this.borderColor});
@@ -332,30 +240,34 @@ class _PlanPreferenceEntryCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settingsAsync = ref.watch(settingsProvider);
-    return _SectionCard(
-      padding: const EdgeInsets.all(8),
-      child: settingsAsync.when(
-        loading: () =>
-            const ListTile(title: Text('计划偏好'), subtitle: Text('加载中…')),
-        error: (error, _) =>
-            ListTile(title: const Text('计划偏好'), subtitle: Text('加载失败：$error')),
-        data: (settings) {
-          final weekdays = SettingsRepository.decodeWeekdays(
-            settings.availableWeekdays,
-          );
-          final weekdayText = weekdays.length == 7
-              ? '每周 7 天'
-              : '每周 ${weekdays.map(_weekdayShort).join('、')}';
-          return ListTile(
-            leading: const Icon(Icons.tune),
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: settingsAsync.when(
+          loading: () =>
+              const ListTile(title: Text('计划偏好'), subtitle: Text('加载中…')),
+          error: (error, _) => ListTile(
             title: const Text('计划偏好'),
-            subtitle: Text(
-              '每日可用 ${DurationFormat.minutes(settings.dailyAvailableMinutes)} · $weekdayText',
-            ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/plan-preference'),
-          );
-        },
+            subtitle: Text('加载失败：$error'),
+          ),
+          data: (settings) {
+            final weekdays = SettingsRepository.decodeWeekdays(
+              settings.availableWeekdays,
+            );
+            final weekdayText = weekdays.length == 7
+                ? '每周 7 天'
+                : '每周 ${weekdays.map(_weekdayShort).join('、')}';
+            return ListTile(
+              leading: const Icon(Icons.tune),
+              title: const Text('计划偏好'),
+              subtitle: Text(
+                '每日可用 ${DurationFormat.minutes(settings.dailyAvailableMinutes)} · $weekdayText',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/plan-preference'),
+            );
+          },
+        ),
       ),
     );
   }
@@ -390,51 +302,53 @@ class _TodayOverviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _SectionCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _SectionHeader(icon: Icons.insights, title: '今日概览'),
-          const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              // 三项等宽 + 两项间距，恰好铺满卡片内容区。
-              const spacing = 16.0;
-              final itemWidth = (constraints.maxWidth - spacing * 2) / 3;
-              return Wrap(
-                spacing: spacing,
-                runSpacing: 12,
-                children: [
-                  SizedBox(
-                    width: itemWidth,
-                    child: _StatItem(
-                      icon: Icons.check_circle_outline,
-                      label: '已完成任务',
-                      value: '${stats.doneCount}/${stats.totalCount}',
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SectionHeader(icon: Icons.insights, title: '今日概览'),
+            const SizedBox(height: 12),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                // 三项等宽 + 两项间距，恰好铺满卡片内容区。
+                const spacing = 16.0;
+                final itemWidth = (constraints.maxWidth - spacing * 2) / 3;
+                return Wrap(
+                  spacing: spacing,
+                  runSpacing: 12,
+                  children: [
+                    SizedBox(
+                      width: itemWidth,
+                      child: _StatItem(
+                        icon: Icons.check_circle_outline,
+                        label: '已完成任务',
+                        value: '${stats.doneCount}/${stats.totalCount}',
+                      ),
                     ),
-                  ),
-                  SizedBox(
-                    width: itemWidth,
-                    child: _StatItem(
-                      icon: Icons.timer_outlined,
-                      label: '已完成时长',
-                      value: DurationFormat.minutes(stats.doneMinutes),
+                    SizedBox(
+                      width: itemWidth,
+                      child: _StatItem(
+                        icon: Icons.timer_outlined,
+                        label: '已完成时长',
+                        value: DurationFormat.minutes(stats.doneMinutes),
+                      ),
                     ),
-                  ),
-                  SizedBox(
-                    width: itemWidth,
-                    child: _StatItem(
-                      icon: Icons.flag_outlined,
-                      label: '目标剩余工作量',
-                      value: DurationFormat.minutes(remainingMinutes),
+                    SizedBox(
+                      width: itemWidth,
+                      child: _StatItem(
+                        icon: Icons.flag_outlined,
+                        label: '目标剩余工作量',
+                        value: DurationFormat.minutes(remainingMinutes),
+                      ),
                     ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ],
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -562,57 +476,59 @@ class _BurndownSection extends StatelessWidget {
       summary = '当前没有剩余工作量';
     }
 
-    return _SectionCard(
+    return Card(
       // 底部留出额外空间：给 X 轴旋转 45° 后的日期标签与悬停 tooltip
       // 预留展示区域，避免贴到卡片边缘。
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _SectionHeader(
-            icon: Icons.trending_down,
-            title: '剩余工作量趋势',
-            subtitle: summary,
-            // Header 右侧：当前剩余大字（燃尽核心信息直接呈现）。
-            trailing: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text('当前剩余', style: Theme.of(context).textTheme.bodySmall),
-                Text(
-                  DurationFormat.minutes(currentRemaining),
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: scheme.primary,
-                    fontWeight: FontWeight.w700,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SectionHeader(
+              icon: Icons.trending_down,
+              title: '剩余工作量趋势',
+              subtitle: summary,
+              // Header 右侧：当前剩余大字（燃尽核心信息直接呈现）。
+              trailing: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text('当前剩余', style: Theme.of(context).textTheme.bodySmall),
+                  Text(
+                    DurationFormat.minutes(currentRemaining),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: scheme.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (!hasMinutes)
+              const ChartEmptyState(
+                icon: Icons.trending_down,
+                title: '还没有可展示的剩余工作量数据',
+                caption:
+                    '给任务设置预估时长并开始完成后，'
+                    '这里会展示剩余工作量随时间的变化',
+              )
+            else
+              _BurndownChart(points: points, today: today),
+            const SizedBox(height: 16),
+            // Footer 图例：色块 + 文字（与其它图表统一）。
+            Row(
+              children: [
+                _LegendDot(color: _remainingColor, borderColor: dotBorder),
+                const SizedBox(width: 8),
+                const Text('剩余工作量', style: TextStyle(fontSize: 10)),
+                const SizedBox(width: 16),
+                _LegendDot(color: idealColor),
+                const SizedBox(width: 8),
+                const Text('匀速参考线', style: TextStyle(fontSize: 10)),
               ],
             ),
-          ),
-          const SizedBox(height: 16),
-          if (!hasMinutes)
-            const _ChartEmptyState(
-              icon: Icons.trending_down,
-              title: '还没有可展示的剩余工作量数据',
-              caption:
-                  '给任务设置预估时长并开始完成后，'
-                  '这里会展示剩余工作量随时间的变化',
-            )
-          else
-            _BurndownChart(points: points, today: today),
-          const SizedBox(height: 16),
-          // Footer 图例：色块 + 文字（与其它图表统一）。
-          Row(
-            children: [
-              _LegendDot(color: _remainingColor, borderColor: dotBorder),
-              const SizedBox(width: 8),
-              const Text('剩余工作量', style: TextStyle(fontSize: 10)),
-              const SizedBox(width: 16),
-              _LegendDot(color: idealColor),
-              const SizedBox(width: 8),
-              const Text('匀速参考线', style: TextStyle(fontSize: 10)),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -684,7 +600,18 @@ class _BurndownChart extends StatelessWidget {
       label: semanticLabel.toString(),
       child: SizedBox(
         height: _chartHeight,
-        child: TweenAnimationBuilder<double>(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // 旋转 45° 的日期标签水平投影约 30px；按图表实际宽度动态放大
+            // 标签间隔，保证相邻标签中心距 ≥ 40px，窄窗不再互相覆盖。
+            final perDayPx = constraints.maxWidth / (points.length - 1);
+            const minLabelSpacing = 40.0;
+            var labelInterval = 5;
+            while (perDayPx * labelInterval < minLabelSpacing &&
+                labelInterval < points.length) {
+              labelInterval += 5;
+            }
+            return TweenAnimationBuilder<double>(
           tween: Tween(begin: 0, end: 1),
           duration: const Duration(milliseconds: 600),
           curve: Curves.easeOutCubic,
@@ -708,13 +635,13 @@ class _BurndownChart extends StatelessWidget {
               clipData: FlClipData.none(),
               // 淡虚线网格（水平 + 垂直）：用户可直观看出每天/每档的落差。
               // horizontalInterval 按 Y 轴最大值均分（4 档），verticalInterval
-              // 为 5 天，与 X 轴标签同步。
+              // 与 X 轴标签同步（labelInterval 随宽度动态调整）。
               gridData: FlGridData(
                 show: true,
                 drawVerticalLine: true,
                 drawHorizontalLine: true,
                 horizontalInterval: maxY / 4,
-                verticalInterval: 5,
+                verticalInterval: labelInterval.toDouble(),
                 getDrawingHorizontalLine: (_) => FlLine(
                   color: scheme.outlineVariant.withValues(alpha: 0.4),
                   strokeWidth: 1,
@@ -732,11 +659,14 @@ class _BurndownChart extends StatelessWidget {
                 rightTitles: const AxisTitles(),
                 // 左轴刻度：reservedSize 预留足够宽度把文字完全推出图表区，
                 // SideTitleWidget.space 提供文字与绘图区之间的额外间隙，
-                // 文本右对齐后与绿色填充区彻底分离（问题 1）。
+                // 文本右对齐后与绿色填充区彻底分离。interval 显式设为
+                // maxY/4（与水平网格线同步、均匀分布）——否则 fl_chart 自动
+                // 刻度可能恰好落在数据点/曲线顶部高度，文字贴线重叠。
                 leftTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
                     reservedSize: 96,
+                    interval: maxY / 4,
                     getTitlesWidget: (value, meta) {
                       final text = value == 0
                           ? '0'
@@ -746,36 +676,41 @@ class _BurndownChart extends StatelessWidget {
                         space: 12,
                         child: Align(
                           alignment: Alignment.centerRight,
-                          child: Text(text, style: axisStyle),
+                          // FittedBox 缩放长时长文本到槽位内，防溢出压线。
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(text, style: axisStyle),
+                          ),
                         ),
                       );
                     },
                   ),
                 ),
-                // X 轴：interval 设为 1、在 getTitlesWidget 内自行过滤——
-                // 每 5 天一个日期标签（M/d）、最右端固定显示「今天」，其余
-                // 位置返回空；旋转 -45° 防止挤在一起。首个标签（X=0）跳过，
-                // 避免与左轴「0」刻度挤在左下角。
+                // X 轴：interval 随宽度动态放大（labelInterval），
+                // getTitlesWidget 内对非标签刻度返回空；最右端固定显示
+                // 「今天」（水平不旋转，避免与紧邻斜标签叠压）。
                 bottomTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
                     reservedSize: 56,
-                    interval: 1,
+                    interval: labelInterval.toDouble(),
                     getTitlesWidget: (value, meta) {
                       final index = value.round();
-                      // 最右端（今天）优先：即使日期恰好落在每 5 天刻度上，
-                      // 也标注「今天」而非日期。
+                      // 最右端（今天）优先：即使日期恰好落在标签刻度上，
+                      // 也标注「今天」而非日期。水平显示（不旋转），且
+                      // 日期标签跳过与「今天」距离不足 labelInterval 的
+                      // 紧邻项，避免两个标签挤在一起。
                       if (index == points.length - 1) {
                         return SideTitleWidget(
                           meta: meta,
                           space: 12,
-                          child: Transform.rotate(
-                            angle: -math.pi / 4, // -45°，向左下倾斜
-                            child: Text('今天', style: axisStyle),
-                          ),
+                          child: Text('今天', style: axisStyle),
                         );
                       }
-                      if (index <= 0 || index % 5 != 0) {
+                      if (index <= 0 ||
+                          index % labelInterval != 0 ||
+                          points.length - 1 - index < labelInterval) {
                         return const SizedBox.shrink();
                       }
                       return SideTitleWidget(
@@ -867,8 +802,10 @@ class _BurndownChart extends StatelessWidget {
                   dotData: const FlDotData(show: false),
                 ),
               ],
-            ),
-          ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -896,37 +833,39 @@ class _HeatmapSection extends StatelessWidget {
     final hasAny = completedCounts.isNotEmpty;
     final dark = Theme.of(context).brightness == Brightness.dark;
 
-    return _SectionCard(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _SectionHeader(
-            icon: Icons.local_fire_department_outlined,
-            title: '完成热力图',
-            subtitle: '最近 26 周，按完成日期统计完成任务数量',
-          ),
-          const SizedBox(height: 12),
-          if (!hasAny)
-            const _ChartEmptyState(
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SectionHeader(
               icon: Icons.local_fire_department_outlined,
-              title: '还没有完成记录',
-              caption: '完成任务后，这里会按日期点亮格子',
-            )
-          else
-            _HeatmapGrid(
-              todayStr: todayStr,
-              weekStarts: weekStarts,
-              completedCounts: completedCounts,
+              title: '完成热力图',
+              subtitle: '最近 26 周，按完成日期统计完成任务数量',
+            ),
+            const SizedBox(height: 12),
+            if (!hasAny)
+              const ChartEmptyState(
+                icon: Icons.local_fire_department_outlined,
+                title: '还没有完成记录',
+                caption: '完成任务后，这里会按日期点亮格子',
+              )
+            else
+              _HeatmapGrid(
+                todayStr: todayStr,
+                weekStarts: weekStarts,
+                completedCounts: completedCounts,
+                dark: dark,
+              ),
+            const SizedBox(height: 12),
+            _CompactLegend(
+              colors: _heatColors,
+              labels: const ['0', '1-3', '4-6', '7-9', '10+'],
               dark: dark,
             ),
-          const SizedBox(height: 12),
-          _CompactLegend(
-            colors: _heatColors,
-            labels: const ['0', '1-3', '4-6', '7-9', '10+'],
-            dark: dark,
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1073,7 +1012,13 @@ class _HeatmapGrid extends StatelessWidget {
       height: _monthLabelHeight,
       child: Align(
         alignment: Alignment.centerLeft,
-        child: Text('${firstDay.month}月', style: labelStyle),
+        // FittedBox 缩放月份文本适配列宽（列宽可能仅 10px 左右，「10月」
+        // 两个字符更宽），避免溢出盖到右侧格子。
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text('${firstDay.month}月', style: labelStyle),
+        ),
       ),
     );
   }
@@ -1148,45 +1093,47 @@ class _GanttSection extends StatelessWidget {
       }
     }
 
-    return _SectionCard(
+    return Card(
       // 顶部加大留白：容纳 Y 轴 maxY 刻度的长文本（如「74 小时 10 分」），
       // 底部留白给 X 轴旋转 45° 后的斜日期标签与悬停 tooltip。
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const _SectionHeader(
-            icon: Icons.bar_chart_outlined,
-            title: '任务耗时图',
-            subtitle: '按周展示未来计划与已完成时长（分钟）',
-          ),
-          const SizedBox(height: 12),
-          if (rows.isEmpty)
-            const _ChartEmptyState(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SectionHeader(
               icon: Icons.bar_chart_outlined,
-              title: '还没有带预估时长的任务安排',
-              caption: '给任务设置预估时长后，这里会按周展示计划与完成进度',
-            )
-          else
-            _BarChart(
-              plannedPerWeek: plannedPerWeek,
-              completedPerWeek: completedPerWeek,
-              weekStarts: weekStarts,
+              title: '任务耗时图',
+              subtitle: '按周展示未来计划与已完成时长（分钟）',
             ),
-          const SizedBox(height: 12),
-          // 图例固定在卡片底部，不随图表横向滚动而移动。
-          const Row(
-            children: [
-              _LegendDot(color: _progressGreenLight),
-              SizedBox(width: 8),
-              Text('计划', style: TextStyle(fontSize: 10)),
-              SizedBox(width: 16),
-              _LegendDot(color: _progressGreen),
-              SizedBox(width: 8),
-              Text('完成', style: TextStyle(fontSize: 10)),
-            ],
-          ),
-        ],
+            const SizedBox(height: 12),
+            if (rows.isEmpty)
+              const ChartEmptyState(
+                icon: Icons.bar_chart_outlined,
+                title: '还没有带预估时长的任务安排',
+                caption: '给任务设置预估时长后，这里会按周展示计划与完成进度',
+              )
+            else
+              _BarChart(
+                plannedPerWeek: plannedPerWeek,
+                completedPerWeek: completedPerWeek,
+                weekStarts: weekStarts,
+              ),
+            const SizedBox(height: 12),
+            // 图例固定在卡片底部，不随图表横向滚动而移动。
+            const Row(
+              children: [
+                _LegendDot(color: _progressGreenLight),
+                SizedBox(width: 8),
+                Text('计划', style: TextStyle(fontSize: 10)),
+                SizedBox(width: 16),
+                _LegendDot(color: _progressGreen),
+                SizedBox(width: 8),
+                Text('完成', style: TextStyle(fontSize: 10)),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1290,6 +1237,14 @@ class _BarChart extends StatelessWidget {
             final chartWidth = constraints.maxWidth > minChartWidth
                 ? constraints.maxWidth
                 : minChartWidth;
+            // 旋转 45° 的日期标签水平投影约 30px；按图表实际宽度动态放大
+            // 周间隔，保证相邻标签中心距 ≥ 40px（窄窗不再互相覆盖）。
+            final perWeekPx = chartWidth / weeks;
+            const minLabelSpacing = 40.0;
+            var labelInterval = 3;
+            while (perWeekPx * labelInterval < minLabelSpacing) {
+              labelInterval += 1;
+            }
 
             final chart = BarChart(
               BarChartData(
@@ -1325,6 +1280,10 @@ class _BarChart extends StatelessWidget {
                       // 长中文文本（如「66 小时 40 分」）需足够槽位宽度，
                       // 否则溢出槽位压到柱状图；104 可容纳最长刻度。
                       reservedSize: 104,
+                      // interval 显式设为 maxY/4（与水平网格线同步、均匀
+                      // 分布）——否则 fl_chart 自动刻度可能恰好等于柱顶
+                      // 高度，刻度文字与柱子最高/次高点贴线重叠。
+                      interval: maxY / 4,
                       getTitlesWidget: (value, meta) {
                         final text = value == 0
                             ? '0'
@@ -1335,7 +1294,12 @@ class _BarChart extends StatelessWidget {
                           space: 14,
                           child: Align(
                             alignment: Alignment.centerRight,
-                            child: Text(text, style: axisStyle),
+                            // FittedBox 缩放长时长文本到槽位内，防溢出压线。
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerRight,
+                              child: Text(text, style: axisStyle),
+                            ),
                           ),
                         );
                       },
@@ -1344,12 +1308,15 @@ class _BarChart extends StatelessWidget {
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      // 旋转 45° 后斜文字需要更高占位 + 底部留白。
-                      reservedSize: 48,
-                      interval: 3,
+                      // 旋转 45° 后斜文字需要更高占位 + 底部留白
+                      // （与燃尽图 56 统一，避免标签压到下方图例）。
+                      reservedSize: 56,
+                      interval: labelInterval.toDouble(),
                       getTitlesWidget: (value, meta) {
                         final index = value.round();
-                        if (index < 0 || index >= weeks) {
+                        if (index < 0 ||
+                            index >= weeks ||
+                            index % labelInterval != 0) {
                           return const SizedBox.shrink();
                         }
                         return SideTitleWidget(

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/errors/app_guard.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../data/settings_repository_provider.dart';
 
 /// 外观设置页（M10）：明暗主题三选一（跟随系统 / 浅色 / 深色）。
@@ -71,7 +72,10 @@ class _AppearancePageState extends ConsumerState<AppearancePage> {
       appBar: AppBar(title: const Text('外观')),
       body: settingsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('加载失败：$error')),
+        error: (error, _) => AppErrorView(
+          error: error,
+          onRetry: () => ref.invalidate(settingsProvider),
+        ),
         data: (settings) {
           // 首次加载到数据时初始化本地选择；provider 后续刷新不重置。
           if (!_initialized) {
@@ -122,10 +126,10 @@ class _AppearancePageState extends ConsumerState<AppearancePage> {
 
 /// 主题模式显示名。
 String _modeLabel(ThemeMode mode) => switch (mode) {
-      ThemeMode.system => '跟随系统',
-      ThemeMode.light => '浅色',
-      ThemeMode.dark => '深色',
-    };
+  ThemeMode.system => '跟随系统',
+  ThemeMode.light => '浅色',
+  ThemeMode.dark => '深色',
+};
 
 /// 主题预览卡：并排展示浅色/深色两套色板的「表面 + 主色」对比，
 /// 高亮当前选中模式，直观反馈选择效果。
@@ -142,14 +146,20 @@ class _ThemePreview extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('当前模式：${_modeLabel(mode)}',
-                style: Theme.of(context).textTheme.titleSmall),
+            Text(
+              '当前模式：${_modeLabel(mode)}',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
             const SizedBox(height: 12),
             Row(
               children: [
-                Expanded(child: _Swatch(theme: AppTheme.light(), label: '浅色')),
+                Expanded(
+                  child: _Swatch(theme: AppTheme.light(), label: '浅色'),
+                ),
                 const SizedBox(width: 12),
-                Expanded(child: _Swatch(theme: AppTheme.dark(), label: '深色')),
+                Expanded(
+                  child: _Swatch(theme: AppTheme.dark(), label: '深色'),
+                ),
               ],
             ),
           ],

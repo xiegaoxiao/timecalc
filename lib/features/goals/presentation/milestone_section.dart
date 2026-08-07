@@ -7,6 +7,7 @@ import '../../../core/database/tables.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../shared/widgets/app_error_view.dart';
+import '../../../shared/widgets/chart_empty_state.dart';
 import '../data/milestone_repository_provider.dart';
 import 'milestone_form_dialog.dart';
 
@@ -47,14 +48,13 @@ class MilestoneSection extends ConsumerWidget {
         ),
         const SizedBox(height: 8),
         milestonesAsync.when(
-          loading: () =>
-              const Center(child: CircularProgressIndicator()),
+          loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, _) => AppErrorView(error: error),
           data: (milestones) {
             if (milestones.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Text('还没有里程碑，点击「添加里程碑」设定阶段性节点'),
+              return const ChartEmptyState(
+                icon: Icons.flag_outlined,
+                title: '还没有里程碑，点击「添加里程碑」设定阶段性节点',
               );
             }
             return Column(

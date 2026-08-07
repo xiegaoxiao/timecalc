@@ -7,6 +7,7 @@ import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../core/providers/app_refresh.dart';
+import '../../../core/theme/app_semantic_colors.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../services/countdown_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
@@ -134,9 +135,11 @@ class _GoalCard extends ConsumerWidget {
     );
 
     final scheme = Theme.of(context).colorScheme;
+    final warning = AppSemanticColors.of(context).warning;
     final phaseColor = switch (phase) {
       CountdownPhase.upcoming => scheme.primary,
-      CountdownPhase.today => scheme.error,
+      // 今天截止 = 行动提醒（警告色）；已逾期 = 错误（红色）。
+      CountdownPhase.today => warning,
       CountdownPhase.overdue => scheme.error,
       CountdownPhase.terminated => scheme.outline,
     };
@@ -144,11 +147,7 @@ class _GoalCard extends ConsumerWidget {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: ListTile(
-        title: Text(
-          goal.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+        title: Text(goal.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -160,11 +159,13 @@ class _GoalCard extends ConsumerWidget {
             // 状态不只依赖颜色（NFR-4）：阶段文案 + 图标。
             Row(
               children: [
-                Icon(phase == CountdownPhase.upcoming
-                    ? Icons.schedule
-                    : Icons.error_outline,
-                    size: 14,
-                    color: phaseColor),
+                Icon(
+                  phase == CountdownPhase.upcoming
+                      ? Icons.schedule
+                      : Icons.error_outline,
+                  size: 14,
+                  color: phaseColor,
+                ),
                 const SizedBox(width: 4),
                 Text(
                   CountdownService.label(phase, days),
@@ -193,7 +194,10 @@ class _GoalCard extends ConsumerWidget {
   }
 
   Future<void> _handleAction(
-      BuildContext context, WidgetRef ref, String action) async {
+    BuildContext context,
+    WidgetRef ref,
+    String action,
+  ) async {
     final repo = ref.read(goalRepositoryProvider);
     final messenger = ScaffoldMessenger.of(context);
     switch (action) {
@@ -211,7 +215,9 @@ class _GoalCard extends ConsumerWidget {
         );
         if (!ok) return;
         _refreshGoalRelated(ref);
-        messenger.showSnackBar(SnackBar(content: Text('「${goal.title}」已标记为完成')));
+        messenger.showSnackBar(
+          SnackBar(content: Text('「${goal.title}」已标记为完成')),
+        );
         break;
       case 'abandon':
         final ok = await runDbAction(
@@ -220,7 +226,9 @@ class _GoalCard extends ConsumerWidget {
         );
         if (!ok) return;
         _refreshGoalRelated(ref);
-        messenger.showSnackBar(SnackBar(content: Text('「${goal.title}」已标记为放弃')));
+        messenger.showSnackBar(
+          SnackBar(content: Text('「${goal.title}」已标记为放弃')),
+        );
         break;
       case 'archive':
         final ok = await runDbAction(
@@ -243,9 +251,7 @@ class _GoalCard extends ConsumerWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('删除目标？'),
-        content: Text(
-          '将删除「${goal.title}」及其全部任务。此操作不可撤销。',
-        ),
+        content: Text('将删除「${goal.title}」及其全部任务。此操作不可撤销。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -269,9 +275,9 @@ class _GoalCard extends ConsumerWidget {
     if (!ok) return;
     _refreshGoalRelated(ref);
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('「${goal.title}」及其任务已删除')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('「${goal.title}」及其任务已删除')));
     }
   }
 

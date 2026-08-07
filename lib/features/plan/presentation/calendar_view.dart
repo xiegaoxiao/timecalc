@@ -7,9 +7,11 @@ import '../../../core/database/tables.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../core/providers/app_refresh.dart';
+import '../../../core/theme/app_semantic_colors.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../services/load_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
+import '../../../shared/widgets/chart_empty_state.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../../settings/data/settings_repository.dart';
 import '../../settings/data/settings_repository_provider.dart';
@@ -49,7 +51,8 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
   Widget build(BuildContext context) {
     final today = ref.watch(clockProvider)();
     final todayStr = DateFormat('yyyy-MM-dd').format(today);
-    final monthKey = '${_month.year}-${_month.month.toString().padLeft(2, '0')}';
+    final monthKey =
+        '${_month.year}-${_month.month.toString().padLeft(2, '0')}';
 
     final goalsAsync = ref.watch(goalListProvider);
     final settingsAsync = ref.watch(settingsProvider);
@@ -84,10 +87,12 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
               void onChanged() => _invalidateAll();
 
               final activeGoals = goals
-                  .where((g) =>
-                      g.status != 'completed' &&
-                      g.status != 'abandoned' &&
-                      g.status != 'archived')
+                  .where(
+                    (g) =>
+                        g.status != 'completed' &&
+                        g.status != 'abandoned' &&
+                        g.status != 'archived',
+                  )
                   .toList();
               final addGoals = activeGoals.isNotEmpty ? activeGoals : goals;
               final goalsById = {for (final g in goals) g.id: g};
@@ -108,92 +113,95 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _MonthHeader(
-                    month: _month,
-                    isCurrentMonth: todayStr.startsWith(monthKey),
-                    onPrev: () => setState(() {
-                      _month = DateTime(_month.year, _month.month - 1);
-                    }),
-                    onNext: () => setState(() {
-                      _month = DateTime(_month.year, _month.month + 1);
-                    }),
-                    onBackToToday: () => setState(() {
-                      _month = DateTime(today.year, today.month);
-                      _selectedDate = todayStr;
-                    }),
-                  ),
-                  const SizedBox(height: 8),
-                  _MonthGrid(
-                    month: _month,
-                    todayStr: todayStr,
-                    selectedDate: _selectedDate,
-                    weekdays: weekdays,
-                    aggregate: aggregate,
-                    onSelect: (dateStr) =>
-                        setState(() => _selectedDate = dateStr),
-                    // FR-5.1：把任务拖到某一天改期。
-                    onDropTask: (task, date) => _handleTaskDropped(task, date),
-                  ),
-                  const Divider(height: 32),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          DateFormat('yyyy-MM-dd EEEE', 'zh_CN')
-                              .format(parseLocalDate(_selectedDate)),
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                      ),
-                      TextButton.icon(
-                        onPressed: addGoals.isEmpty
-                            ? null
-                            : () async {
-                                await QuickTaskFormDialog.show(
-                                  context,
-                                  date: parseLocalDate(_selectedDate),
-                                  goals: addGoals,
-                                );
-                                onChanged();
-                              },
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('添加任务'),
-                      ),
-                    ],
-                  ),
-                  if (selectedTasks.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 16),
-                      child: Text('这一天没有任务'),
-                    )
-                  else
-                    for (final task in selectedTasks)
-                      // FR-5.1：长按任务条目即可拖动到网格中的目标日期改期。
-                      LongPressDraggable<Task>(
-                        data: task,
-                        feedback: Material(
-                          elevation: 4,
-                          borderRadius: BorderRadius.circular(8),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Text(
-                              task.title,
-                              style: const TextStyle(fontSize: 12),
-                            ),
+                      month: _month,
+                      isCurrentMonth: todayStr.startsWith(monthKey),
+                      onPrev: () => setState(() {
+                        _month = DateTime(_month.year, _month.month - 1);
+                      }),
+                      onNext: () => setState(() {
+                        _month = DateTime(_month.year, _month.month + 1);
+                      }),
+                      onBackToToday: () => setState(() {
+                        _month = DateTime(today.year, today.month);
+                        _selectedDate = todayStr;
+                      }),
+                    ),
+                    const SizedBox(height: 8),
+                    _MonthGrid(
+                      month: _month,
+                      todayStr: todayStr,
+                      selectedDate: _selectedDate,
+                      weekdays: weekdays,
+                      aggregate: aggregate,
+                      onSelect: (dateStr) =>
+                          setState(() => _selectedDate = dateStr),
+                      // FR-5.1：把任务拖到某一天改期。
+                      onDropTask: (task, date) =>
+                          _handleTaskDropped(task, date),
+                    ),
+                    const Divider(height: 32),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            DateFormat(
+                              'yyyy-MM-dd EEEE',
+                              'zh_CN',
+                            ).format(parseLocalDate(_selectedDate)),
+                            style: Theme.of(context).textTheme.titleMedium,
                           ),
                         ),
-                        childWhenDragging: Opacity(
-                          opacity: 0.4,
+                        TextButton.icon(
+                          onPressed: addGoals.isEmpty
+                              ? null
+                              : () async {
+                                  await QuickTaskFormDialog.show(
+                                    context,
+                                    date: parseLocalDate(_selectedDate),
+                                    goals: addGoals,
+                                  );
+                                  onChanged();
+                                },
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('添加任务'),
+                        ),
+                      ],
+                    ),
+                    if (selectedTasks.isEmpty)
+                      const ChartEmptyState(
+                        icon: Icons.event_outlined,
+                        title: '这一天没有任务',
+                      )
+                    else
+                      for (final task in selectedTasks)
+                        // FR-5.1：长按任务条目即可拖动到网格中的目标日期改期。
+                        LongPressDraggable<Task>(
+                          data: task,
+                          feedback: Material(
+                            elevation: 4,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Text(
+                                task.title,
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                          ),
+                          childWhenDragging: Opacity(
+                            opacity: 0.4,
+                            child: TaskTile(
+                              task: task,
+                              goalTitle: goalsById[task.goalId]?.title,
+                              onChanged: onChanged,
+                            ),
+                          ),
                           child: TaskTile(
                             task: task,
                             goalTitle: goalsById[task.goalId]?.title,
                             onChanged: onChanged,
                           ),
                         ),
-                        child: TaskTile(
-                          task: task,
-                          goalTitle: goalsById[task.goalId]?.title,
-                          onChanged: onChanged,
-                        ),
-                      ),
                   ],
                 ),
               );
@@ -320,7 +328,10 @@ class _MonthGrid extends StatelessWidget {
             for (final label in _weekdayLabels)
               Expanded(
                 child: Center(
-                  child: Text(label, style: Theme.of(context).textTheme.labelMedium),
+                  child: Text(
+                    label,
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
                 ),
               ),
           ],
@@ -346,10 +357,15 @@ class _MonthGrid extends StatelessWidget {
     );
   }
 
-  Widget _buildCell(BuildContext context, ColorScheme scheme, {required int day}) {
+  Widget _buildCell(
+    BuildContext context,
+    ColorScheme scheme, {
+    required int day,
+  }) {
     if (day < 1 || day > DateTime(month.year, month.month + 1, 0).day) {
       return const SizedBox(height: 80);
     }
+    final warning = AppSemanticColors.of(context).warning;
     final date = DateTime(month.year, month.month, day);
     final dateStr = DateFormat('yyyy-MM-dd').format(date);
     final agg = aggregate[dateStr] ?? DayAggregate.empty;
@@ -357,16 +373,16 @@ class _MonthGrid extends StatelessWidget {
     final isToday = dateStr == todayStr;
     final isSelected = dateStr == selectedDate;
 
-    final textColor = isAvailable
-        ? scheme.onSurface
-        : scheme.outlineVariant;
+    final textColor = isAvailable ? scheme.onSurface : scheme.outlineVariant;
     final background = isSelected
         ? scheme.secondaryContainer
         : (isToday ? scheme.primaryContainer : scheme.surfaceContainerLow);
 
     // 屏幕阅读器可读的单元格描述（NFR-4）：日期 + 完成数/总数 + 时长，
     // 超载时带「超出」文本，状态不只依赖颜色。
-    final label = StringBuffer('$dateStr，完成 ${agg.doneCount}/${agg.totalCount}');
+    final label = StringBuffer(
+      '$dateStr，完成 ${agg.doneCount}/${agg.totalCount}',
+    );
     if (agg.loadMinutes > 0) {
       label.write('，时长 ${_compactDuration(agg.loadMinutes)}');
     }
@@ -414,16 +430,19 @@ class _MonthGrid extends StatelessWidget {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // 非颜色状态（NFR-4）：超载格在红色文本外附警告图标。
-                      Icon(Icons.warning_amber_rounded,
-                          size: 11, color: scheme.error),
+                      // 非颜色状态（NFR-4）：超载格在警告色文本外附警告图标。
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        size: 11,
+                        color: warning,
+                      ),
                       const SizedBox(width: 2),
                       Flexible(
                         child: Text(
                           '超出${_compactDuration(agg.overMinutes)}',
                           style: TextStyle(
                             fontSize: 11,
-                            color: scheme.error,
+                            color: warning,
                             fontWeight: FontWeight.w600,
                           ),
                           maxLines: 1,
@@ -444,7 +463,8 @@ class _MonthGrid extends StatelessWidget {
     // FR-5.1：网格格作为 DragTarget，接受从选日面板拖来的任务改期。
     // 拖动悬停时高亮边框；放置失败（数据库异常）时任务保持原日期。
     return DragTarget<Task>(
-      onWillAcceptWithDetails: (details) => details.data.status != TaskStatus.done,
+      onWillAcceptWithDetails: (details) =>
+          details.data.status != TaskStatus.done,
       onAcceptWithDetails: (details) => drop(details.data, dateStr),
       builder: (context, candidate, rejected) => DecoratedBox(
         decoration: candidate.isNotEmpty

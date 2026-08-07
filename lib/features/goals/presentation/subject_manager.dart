@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../shared/widgets/app_error_view.dart';
+import '../../../shared/widgets/chart_empty_state.dart';
 import '../data/subject_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
 
@@ -38,8 +39,7 @@ class SubjectManager extends ConsumerWidget {
         ),
         const SizedBox(height: 8),
         subjectsAsync.when(
-          loading: () =>
-              const Center(child: CircularProgressIndicator()),
+          loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, _) => AppErrorView(error: error),
           data: (subjects) {
             final taskCounts = <int, List<Task>>{};
@@ -51,9 +51,9 @@ class SubjectManager extends ConsumerWidget {
               }
             }
             if (subjects.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Text('还没有科目，点击「添加科目」按科目组织任务'),
+              return const ChartEmptyState(
+                icon: Icons.label_outline,
+                title: '还没有科目，点击「添加科目」按科目组织任务',
               );
             }
             return Column(
@@ -63,7 +63,8 @@ class SubjectManager extends ConsumerWidget {
                     goalId: goalId,
                     subject: subject,
                     taskCount: taskCounts[subject.id]?.length ?? 0,
-                    doneCount: taskCounts[subject.id]
+                    doneCount:
+                        taskCounts[subject.id]
                             ?.where((t) => t.status == 'done')
                             .length ??
                         0,
@@ -101,8 +102,7 @@ class SubjectManager extends ConsumerWidget {
             child: const Text('取消'),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.of(context).pop(controller.text.trim()),
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
             child: const Text('添加'),
           ),
         ],
@@ -125,7 +125,10 @@ class SubjectManager extends ConsumerWidget {
   }
 
   Future<void> _renameSubject(
-      BuildContext context, WidgetRef ref, Subject subject) async {
+    BuildContext context,
+    WidgetRef ref,
+    Subject subject,
+  ) async {
     final controller = TextEditingController(text: subject.name);
     final name = await showDialog<String>(
       context: context,
@@ -146,8 +149,7 @@ class SubjectManager extends ConsumerWidget {
             child: const Text('取消'),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.of(context).pop(controller.text.trim()),
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
             child: const Text('保存'),
           ),
         ],
@@ -166,7 +168,10 @@ class SubjectManager extends ConsumerWidget {
   }
 
   Future<void> _deleteSubject(
-      BuildContext context, WidgetRef ref, Subject subject) async {
+    BuildContext context,
+    WidgetRef ref,
+    Subject subject,
+  ) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -222,14 +227,10 @@ class _SubjectCard extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
-        leading: CircleAvatar(
-          child: Text(subject.name.characters.first),
-        ),
+        leading: CircleAvatar(child: Text(subject.name.characters.first)),
         title: Text(subject.name),
         subtitle: Text(
-          taskCount == 0
-              ? '还没有任务，点击进入添加'
-              : '$doneCount/$taskCount 个任务完成',
+          taskCount == 0 ? '还没有任务，点击进入添加' : '$doneCount/$taskCount 个任务完成',
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,

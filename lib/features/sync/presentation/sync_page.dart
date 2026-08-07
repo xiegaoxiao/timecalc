@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../backup/data/credential_store.dart';
 import '../../settings/data/settings_repository_provider.dart';
 import '../data/webdav_sync_service_provider.dart';
@@ -73,9 +74,7 @@ class _SyncPageState extends ConsumerState<SyncPage> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(
-            value ? '已启用自动同步，将自动拉取/推送' : '已关闭自动同步',
-          ),
+          content: Text(value ? '已启用自动同步，将自动拉取/推送' : '已关闭自动同步'),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -107,7 +106,9 @@ class _SyncPageState extends ConsumerState<SyncPage> {
               : _usernameController.text.trim(),
         );
         if (enteredPassword.isNotEmpty) {
-          await ref.read(webDavCredentialStoreProvider).save(url, enteredPassword);
+          await ref
+              .read(webDavCredentialStoreProvider)
+              .save(url, enteredPassword);
           await repo.updateWebDavPasswordSaved(true);
         } else if (urlChanged) {
           // 地址变了但未填新密码：新地址没有可用密码，重置「已保存」标记
@@ -119,9 +120,9 @@ class _SyncPageState extends ConsumerState<SyncPage> {
     if (!ok) return;
     ref.invalidate(settingsProvider);
     if (notify && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('同步设置已保存')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('同步设置已保存')));
     }
   }
 
@@ -133,9 +134,9 @@ class _SyncPageState extends ConsumerState<SyncPage> {
     final username = _usernameController.text.trim();
     final password = _passwordController.text;
     if (url.isEmpty || username.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请完整填写 WebDAV 地址与用户名')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请完整填写 WebDAV 地址与用户名')));
       return;
     }
     // 密码留空时用已保存密码（凭据存储）；两者都没有则提示先填密码。
@@ -144,9 +145,9 @@ class _SyncPageState extends ConsumerState<SyncPage> {
         : await ref.read(webDavCredentialStoreProvider).read(url);
     if (!mounted) return;
     if (effectivePassword == null || effectivePassword.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请填写密码（或使用已保存密码留空）')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请填写密码（或使用已保存密码留空）')));
       return;
     }
     setState(() => _testing = true);
@@ -159,14 +160,14 @@ class _SyncPageState extends ConsumerState<SyncPage> {
       );
       await _save(password: password, notify: false);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('连接成功，WebDAV 配置已保存')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('连接成功，WebDAV 配置已保存')));
     } on Exception catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('连接失败：$e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('连接失败：$e')));
     } finally {
       if (mounted) setState(() => _testing = false);
     }
@@ -187,9 +188,9 @@ class _SyncPageState extends ConsumerState<SyncPage> {
     if (!ok) return;
     ref.invalidate(settingsProvider);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已清除已保存的密码，请重新填写')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已清除已保存的密码，请重新填写')));
     }
   }
 
@@ -202,7 +203,9 @@ class _SyncPageState extends ConsumerState<SyncPage> {
       final messenger = ScaffoldMessenger.of(context);
       ref.invalidate(settingsProvider);
       if (result.skipped) {
-        messenger.showSnackBar(SnackBar(content: Text('未同步：${result.skipReason}')));
+        messenger.showSnackBar(
+          SnackBar(content: Text('未同步：${result.skipReason}')),
+        );
       } else if (result.error != null) {
         messenger.showSnackBar(SnackBar(content: Text('同步失败：${result.error}')));
       } else {
@@ -225,7 +228,10 @@ class _SyncPageState extends ConsumerState<SyncPage> {
       appBar: AppBar(title: const Text('同步')),
       body: settingsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('加载失败：$error')),
+        error: (error, _) => AppErrorView(
+          error: error,
+          onRetry: () => ref.invalidate(settingsProvider),
+        ),
         data: (settings) {
           if (!_initialized) {
             _enabled = settings.webdavSyncEnabled;
@@ -261,11 +267,16 @@ class _SyncPageState extends ConsumerState<SyncPage> {
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.cloud_sync_outlined,
-                              size: 20, color: Theme.of(context).colorScheme.primary),
+                          Icon(
+                            Icons.cloud_sync_outlined,
+                            size: 20,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
                           const SizedBox(width: 8),
-                          Text('WebDAV',
-                              style: const TextStyle(fontWeight: FontWeight.w600)),
+                          Text(
+                            'WebDAV',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 4),
@@ -311,9 +322,11 @@ class _SyncPageState extends ConsumerState<SyncPage> {
                           padding: const EdgeInsets.only(top: 8),
                           child: Row(
                             children: [
-                              Icon(Icons.lock_outline,
-                                  size: 14,
-                                  color: Theme.of(context).colorScheme.primary),
+                              Icon(
+                                Icons.lock_outline,
+                                size: 14,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
                               const SizedBox(width: 6),
                               Expanded(
                                 child: Text(
@@ -333,10 +346,12 @@ class _SyncPageState extends ConsumerState<SyncPage> {
                       // 连接」——同时保存账号配置与密码（测通才落库）。
                       FilledButton.icon(
                         onPressed: _testing ? null : _saveAndTest,
-                        icon: Icon(_testing
-                            ? Icons.cloud_sync_outlined
-                            : Icons.cloud_done_outlined,
-                            size: 18),
+                        icon: Icon(
+                          _testing
+                              ? Icons.cloud_sync_outlined
+                              : Icons.cloud_done_outlined,
+                          size: 18,
+                        ),
                         label: Text(_testing ? '测试中…' : '保存并测试连接'),
                       ),
                     ],
@@ -351,7 +366,8 @@ class _SyncPageState extends ConsumerState<SyncPage> {
                   subtitle: Text(_lastSyncText(settings)),
                   trailing: _runningSync
                       ? const SizedBox(
-                          width: 20, height: 20,
+                          width: 20,
+                          height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : FilledButton(
@@ -367,8 +383,10 @@ class _SyncPageState extends ConsumerState<SyncPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('同步语义说明',
-                          style: Theme.of(context).textTheme.titleSmall),
+                      Text(
+                        '同步语义说明',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
                       const SizedBox(height: 8),
                       Text(
                         '· 远端只保留一份最新快照，后写者胜：同一时间段请在'

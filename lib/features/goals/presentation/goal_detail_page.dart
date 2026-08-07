@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/providers/clock_provider.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../services/countdown_service.dart';
 import '../../../services/duration_format.dart';
@@ -249,51 +250,72 @@ class _GoalHeader extends ConsumerWidget {
       status: goal.status,
     );
 
-    final scheme = Theme.of(context).colorScheme;
-    final (phaseColor, phaseIcon) = switch (phase) {
-      CountdownPhase.upcoming => (scheme.primary, Icons.schedule),
-      CountdownPhase.today => (scheme.error, Icons.today),
-      CountdownPhase.overdue => (scheme.error, Icons.error_outline),
-      CountdownPhase.terminated => (scheme.outline, Icons.flag_outlined),
+    final phaseIcon = switch (phase) {
+      CountdownPhase.upcoming => Icons.schedule,
+      CountdownPhase.today => Icons.today,
+      CountdownPhase.overdue => Icons.error_outline,
+      CountdownPhase.terminated => Icons.flag_outlined,
     };
+    // 头部 hero：品牌渐变背景 + 白字（与今天页倒计时卡同款，视觉呼应）。
+    final onHero = Colors.white;
+    final onHeroSoft = Colors.white.withValues(alpha: 0.88);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                goal.title,
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-            ),
-            IconButton(
-              tooltip: '编辑目标',
-              icon: const Icon(Icons.edit_outlined),
-              onPressed: () => GoalFormDialog.show(context, goal: goal),
-            ),
-          ],
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: const [kTimeCalcBrandDeep, kTimeCalcBrandBright],
         ),
-        if (goal.description?.isNotEmpty ?? false) ...[
-          const SizedBox(height: 8),
-          Text(goal.description!),
-        ],
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Icon(phaseIcon, size: 18, color: phaseColor),
-            const SizedBox(width: 6),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  goal.title,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: onHero,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: '编辑目标',
+                icon: Icon(Icons.edit_outlined, color: onHero),
+                onPressed: () => GoalFormDialog.show(context, goal: goal),
+              ),
+            ],
+          ),
+          if (goal.description?.isNotEmpty ?? false) ...[
+            const SizedBox(height: 8),
             Text(
-              '${CountdownService.label(phase, days)} · 截止 ${DateFormat('yyyy-MM-dd').format(parseLocalDate(goal.deadlineDate))}',
-              style: TextStyle(
-                color: phaseColor,
-                fontWeight: FontWeight.w500,
-              ),
+              goal.description!,
+              style: TextStyle(color: onHeroSoft),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
-        ),
-      ],
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(phaseIcon, size: 18, color: onHero),
+              const SizedBox(width: 6),
+              Text(
+                '${CountdownService.label(phase, days)} · 截止 ${DateFormat('yyyy-MM-dd').format(parseLocalDate(goal.deadlineDate))}',
+                style: TextStyle(
+                  color: onHero,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

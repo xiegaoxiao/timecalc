@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../theme/app_theme.dart';
 import 'diagnostics_service.dart';
 
 /// 启动错误屏（PRD §8：数据库异常 → 提示从备份恢复或导出诊断信息）。
@@ -24,71 +25,72 @@ class StartupErrorApp extends ConsumerWidget {
     return MaterialApp(
       title: 'TimeCalc 时间计算器',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(useMaterial3: true, colorSchemeSeed: const Color(0xFF3F6C51)),
+      theme: ThemeData(useMaterial3: true, colorSchemeSeed: kTimeCalcSeedColor),
       home: Scaffold(
         body: Builder(
           // Builder 位于 MaterialApp 内部，ScaffoldMessenger 可用。
           builder: (context) => Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560),
-            child: Card(
-              margin: const EdgeInsets.all(24),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.error_outline, size: 32),
-                        const SizedBox(width: 12),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Card(
+                margin: const EdgeInsets.all(24),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.error_outline, size: 32),
+                          const SizedBox(width: 12),
+                          Text(
+                            '数据无法打开',
+                            style: Theme.of(context).textTheme.headlineSmall,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      const Text('本地数据库打开失败，应用无法正常启动。你的数据没有丢失。'),
+                      const SizedBox(height: 8),
+                      if (dbPath != null)
                         Text(
-                          '数据无法打开',
-                          style: Theme.of(context).textTheme.headlineSmall,
+                          '数据库文件：$dbPath',
+                          style: Theme.of(context).textTheme.bodySmall,
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      '本地数据库打开失败，应用无法正常启动。你的数据没有丢失。',
-                    ),
-                    const SizedBox(height: 8),
-                    if (dbPath != null)
+                      const SizedBox(height: 8),
                       Text(
-                        '数据库文件：$dbPath',
+                        '原因：$error',
                         style: Theme.of(context).textTheme.bodySmall,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '原因：$error',
-                      style: Theme.of(context).textTheme.bodySmall,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      '你可以：\n'
-                      '· 导出诊断信息用于排查；\n'
-                      '· 从之前的 TimeCalc 备份（.timecalc 文件）恢复数据——'
-                      '请先安装应用，再从「设置 → 备份与恢复」恢复。',
-                    ),
-                    const SizedBox(height: 16),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: FilledButton.icon(
-                        onPressed: () async {
-                          await _exportDiagnostics(context, ref);
-                        },
-                        icon: const Icon(Icons.description_outlined, size: 18),
-                        label: const Text('导出诊断信息'),
+                      const SizedBox(height: 16),
+                      const Text(
+                        '你可以：\n'
+                        '· 导出诊断信息用于排查；\n'
+                        '· 从之前的 TimeCalc 备份（.timecalc 文件）恢复数据——'
+                        '请先安装应用，再从「设置 → 备份与恢复」恢复。',
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: FilledButton.icon(
+                          onPressed: () async {
+                            await _exportDiagnostics(context, ref);
+                          },
+                          icon: const Icon(
+                            Icons.description_outlined,
+                            size: 18,
+                          ),
+                          label: const Text('导出诊断信息'),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
           ),
         ),
       ),
@@ -104,9 +106,7 @@ class StartupErrorApp extends ConsumerWidget {
     if (target == null) return; // 用户取消
     try {
       await service.exportDiagnostics(target);
-      messenger.showSnackBar(
-        SnackBar(content: Text('诊断信息已导出：${target.path}')),
-      );
+      messenger.showSnackBar(SnackBar(content: Text('诊断信息已导出：${target.path}')));
     } on Exception catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('导出诊断失败：$e')));
     }
@@ -132,7 +132,8 @@ class StartupErrorScope extends StatelessWidget {
   Widget build(BuildContext context) {
     return ProviderScope(
       overrides: [
-        if (picker != null) diagnosticsFilePickerProvider.overrideWithValue(picker!),
+        if (picker != null)
+          diagnosticsFilePickerProvider.overrideWithValue(picker!),
       ],
       child: StartupErrorApp(error: error, dbPath: dbPath),
     );

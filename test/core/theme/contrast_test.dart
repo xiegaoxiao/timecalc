@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:timecalc/core/theme/app_semantic_colors.dart';
 import 'package:timecalc/core/theme/app_theme.dart';
 
 /// 主题对比度测试（NFR-4：文本与背景对比度以 WCAG 2.1 AA 为目标）。
@@ -18,6 +19,7 @@ void main() {
     ('深色', AppTheme.dark()),
   ]) {
     final scheme = theme.colorScheme;
+    final semantics = theme.extension<AppSemanticColors>()!;
     group('$name主题关键色对对比度（WCAG 2.1 AA ≥ 4.5）', () {
       test('正文文本 onSurface/surface', () {
         expect(
@@ -61,6 +63,42 @@ void main() {
           greaterThanOrEqualTo(4.5),
         );
       });
+      test('警告文本 warning/surface（超出可用时长等提醒）', () {
+        expect(
+          _contrast(semantics.warning, scheme.surface),
+          greaterThanOrEqualTo(4.5),
+        );
+      });
+      test('警告容器 onWarningContainer/warningContainer', () {
+        expect(
+          _contrast(semantics.onWarningContainer, semantics.warningContainer),
+          greaterThanOrEqualTo(4.5),
+        );
+      });
+      test('成功文本 success/surface（目标完成等）', () {
+        expect(
+          _contrast(semantics.success, scheme.surface),
+          greaterThanOrEqualTo(4.5),
+        );
+      });
+      test('成功容器 onSuccessContainer/successContainer', () {
+        expect(
+          _contrast(semantics.onSuccessContainer, semantics.successContainer),
+          greaterThanOrEqualTo(4.5),
+        );
+      });
+      test('信息文本 info/surface（中性提示）', () {
+        expect(
+          _contrast(semantics.info, scheme.surface),
+          greaterThanOrEqualTo(4.5),
+        );
+      });
+      test('信息容器 onInfoContainer/infoContainer', () {
+        expect(
+          _contrast(semantics.onInfoContainer, semantics.infoContainer),
+          greaterThanOrEqualTo(4.5),
+        );
+      });
     });
   }
 }
@@ -76,7 +114,9 @@ double _contrast(Color fg, Color bg) {
 
 double _relativeLuminance(Color color) {
   double channel(double v) {
-    return v <= 0.03928 ? v / 12.92 : math.pow((v + 0.055) / 1.055, 2.4).toDouble();
+    return v <= 0.03928
+        ? v / 12.92
+        : math.pow((v + 0.055) / 1.055, 2.4).toDouble();
   }
 
   // Color.r/g/b 为 0..1 的 double。

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/errors/app_guard.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/duration_step_input.dart';
 import '../data/settings_repository.dart';
 import '../data/settings_repository_provider.dart';
@@ -15,8 +16,7 @@ class PlanPreferencePage extends ConsumerStatefulWidget {
   const PlanPreferencePage({super.key});
 
   @override
-  ConsumerState<PlanPreferencePage> createState() =>
-      _PlanPreferencePageState();
+  ConsumerState<PlanPreferencePage> createState() => _PlanPreferencePageState();
 }
 
 class _PlanPreferencePageState extends ConsumerState<PlanPreferencePage> {
@@ -31,12 +31,16 @@ class _PlanPreferencePageState extends ConsumerState<PlanPreferencePage> {
       appBar: AppBar(title: const Text('计划偏好')),
       body: settingsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('加载失败：$error')),
+        error: (error, _) => AppErrorView(
+          error: error,
+          onRetry: () => ref.invalidate(settingsProvider),
+        ),
         data: (settings) {
           // 首次构建时从设置初始化本地编辑状态。
           _dailyMinutes ??= settings.dailyAvailableMinutes;
-          _weekdays ??=
-              SettingsRepository.decodeWeekdays(settings.availableWeekdays);
+          _weekdays ??= SettingsRepository.decodeWeekdays(
+            settings.availableWeekdays,
+          );
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -57,10 +61,7 @@ class _PlanPreferencePageState extends ConsumerState<PlanPreferencePage> {
                 minuteFieldKey: const Key('minuteStepField'),
               ),
               const SizedBox(height: 16),
-              Text(
-                '每周可用日',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
+              Text('每周可用日', style: Theme.of(context).textTheme.bodyMedium),
               const SizedBox(height: 4),
               Wrap(
                 spacing: 8,
@@ -101,9 +102,9 @@ class _PlanPreferencePageState extends ConsumerState<PlanPreferencePage> {
     final total = _dailyMinutes;
     if (total == null || total < 1) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('每日可用时长至少 1 分钟')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('每日可用时长至少 1 分钟')));
       }
       return;
     }
@@ -120,9 +121,9 @@ class _PlanPreferencePageState extends ConsumerState<PlanPreferencePage> {
       if (!ok) return;
       ref.invalidate(settingsProvider);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('计划偏好已保存')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('计划偏好已保存')));
       }
     } finally {
       if (mounted) setState(() => _saving = false);

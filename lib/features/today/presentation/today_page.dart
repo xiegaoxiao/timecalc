@@ -7,6 +7,8 @@ import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../core/providers/app_refresh.dart';
+import '../../../core/theme/app_semantic_colors.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../services/countdown_service.dart';
 import '../../../services/defer_service.dart';
@@ -114,10 +116,12 @@ class _TodayPageState extends ConsumerState<TodayPage> {
     required List<Task> todoTasks,
   }) {
     final activeGoals = goals
-        .where((g) =>
-            g.status != 'completed' &&
-            g.status != 'abandoned' &&
-            g.status != 'archived')
+        .where(
+          (g) =>
+              g.status != 'completed' &&
+              g.status != 'abandoned' &&
+              g.status != 'archived',
+        )
         .toList();
 
     // 数据变更后的统一刷新（FR-3 验收：今日列表、日历、目标详情在同一
@@ -136,20 +140,17 @@ class _TodayPageState extends ConsumerState<TodayPage> {
     final goalsById = {for (final g in goals) g.id: g};
     final availableMinutes = settings.dailyAvailableMinutes;
     final load = _load.dayLoad(todayTasks);
-    final over = _load.overMinutes(
-      load: load,
-      available: availableMinutes,
+    final over = _load.overMinutes(load: load, available: availableMinutes);
+    final weekdays = SettingsRepository.decodeWeekdays(
+      settings.availableWeekdays,
     );
-    final weekdays =
-        SettingsRepository.decodeWeekdays(settings.availableWeekdays);
     final addGoals = activeGoals.isNotEmpty ? activeGoals : goals;
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         if (activeGoals.isNotEmpty) ...[
-          for (final goal in activeGoals)
-            _CountdownCard(goal: goal),
+          for (final goal in activeGoals) _CountdownCard(goal: goal),
           const SizedBox(height: 8),
         ],
         if (todayTasks.isNotEmpty) ...[
@@ -191,7 +192,9 @@ class _TodayPageState extends ConsumerState<TodayPage> {
               if (!mounted) return;
               final ok = await runDbAction(
                 context,
-                action: () => ref.read(taskRepositoryProvider).deferMany(
+                action: () => ref
+                    .read(taskRepositoryProvider)
+                    .deferMany(
                       unfinished.map((t) => t.id).toList(),
                       DateFormat('yyyy-MM-dd').format(picked),
                     ),
@@ -237,11 +240,19 @@ class _TodayPageState extends ConsumerState<TodayPage> {
           ],
         ),
         if (todayTasks.isEmpty)
-          _TodayEmptyView(onAddTask: addGoals.isEmpty ? null : () async {
-            // 等待对话框保存完成后再刷新，避免 invalidate 早于数据写入（回归）。
-            await QuickTaskFormDialog.show(context, date: today, goals: addGoals);
-            onChanged();
-          })
+          _TodayEmptyView(
+            onAddTask: addGoals.isEmpty
+                ? null
+                : () async {
+                    // 等待对话框保存完成后再刷新，避免 invalidate 早于数据写入（回归）。
+                    await QuickTaskFormDialog.show(
+                      context,
+                      date: today,
+                      goals: addGoals,
+                    );
+                    onChanged();
+                  },
+          )
         else
           for (final task in todayTasks)
             TaskTile(
@@ -285,10 +296,13 @@ class _LoadOverviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final semantics = AppSemanticColors.of(context);
     return Card(
       child: ListTile(
-        leading: Icon(over > 0 ? Icons.warning_amber_rounded : Icons.balance),
+        leading: Icon(
+          over > 0 ? Icons.warning_amber_rounded : Icons.balance,
+          color: over > 0 ? semantics.warning : null,
+        ),
         title: Text('今日任务总计 ${DurationFormat.minutes(load)}'),
         subtitle: Column(
           mainAxisSize: MainAxisSize.min,
@@ -298,7 +312,7 @@ class _LoadOverviewCard extends StatelessWidget {
             if (over > 0)
               Text(
                 '超出 ${DurationFormat.minutes(over)}，请调整任务或可用时间',
-                style: TextStyle(color: scheme.error),
+                style: TextStyle(color: semantics.warning),
               ),
             Text(
               '完成 ${stats.doneCount}/${stats.totalCount} · '
@@ -308,7 +322,7 @@ class _LoadOverviewCard extends StatelessWidget {
           ],
         ),
         trailing: over > 0
-            ? Icon(Icons.error_outline, color: scheme.error)
+            ? Icon(Icons.error_outline, color: semantics.warning)
             : null,
       ),
     );
@@ -418,9 +432,7 @@ class _OverdueTasksSection extends StatelessWidget {
       color: background,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: scheme.error.withValues(alpha: 0.30),
-        ),
+        side: BorderSide(color: scheme.error.withValues(alpha: 0.30)),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
@@ -441,10 +453,9 @@ class _OverdueTasksSection extends StatelessWidget {
                 const Spacer(),
                 Text(
                   '${tasks.length} 个未处理',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: scheme.error),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: scheme.error),
                 ),
               ],
             ),
@@ -460,10 +471,9 @@ class _OverdueTasksSection extends StatelessWidget {
                 child: Text(
                   '原计划 ${DateFormat('yyyy-MM-dd').format(parseLocalDate(task.plannedDate))}'
                   ' · 已逾期 ${_overdueDays(today, task.plannedDate)} 天',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: scheme.error),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: scheme.error),
                 ),
               ),
               TaskTile(
@@ -523,63 +533,84 @@ class _CountdownCard extends ConsumerWidget {
       today: today,
       status: goal.status,
     );
-
-    final scheme = Theme.of(context).colorScheme;
-    final (phaseColor, phaseIcon) = switch (phase) {
-      CountdownPhase.upcoming => (scheme.primary, Icons.schedule),
-      CountdownPhase.today => (scheme.error, Icons.today),
-      CountdownPhase.overdue => (scheme.error, Icons.error_outline),
-      CountdownPhase.terminated => (scheme.outline, Icons.flag_outlined),
+    final phaseIcon = switch (phase) {
+      CountdownPhase.upcoming => Icons.schedule,
+      CountdownPhase.today => Icons.today,
+      CountdownPhase.overdue => Icons.error_outline,
+      CountdownPhase.terminated => Icons.flag_outlined,
     };
+    // 倒计时卡是「今日焦点」hero：品牌渐变背景 + 白字（对比度 ≥4.5，
+    // 白/深绿对已由 contrast_test 的 onPrimary/primary 断言覆盖）。
+    final onHero = Colors.white;
+    final onHeroSoft = Colors.white.withValues(alpha: 0.88);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      child: ListTile(
-        title: Text(
-          goal.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: const [kTimeCalcBrandDeep, kTimeCalcBrandBright],
+          ),
         ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 2),
-            Text('截止 ${DateFormat('yyyy-MM-dd').format(parseLocalDate(goal.deadlineDate))}'),
-            const SizedBox(height: 2),
-            Row(
+        child: InkWell(
+          onTap: () => context.push('/goals/${goal.id}'),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(phaseIcon, size: 14, color: phaseColor),
-                const SizedBox(width: 4),
                 Text(
-                  CountdownService.label(phase, days),
-                  style: TextStyle(color: phaseColor),
+                  goal.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: onHero,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
                 ),
-              ],
-            ),
-            // FR-2.3：首页仅展示距离最近的一个未完成里程碑。
-            if (nextMilestone.valueOrNull case final milestone?) ...[
-              const SizedBox(height: 2),
-              Row(
-                children: [
-                  Icon(Icons.flag_outlined, size: 14, color: scheme.primary),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      '下一里程碑：${milestone.title} · ${milestone.date}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: scheme.primary,
-                          ),
+                const SizedBox(height: 2),
+                Text(
+                  '截止 ${DateFormat('yyyy-MM-dd').format(parseLocalDate(goal.deadlineDate))}',
+                  style: TextStyle(color: onHeroSoft, fontSize: 13),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Icon(phaseIcon, size: 14, color: onHero),
+                    const SizedBox(width: 4),
+                    Text(
+                      CountdownService.label(phase, days),
+                      style: TextStyle(color: onHero, fontWeight: FontWeight.w600),
                     ),
+                  ],
+                ),
+                // FR-2.3：首页仅展示距离最近的一个未完成里程碑。
+                if (nextMilestone.valueOrNull case final milestone?) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.flag_outlined, size: 14, color: onHeroSoft),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          '下一里程碑：${milestone.title} · ${milestone.date}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: onHeroSoft, fontSize: 13),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
-              ),
-            ],
-          ],
+              ],
+            ),
+          ),
         ),
-        isThreeLine: true,
-        onTap: () => context.push('/goals/${goal.id}'),
       ),
     );
   }
@@ -618,5 +649,7 @@ class _EmptyView extends StatelessWidget {
 /// 任务逾期天数：计划日期距今经过的整天数（计划日期必早于 [today]）。
 int _overdueDays(DateTime today, String plannedDate) {
   final planned = parseLocalDate(plannedDate);
-  return DateUtils.dateOnly(today).difference(DateUtils.dateOnly(planned)).inDays;
+  return DateUtils.dateOnly(
+    today,
+  ).difference(DateUtils.dateOnly(planned)).inDays;
 }

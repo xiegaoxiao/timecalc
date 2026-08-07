@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/database.dart';
 import '../../../services/duration_format.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../goals/data/subject_repository_provider.dart';
 import '../data/task_repository_provider.dart';
 import 'task_list_section.dart';
@@ -11,7 +12,11 @@ import 'task_list_section.dart';
 ///
 /// 任务创建默认归属当前科目；也可改为其他科目或无科目（移动任务）。
 class SubjectTaskPage extends ConsumerWidget {
-  const SubjectTaskPage({super.key, required this.goalId, required this.subjectId});
+  const SubjectTaskPage({
+    super.key,
+    required this.goalId,
+    required this.subjectId,
+  });
 
   final int goalId;
   final int subjectId;
@@ -25,22 +30,27 @@ class SubjectTaskPage extends ConsumerWidget {
         .firstOrNull;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(subject?.name ?? '科目任务'),
-      ),
+      appBar: AppBar(title: Text(subject?.name ?? '科目任务')),
       body: subjectsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('加载失败：$error')),
+        error: (error, _) => AppErrorView(
+          error: error,
+          onRetry: () => ref.invalidate(subjectListProvider(goalId)),
+        ),
         data: (_) {
           if (subject == null) {
             return const Center(child: Text('科目不存在'));
           }
           return tasksAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => Center(child: Text('加载失败：$error')),
+            error: (error, _) => AppErrorView(
+              error: error,
+              onRetry: () => ref.invalidate(taskListProvider(goalId)),
+            ),
             data: (tasks) {
-              final subjectTasks =
-                  tasks.where((t) => t.subjectId == subjectId).toList();
+              final subjectTasks = tasks
+                  .where((t) => t.subjectId == subjectId)
+                  .toList();
               return CustomScrollView(
                 slivers: [
                   SliverPadding(
@@ -108,8 +118,8 @@ class _SubjectSummary extends StatelessWidget {
           Text(
             '已完成 ${DurationFormat.minutes(doneMinutes)} / 共 ${DurationFormat.minutes(totalMinutes)}',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
+              color: Theme.of(context).colorScheme.outline,
+            ),
           ),
         ],
       ],
