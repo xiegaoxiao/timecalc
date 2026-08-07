@@ -157,7 +157,8 @@ class DesktopController with WindowListener implements TrayListener {
         final maximized = await windowManager.isMaximized();
         final displays = await _queryDisplays();
         final state = await stateStore.read();
-        final currentDisplay = _displayContaining(position, displays);
+        // 显示器归属按窗口真实尺寸的中心点判断（与保存的几何一致）。
+        final currentDisplay = _displayContaining(position, size, displays);
         await stateStore.write(
           state.copyWith(
             x: position.dx,
@@ -350,9 +351,10 @@ class DesktopController with WindowListener implements TrayListener {
   /// 窗口中心点所在的显示器（用于归属判断）。
   static DisplayInfo? _displayContaining(
     Offset position,
+    Size size,
     List<DisplayInfo> displays,
   ) {
-    final center = position + const Offset(640, 360); // 近似窗口中心
+    final center = position + Offset(size.width / 2, size.height / 2);
     for (final display in displays) {
       if (display.bounds.contains(center)) return display;
     }

@@ -214,7 +214,22 @@ class _SyncPageState extends ConsumerState<SyncPage> {
           if (result.pushed) '已推送本地数据到远端',
         ];
         final text = parts.isEmpty ? '已是最新，无需同步' : parts.join('，');
-        messenger.showSnackBar(SnackBar(content: Text(text)));
+        // 分叉提示（M9 增强）：拉取覆盖前本地存在未推送的变更，覆盖后
+        // 那些改动已被远端版本取代；安全副本可找回（路径在 result）。
+        if (result.localChangesOverwritten) {
+          final safetyLine = result.safetyCopyPath == null
+              ? ''
+              : '；被覆盖前的数据已保存在：\n${result.safetyCopyPath}';
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text('检测到本地有未推送的变更，已被远端版本覆盖'
+                  '$safetyLine'),
+              duration: const Duration(seconds: 6),
+            ),
+          );
+        } else {
+          messenger.showSnackBar(SnackBar(content: Text(text)));
+        }
       }
     } finally {
       if (mounted) setState(() => _runningSync = false);

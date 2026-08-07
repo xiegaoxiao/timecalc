@@ -139,12 +139,31 @@ class DiagnosticsService {
   }
 
   Future<String> _databasePath() async {
-    if (_db == null) return '（数据库未打开）';
+    final db = _db;
+    if (db == null) return '（数据库未打开）';
     try {
-      final dir = await getApplicationDocumentsDirectory();
-      return '${dir.path}${Platform.pathSeparator}timecalc.sqlite';
+      // 从真实连接的 `PRAGMA database_list` 读取主库文件路径：权威来源，
+      // 不依赖 drift_flutter 的目录/文件名内部约定（L6）。
+      final rows = await db
+          .customSelect('PRAGMA database_list', readsFrom: {db.settings})
+          .get();
+      for (final row in rows) {
+        final name = row.data['name'];
+        final path = row.data['file'];
+        if (name == 'main' && path is String && path.isNotEmpty) {
+          return path;
+        }
+      }
+      return '（无法定位数据库文件）';
     } catch (_) {
-      return '（无法获取，drift_flutter 默认文档目录）';
+      // 查询失败（如极端只读场景）时回退到预期路径，仍可导出诊断。
+      try {
+        final dir = await getApplicationDocumentsDirectory();
+        return '${dir.path}${Platform.pathSeparator}timecalc.sqlite'
+            '（推断路径，读取失败）';
+      } catch (_) {
+        return '（无法获取，drift_flutter 默认文档目录）';
+      }
     }
   }
 

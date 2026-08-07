@@ -81,7 +81,7 @@ class GoalDetailBody extends ConsumerWidget {
         const SliverToBoxAdapter(child: Divider(height: 32)),
         // 负载区（FR-5.3）：剩余任务时长、剩余可用天数、建议日均与计划风险。
         ...tasksAsync.when(
-          loading: () => const <Widget>[],
+          loading: () => const [_TasksLoadingPlaceholder()],
           error: (error, _) => [
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -115,7 +115,7 @@ class GoalDetailBody extends ConsumerWidget {
             ),
           ],
           data: (subjects) => tasksAsync.when(
-            loading: () => const <Widget>[],
+            loading: () => const [_TasksLoadingPlaceholder()],
             error: (error, _) => [
               SliverPadding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -315,6 +315,38 @@ class _GoalHeader extends ConsumerWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 任务加载占位（L2 修复）：任务列表加载中展示轻量占位卡片，避免负载区
+/// /任务区整段闪空（白跳）。待首次数据到达即被真实内容替换。
+class _TasksLoadingPlaceholder extends StatelessWidget {
+  const _TasksLoadingPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 12),
+                Text('正在加载任务…',
+                    style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

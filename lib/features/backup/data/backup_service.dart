@@ -157,22 +157,32 @@ class BackupService {
   /// [merge] 为 true 时执行「合并」，否则执行「覆盖」。返回覆盖模式
   /// 创建的安全副本文件路径（合并模式返回 null，供 UI 提示用户）。
   Future<File?> restoreBackup(File file, {required RestoreMode mode}) async {
-    // 第一步：完整校验（格式/版本/类型/计数/解析），校验失败不写任何数据。
-    final payload = await _unpack(file);
-    final validationError = payload.manifest.validate();
-    if (validationError != null) {
-      throw BackupException(validationError);
-    }
+    try {
+      // 第一步：完整校验（格式/版本/类型/计数/解析），校验失败不写任何数据。
+      final payload = await _unpack(file);
+      final validationError = payload.manifest.validate();
+      if (validationError != null) {
+        throw BackupException(validationError);
+      }
 
-    switch (mode) {
-      case RestoreMode.merge:
-        await _mergeRestore(payload);
-        return null;
-      case RestoreMode.overwrite:
-        // FR-9.3：覆盖前自动创建当前数据的安全副本。
-        final safety = await exportSafetyCopy();
-        await _overwriteRestore(payload);
-        return safety;
+      switch (mode) {
+        case RestoreMode.merge:
+          await _mergeRestore(payload);
+          return null;
+        case RestoreMode.overwrite:
+          // FR-9.3：覆盖前自动创建当前数据的安全副本。
+          final safety = await exportSafetyCopy();
+          await _overwriteRestore(payload);
+          return safety;
+      }
+    } on BackupException {
+      rethrow;
+    } on Error catch (error) {
+      // 数据段字段类型损坏（如 title 非字符串）时 codec 强转会抛
+      // TypeError（Error 而非 Exception），UI 的 `on Exception` 捕不到，
+      // 会造成恢复静默失败。统一转为 BackupException（事务已回滚，
+      // 原库保持可用，NFR-2）。
+      throw BackupException('备份数据内容不正确（$error）');
     }
   }
 
@@ -465,7 +475,7 @@ class BackupService {
       final entry = archive.findFile('$_dataDir$name');
       if (entry == null) throw BackupException('备份文件缺少 data/$name');
       return _readObjectList(
-        jsonDecode(_decodeUtf8(entry.content as List<int>)),
+        _decodeDataJson(entry.content as List<int>, name),
         name,
       );
     }
@@ -474,7 +484,7 @@ class BackupService {
       final entry = archive.findFile('$_dataDir$name');
       if (entry == null) return const [];
       return _readObjectList(
-        jsonDecode(_decodeUtf8(entry.content as List<int>)),
+        _decodeDataJson(entry.content as List<int>, name),
         name,
       );
     }
@@ -548,6 +558,16 @@ class BackupService {
       out.add(item);
     }
     return out;
+  }
+
+  /// 解码单个数据段 JSON；非法 JSON 转 [BackupException]（而非裸
+  /// FormatException，UI 提示一致可读）。
+  static Object? _decodeDataJson(List<int> bytes, String name) {
+    try {
+      return jsonDecode(_decodeUtf8(bytes));
+    } catch (_) {
+      throw BackupException('备份文件 data/$name 不是有效 JSON');
+    }
   }
 
   static String _goalKey(String title, String deadline, String status) =>

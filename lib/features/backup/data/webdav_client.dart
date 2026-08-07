@@ -160,7 +160,8 @@ class WebDavClient {
         },
       );
     }
-    if (!_isOk(response) && response.statusCode != 207) {
+    // 207 Multi-Status 属 2xx（_isOk 已覆盖），此处直接以 _isOk 判定。
+    if (!_isOk(response)) {
       throw _friendly('读取目录失败', response);
     }
     return _parseMultistatus(utf8.decode(response.bodyBytes), basePath: path);

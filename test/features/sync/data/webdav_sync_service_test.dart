@@ -400,4 +400,74 @@ void main() {
       throwsA(isA<WebDavException>()),
     );
   });
+
+  test('pushIfNeeded 触发且远端较新时标记分叉（本地变更被覆盖提示）', () async {
+    await enableSync();
+    await seedGoal('本地目标（将被远端覆盖）');
+
+    final snapshot = await remoteSnapshotBytes('远端目标');
+    final service = WebDavSyncService(
+      settingsRepository: settings,
+      backupService: backup,
+      credentialStore: credentials,
+      schemaVersion: db.schemaVersion,
+      httpClient: okRemote(snapshot: snapshot),
+    );
+
+    // 经 pushIfNeeded（本地变更监听入口）：先置「本地有未推送变更」标记。
+    final result = await service.pushIfNeeded();
+
+    expect(result.skipped, isFalse);
+    expect(result.pulled, isTrue);
+    // 分叉检测成立：本地有未推送变更且本次发生了拉取覆盖。
+    expect(result.localChangesOverwritten, isTrue);
+    expect(result.safetyCopyPath, isNotNull);
+    // 本地数据确被远端覆盖（提示有实际意义）。
+    final goals = await db.select(db.goals).get();
+    expect(goals.map((g) => g.title), ['远端目标']);
+  });
+
+  test('syncOnce 主动同步拉取时不标记分叉（非本地变更触发）', () async {
+    await enableSync();
+    await seedGoal('本地目标（将被远端覆盖）');
+
+    final snapshot = await remoteSnapshotBytes('远端目标');
+    final service = WebDavSyncService(
+      settingsRepository: settings,
+      backupService: backup,
+      credentialStore: credentials,
+      schemaVersion: db.schemaVersion,
+      httpClient: okRemote(snapshot: snapshot),
+    );
+
+    // 主动「立即同步」：不代表本地有未推送编辑，不提示分叉。
+    final result = await service.syncOnce();
+
+    expect(result.pulled, isTrue);
+    expect(result.localChangesOverwritten, isFalse);
+  });
+
+  test('pushIfNeeded 但远端不快时：本地变更随本次推送上送，不标记覆盖', () async {
+    await enableSync();
+    await seedGoal('本地目标');
+    await settings.updateSyncState(seq: 5, at: DateTime.utc(2026, 8, 7, 1));
+
+    final snapshot = await remoteSnapshotBytes('远端目标');
+    final service = WebDavSyncService(
+      settingsRepository: settings,
+      backupService: backup,
+      credentialStore: credentials,
+      schemaVersion: db.schemaVersion,
+      httpClient: okRemote(remoteSeq: 3, snapshot: snapshot),
+    );
+
+    final result = await service.pushIfNeeded();
+
+    expect(result.pulled, isFalse); // remoteSeq(3) <= localSeq(5)：不拉取
+    expect(result.pushed, isTrue); // 本地最新数据上送远端
+    expect(result.localChangesOverwritten, isFalse); // 无覆盖发生
+    // 本地数据未被覆盖。
+    final goals = await db.select(db.goals).get();
+    expect(goals.map((g) => g.title), ['本地目标']);
+  });
 }

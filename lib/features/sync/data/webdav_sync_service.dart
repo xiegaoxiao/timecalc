@@ -32,6 +32,7 @@ class SyncResult {
     this.skipReason,
     this.error,
     this.safetyCopyPath,
+    this.localChangesOverwritten = false,
   });
 
   /// 是否跳过（未启用 / 未配置 WebDAV 账号 / 同步互斥中）。
@@ -51,6 +52,11 @@ class SyncResult {
 
   /// 拉取覆盖前自动创建的安全副本路径（供 UI 提示，可恢复极端场景）。
   final String? safetyCopyPath;
+
+  /// 本次拉取覆盖前，本地存在尚未推送的变更（分叉：本设备离线期间也
+  /// 有编辑，远端又更新过）。提示用户：本地未推送的改动已被远端覆盖，
+  /// 如需找回可从安全副本恢复。
+  final bool localChangesOverwritten;
 
   bool get hasError => !skipped && error != null;
 }
@@ -98,6 +104,13 @@ class WebDavSyncService {
   /// 拉取恢复进行中的守卫（防止恢复写入触发变更推送回环）。
   bool _restoring = false;
 
+  /// 本地存在「尚未推送的变更」标记（本会话内，M9 分叉检测）。
+  ///
+  /// 由 [pushIfNeeded]（本地变更监听触发）置位；「启动拉取/周期复查/手动
+  /// 立即同步」不置位（它们是主动同步，不代表本地有未推送编辑）。拉取
+  /// 覆盖本地成功或推送成功（本地数据已与远端对齐）后清除。
+  bool _hasLocalChanges = false;
+
   /// 执行一次完整同步：先拉取（远端较新时覆盖本地），再推送本地快照。
   ///
   /// 未启用或 WebDAV 账号缺失时跳过（与自动备份同款「跳过 ≠ 失败」语义）。
@@ -120,7 +133,13 @@ class WebDavSyncService {
 
   /// 变更监听/退出时的「推送」入口：与 [syncOnce] 同一算法（远端较新仍
   /// 先拉取，避免用过期本地数据覆盖更新的远端）。
-  Future<SyncResult> pushIfNeeded() => syncOnce();
+  ///
+  /// 与 [syncOnce] 的唯一区别：先置「本地有未推送变更」标记——本入口只由
+  /// 本地数据写入触发，用于拉取覆盖本地时向用户提示分叉风险。
+  Future<SyncResult> pushIfNeeded() {
+    _hasLocalChanges = true;
+    return syncOnce();
+  }
 
   /// 测试 WebDAV 连接（只读探测，仿 AutoBackupService.testWebDavConnection）。
   ///
@@ -187,9 +206,14 @@ class WebDavSyncService {
       pulled: false,
       pushed: false,
     );
+    // 分叉检测：拉取覆盖前本地已有未推送变更（离线编辑 + 远端更新）。
+    // 记录在结果里提示用户（安全副本仍可找回被覆盖的本地改动）。
+    final conflictDetected = _hasLocalChanges;
     if (remoteMeta.seq > localSeq) {
       pullResult = await _pull(client, remoteMeta);
       if (pullResult.hasError) return pullResult;
+      // 拉取成功：本地数据已与远端对齐，清除「本地有未推送变更」标记。
+      _hasLocalChanges = false;
     }
 
     // 拉取成功（或远端不快）后，推送本地最新快照；seq 单调递增。
@@ -199,12 +223,24 @@ class WebDavSyncService {
       localSeq: localSeq,
       remoteSeq: remoteMeta.seq,
     );
+    if (pushResult.hasError) {
+      // 推送失败不中断，但结果不带「本地变更被覆盖」提示（未发生覆盖）。
+      return SyncResult(
+        skipped: false,
+        pulled: pullResult.pulled,
+        pushed: false,
+        error: pushResult.error,
+        safetyCopyPath: pullResult.safetyCopyPath,
+      );
+    }
+    // 推送成功：本地最新数据已上送远端，清除未推送变更标记。
+    _hasLocalChanges = false;
     return SyncResult(
       skipped: false,
       pulled: pullResult.pulled,
       pushed: pushResult.pushed,
-      error: pushResult.error,
       safetyCopyPath: pullResult.safetyCopyPath,
+      localChangesOverwritten: conflictDetected && pullResult.pulled,
     );
   }
 

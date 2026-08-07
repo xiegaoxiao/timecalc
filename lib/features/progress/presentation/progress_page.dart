@@ -1004,8 +1004,10 @@ class _HeatmapGrid extends StatelessWidget {
   }) {
     final firstDay = weekStart;
     // 只在本周首日是一号，或与上一周跨月时显示月份。
+    // 上一周用纯日历减法（date_text）：防 DST 切换日偏移导致跨月判断错位。
     if (firstDay.day != 1 &&
-        weekStart.month == weekStart.subtract(const Duration(days: 7)).month) {
+        weekStart.month ==
+            addLocalDays(weekStart, -7).month) {
       return const SizedBox(height: _monthLabelHeight);
     }
     return SizedBox(
@@ -1029,7 +1031,9 @@ class _HeatmapGrid extends StatelessWidget {
     int row,
     double size,
   ) {
-    final date = weekStart.add(Duration(days: row));
+    // 纯日历加法（date_text）：防 DST 切换日「加 row 天偏移一小时」导致
+    // 日期错位（与 statistics_service 周窗口口径一致）。
+    final date = addLocalDays(weekStart, row);
     final dateStr = DateFormat('yyyy-MM-dd').format(date);
     final count = completedCounts[dateStr] ?? 0;
     final scheme = Theme.of(context).colorScheme;

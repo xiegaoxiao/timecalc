@@ -1,5 +1,6 @@
 import '../core/database/database.dart';
 import '../core/database/tables.dart';
+import '../core/utils/date_text.dart';
 
 /// 某日完成统计（FR-7.1）。
 class DayCompletionStats {
@@ -119,9 +120,11 @@ class StatisticsService {
     int futureWeeks = 13,
   }) {
     final day = DateTime(today.year, today.month, today.day);
-    final thisWeekStart = day.subtract(Duration(days: day.weekday - 1));
+    // 纯日历加法（date_text）：Duration(days:) 在夏令时切换日偏移一小时，
+    // 周起点/窗口端点可能落到相邻日期，导致归周错位。
+    final thisWeekStart = addLocalDays(day, -(day.weekday - 1));
     return List.generate(pastWeeks + 1 + futureWeeks, (i) {
-      return thisWeekStart.subtract(Duration(days: (pastWeeks - i) * 7));
+      return addLocalDays(thisWeekStart, -(pastWeeks - i) * 7);
     });
   }
 
@@ -172,7 +175,8 @@ class StatisticsService {
     final day = DateTime(date.year, date.month, date.day);
     for (var i = 0; i < weekStarts.length; i++) {
       final start = weekStarts[i];
-      final end = start.add(const Duration(days: 7));
+      // 纯日历加法：防 DST 切换日「加 7 天偏移一小时」导致边界错位。
+      final end = addLocalDays(start, 7);
       if (!day.isBefore(start) && day.isBefore(end)) return i;
     }
     return null;
@@ -195,9 +199,10 @@ class StatisticsService {
   /// 最后一项是包含 [today] 那一周的周一。
   static List<DateTime> recentWeekStarts(DateTime today, {int weeks = 26}) {
     final day = DateTime(today.year, today.month, today.day);
-    final thisWeekStart = day.subtract(Duration(days: day.weekday - 1));
+    // 纯日历加法（date_text），同 ganttWeekStarts：防 DST 切换日偏移。
+    final thisWeekStart = addLocalDays(day, -(day.weekday - 1));
     return List.generate(weeks, (i) {
-      return thisWeekStart.subtract(Duration(days: (weeks - 1 - i) * 7));
+      return addLocalDays(thisWeekStart, -(weeks - 1 - i) * 7);
     });
   }
 

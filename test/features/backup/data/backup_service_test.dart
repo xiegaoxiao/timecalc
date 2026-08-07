@@ -370,6 +370,82 @@ void main() {
       final allGoals = await goals.watchAll();
       expect(allGoals.single.title, '考研');
     });
+
+    test('未知备份类型（未来版本/手工构造）被拒绝且原库不变', () async {
+      await seedBaseData();
+      // 篡改 manifest：type 改为未知值 'unknown'。此前 fromValue 回退为
+      // full，类型校验形同虚设；现在应拒绝。
+      final file = tempFile('backup.timecalc');
+      await backup.exportBackup(file);
+      final bytes = await file.readAsBytes();
+      final archive = ZipDecoder().decodeBytes(bytes);
+      final manifestEntry = archive.findFile('manifest.json')!;
+      final manifestJson = String.fromCharCodes(manifestEntry.content as List<int>)
+          .replaceFirst('"type":"full"', '"type":"unknown"');
+      final tampered = Archive()
+        ..addFile(ArchiveFile.string('manifest.json', manifestJson));
+      for (final entry in archive) {
+        if (entry.name == 'manifest.json') continue;
+        tampered.addFile(ArchiveFile.bytes(
+          entry.name,
+          entry.content as List<int>,
+        ));
+      }
+      final tamperedFile = tempFile('unknown-type.timecalc');
+      await tamperedFile.writeAsBytes(ZipEncoder().encodeBytes(tampered));
+
+      // 清单解析出的 type 为 null（未知），validate 拒绝。
+      final manifest = await backup.readBackupManifest(tamperedFile);
+      expect(manifest.type, isNull);
+      expect(manifest.validate(), isNotNull);
+
+      await expectLater(
+        backup.restoreBackup(tamperedFile, mode: RestoreMode.merge),
+        throwsA(isA<BackupException>()),
+      );
+      // 原库仍可用（未被触碰）。
+      final allGoals = await goals.watchAll();
+      expect(allGoals.single.title, '考研');
+      final restoredTasks = await tasksFor(allGoals.single.id);
+      expect(restoredTasks.single.title, '完成第一章');
+    });
+
+    test('数据段字段类型损坏（title 非字符串）时抛 BackupException 而非 TypeError', () async {
+      await seedBaseData();
+      // 篡改 tasks.json：保持数组元素个数（1）与 manifest 计数一致，但
+      // title 字段改为数字。此前 codec 强转会抛 TypeError（Error，UI 的
+      // on Exception 捕不到），造成恢复静默失败。
+      final file = tempFile('backup.timecalc');
+      await backup.exportBackup(file);
+      final bytes = await file.readAsBytes();
+      final archive = ZipDecoder().decodeBytes(bytes);
+      final tampered = Archive();
+      for (final entry in archive) {
+        if (entry.name == 'data/tasks.json') {
+          tampered.addFile(ArchiveFile.string(
+            'data/tasks.json',
+            '[{"id":1,"goalId":1,"title":123,"plannedDate":"2026-08-05"}]',
+          ));
+        } else {
+          tampered.addFile(ArchiveFile.bytes(
+            entry.name,
+            entry.content as List<int>,
+          ));
+        }
+      }
+      final tamperedFile = tempFile('bad-field-type.timecalc');
+      await tamperedFile.writeAsBytes(ZipEncoder().encodeBytes(tampered));
+
+      // 恢复被拒绝且原库未被破坏（事务已回滚）。
+      await expectLater(
+        backup.restoreBackup(tamperedFile, mode: RestoreMode.overwrite),
+        throwsA(isA<BackupException>()),
+      );
+      final allGoals = await goals.watchAll();
+      expect(allGoals.single.title, '考研');
+      final restoredTasks = await tasksFor(allGoals.single.id);
+      expect(restoredTasks.single.title, '完成第一章');
+    });
   });
 
   group('设置备份（FR-9.5）', () {

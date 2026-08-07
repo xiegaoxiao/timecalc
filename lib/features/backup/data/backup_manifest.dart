@@ -55,7 +55,9 @@ class BackupManifest {
 
   final String format;
   final int version;
-  final BackupType type;
+
+  /// 备份类型；未知/非法值（未来版本或手工构造）为 null，恢复前拒绝。
+  final BackupType? type;
   final DateTime exportedAtUtc;
   final int appSchemaVersion;
   final String appVersion;
@@ -72,6 +74,7 @@ class BackupManifest {
   String? validate() {
     if (format != BackupFormat.format) return '不是 TimeCalc 备份文件';
     if (version != BackupFormat.version) return '备份版本不受支持（$version）';
+    // type 为 null（未知类型，从 JSON 解析未识别）时同样拒绝。
     if (type != BackupType.full) return '不支持的备份类型';
     if (goalCount < 0 || subjectCount < 0 || taskCount < 0 ||
         recurrenceTemplateCount < 0 || milestoneCount < 0 ||
@@ -85,7 +88,8 @@ class BackupManifest {
     return {
       'format': format,
       'version': version,
-      'type': type.value,
+      // 类型未知时（仅理论上，导出端恒为 full）按 'unknown' 落盘。
+      'type': type?.value ?? 'unknown',
       'exportedAtUtc': exportedAtUtc.toUtc().toIso8601String(),
       'appSchemaVersion': appSchemaVersion,
       'appVersion': appVersion,
@@ -106,7 +110,7 @@ class BackupManifest {
     return BackupManifest(
       format: json['format'] as String? ?? '',
       version: (json['version'] as num?)?.toInt() ?? 0,
-      type: BackupType.fromValue(json['type'] as String?) ?? BackupType.full,
+      type: BackupType.fromValue(json['type'] as String?),
       exportedAtUtc: exported ?? DateTime.fromMillisecondsSinceEpoch(0),
       appSchemaVersion: (json['appSchemaVersion'] as num?)?.toInt() ?? 0,
       appVersion: json['appVersion'] as String? ?? '',

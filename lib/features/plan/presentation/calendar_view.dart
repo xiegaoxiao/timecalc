@@ -219,12 +219,22 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
 
   /// FR-5.1：任务被拖到某一天（网格 DragTarget 命中）时改期。
   ///
-  /// - 已完成任务不拖动改期（拖动语义为「重新安排未完成任务」）；
+  /// - 已完成任务不拖动改期（拖动语义为「重新安排未完成任务」），落位时
+  ///   给出明确提示，不静默忽略；
   /// - 复用 [TaskRepository.defer] 改期并记录原计划日期（FR-3.3 验收）；
   /// - 写入失败（数据库异常）时弹错误对话框，任务保持原日期；
   /// - 成功后在 [onChanged] 中统一刷新跨页缓存。
   Future<void> _handleTaskDropped(Task task, String date) async {
-    if (task.status == TaskStatus.done) return;
+    if (task.status == TaskStatus.done) {
+      // L3 修复：此前直接 return 无反馈，用户以为拖放无效。
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('已完成任务不能拖动改期，请先取消完成再调整日期'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
     if (task.plannedDate == date) return; // 同一天：无操作
     final ok = await runDbAction(
       context,
@@ -303,6 +313,9 @@ class _MonthGrid extends StatelessWidget {
 
   static const _weekdayLabels = ['一', '二', '三', '四', '五', '六', '日'];
 
+  /// 本月天数（L5：build 与逐格判定共用，避免每格重复计算）。
+  int get _daysInMonth => DateTime(month.year, month.month + 1, 0).day;
+
   /// 紧凑时长（日历格空间有限）：120 → '2h'，90 → '1h30'，30 → '30m'。
   static String _compactDuration(int minutes) {
     final hours = minutes ~/ 60;
@@ -314,7 +327,7 @@ class _MonthGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
+    final daysInMonth = _daysInMonth;
     final firstWeekday = DateTime(month.year, month.month, 1).weekday;
     final leadingBlanks = firstWeekday - 1; // 周一开头
     final totalCells = ((leadingBlanks + daysInMonth + 6) ~/ 7) * 7;
@@ -362,7 +375,7 @@ class _MonthGrid extends StatelessWidget {
     ColorScheme scheme, {
     required int day,
   }) {
-    if (day < 1 || day > DateTime(month.year, month.month + 1, 0).day) {
+    if (day < 1 || day > _daysInMonth) {
       return const SizedBox(height: 80);
     }
     final warning = AppSemanticColors.of(context).warning;
