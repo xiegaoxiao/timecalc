@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/errors/db_error_dialog.dart';
 import '../../../core/providers/clock_provider.dart';
+import '../../../core/providers/app_refresh.dart';
 import '../../../services/duration_format.dart';
 import '../../goals/data/subject_repository_provider.dart';
 import '../data/task_repository_provider.dart';
@@ -158,13 +159,10 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
         replaceExisting: _replaceMode,
       );
       // 跨页刷新（FR-3 验收）：目标详情、今日页、日历同步。
-      ref.invalidate(taskListProvider(widget.goalId));
+      invalidateTaskForms(ref, goalId: widget.goalId);
       ref.invalidate(archivedCountProvider);
       ref.invalidate(archivedTaskListProvider(widget.goalId));
       ref.invalidate(allArchivedTasksProvider);
-      ref.invalidate(tasksByDateProvider);
-      ref.invalidate(tasksByMonthProvider);
-      ref.invalidate(unfinishedBeforeProvider);
       // 导入会按 JSON 自动新建科目，科目列表缓存必须同步失效。
       ref.invalidate(subjectListProvider(widget.goalId));
       if (mounted) {

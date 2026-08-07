@@ -1,12 +1,13 @@
 import 'package:drift/drift.dart';
 
-/// TimeCalc 数据模型（schema v8）。
+/// TimeCalc 数据模型（schema v10）。
 ///
 /// 遵循 PRD §9：
 /// - 业务实体包含 id、createdAt、updatedAt；
 /// - 时间戳（createdAt/updatedAt/completedAt）使用 UTC 存储；
 /// - 计划日期（deadlineDate/plannedDate）按本地日历日期以 `yyyy-MM-dd`
 ///   文本单独存储，避免跨时区导致日期漂移。
+/// - schema v10（P3.6）：高频查询列补充 @TableIndex 索引。
 
 /// 目标状态（FR-1.3 / FR-1.4）。
 class GoalStatus {
@@ -53,6 +54,7 @@ class Goals extends Table {
   DateTimeColumn get updatedAt => dateTime()();
 }
 
+@TableIndex(name: 'subjects_goal_idx', columns: {#goalId})
 class Subjects extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get goalId => integer().references(Goals, #id)();
@@ -68,6 +70,7 @@ class Subjects extends Table {
 /// 目标下的阶段性节点，用户可添加/编辑/完成/删除（FR-2.1）；
 /// 里程碑日期原则上不得晚于目标截止日（FR-2.2）。date 为本地日历日期，
 /// 遵循 `yyyy-MM-dd` 文本约定（tables.dart 头注释）。
+@TableIndex(name: 'milestones_goal_idx', columns: {#goalId})
 class Milestones extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get goalId => integer().references(Goals, #id)();
@@ -79,6 +82,17 @@ class Milestones extends Table {
   DateTimeColumn get updatedAt => dateTime()();
 }
 
+/// 任务表（schema v10 起带高频查询索引，P3.6）。
+///
+/// 索引服务的高频查询（P3.6）：
+/// - [tasks_goal_archived_idx]：目标下任务（byGoal/archivedByGoal）；
+/// - [tasks_planned_date_idx]：按计划日期（byDate/byDateRange，今日页/日历）；
+/// - [tasks_status_archived_idx]：未完成任务集（allTodoTasks/unfinishedBefore）；
+/// - [tasks_status_completed_idx]：完成热力图区间（completedBetween）。
+@TableIndex(name: 'tasks_goal_archived_idx', columns: {#goalId, #archivedAt})
+@TableIndex(name: 'tasks_planned_date_idx', columns: {#plannedDate})
+@TableIndex(name: 'tasks_status_archived_idx', columns: {#status, #archivedAt})
+@TableIndex(name: 'tasks_status_completed_idx', columns: {#status, #completedAt})
 class Tasks extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get goalId => integer().references(Goals, #id)();
@@ -121,6 +135,7 @@ class Tasks extends Table {
 /// （Tasks.recurrenceTemplateId 指向本表）。规则以 ruleType(文本) +
 /// ruleJson(文本) 存储，由 RecurrenceRuleRegistry 中的 handler 解释，
 /// 新增规则类型无需 schema 变更。
+@TableIndex(name: 'recurrence_templates_goal_idx', columns: {#goalId})
 class RecurrenceTemplates extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get goalId => integer().references(Goals, #id)();
@@ -150,6 +165,7 @@ class RecurrenceTemplates extends Table {
 /// sortOrder，另按项目惯例带 id/createdAt/updatedAt）。检查项随任务
 /// 级联删除（防孤儿数据，NFR-2）。done 用 BoolColumn（仿
 /// RecurrenceTemplates.active），sortOrder 支持任务内上移/下移重排。
+@TableIndex(name: 'checklist_items_task_idx', columns: {#taskId})
 class ChecklistItems extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get taskId => integer().references(Tasks, #id)();
@@ -160,7 +176,8 @@ class ChecklistItems extends Table {
   DateTimeColumn get updatedAt => dateTime()();
 }
 
-/// 计划偏好（单行表，PRD §9 Settings 的 M2 子集 + M3 关闭行为 + M8 自动备份）。
+/// 计划偏好（单行表，PRD §9 Settings 的 M2 子集 + M3 关闭行为 + M8 自动备份
+/// + M9 WebDAV 同步 + M10 外观主题）。
 ///
 /// schema v2 引入。默认行不写死在迁移里，由 SettingsRepository.get()
 /// 惰性 seed（insertOrIgnore），保证迁移库与全新安装行为一致。
@@ -217,6 +234,34 @@ class Settings extends Table {
   /// 调度判据：距离上次成功不足 1 天时跳过（FR-9.4「每日」语义）。
   /// 失败不推进该时间戳，避免静默跳过。
   DateTimeColumn get lastAutoBackupAt => dateTime().nullable()();
+
+  /// WebDAV 整库文件同步开关（M9，schema v11 引入）。
+  ///
+  /// 与自动备份共享 webdav_url/username/密码（同一账号）；开启后
+  /// 启动拉取远端快照、数据变更后推送、退出推送，最近同步时间见
+  /// [lastSyncedAt]。运行时配置，不进入业务数据备份（FR-9.5，
+  /// 同 close_behavior 与自动备份配置）。
+  BoolColumn get webdavSyncEnabled =>
+      boolean().withDefault(const Constant(false))();
+
+  /// 本设备最近成功推送的同步序号（schema v11，可空，null=从未推送）。
+  ///
+  /// 与远端 meta 的 seq 比较决定「拉取（远端较新）还是只推送」；
+  /// 不进入业务数据备份（运行时配置）。
+  IntColumn get lastPushedSeq => integer().nullable()();
+
+  /// 最近同步完成时间（schema v11，UTC，可空，展示用）。
+  ///
+  /// 只在推送或拉取成功后更新；失败不动，便于用户看出同步停滞。
+  DateTimeColumn get lastSyncedAt => dateTime().nullable()();
+
+  /// 主题模式（M10，schema v12 引入）。
+  ///
+  /// 取值与 [ThemeMode.name] 一致：`system`（默认，跟随 Windows 明暗）/
+  /// `light` / `dark`。设备级外观配置（同 close_behavior），不进入业务
+  /// 数据备份（FR-9.5），覆盖恢复/同步拉取时保留本设备选择。
+  TextColumn get themeMode =>
+      text().withDefault(const Constant('system'))();
 
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();

@@ -6,11 +6,13 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
+import '../../../core/providers/app_refresh.dart';
+import '../../../core/utils/date_text.dart';
 import '../../../services/recurrence_service.dart';
 import '../../../shared/widgets/duration_step_input.dart';
+import '../../goals/data/goal_repository_provider.dart';
 import '../data/recurrence_repository.dart';
 import '../data/recurrence_repository_provider.dart';
-import '../data/task_repository_provider.dart';
 import '../domain/recurrence/recurrence_handler.dart';
 import '../domain/recurrence/recurrence_rule.dart';
 import '../domain/recurrence/recurrence_registry.dart';
@@ -85,9 +87,9 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
     _titleController = TextEditingController(text: template?.title ?? '');
     _subjectId = template?.subjectId;
     _estimatedMinutes = template?.estimatedMinutes;
-    _startDate = template == null ? today : _parseDate(template.startDate);
+    _startDate = template == null ? today : parseLocalDate(template.startDate);
     final endDate = template?.endDate;
-    _endDate = endDate == null ? null : _parseDate(endDate);
+    _endDate = endDate == null ? null : parseLocalDate(endDate);
 
     if (template != null) {
       // 兜底：模板 ruleType 未注册时回退到首个已注册类型，
@@ -125,11 +127,6 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
     }
   }
 
-  static DateTime _parseDate(String yyyyMMdd) {
-    final parts = yyyyMMdd.split('-');
-    return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
-  }
-
   /// 当前选中规则的 handler。
   RecurrenceRuleHandler? get _handler => _registry.handlerFor(_ruleType);
 
@@ -150,16 +147,37 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
     });
   }
 
+  /// 目标截止日（本地日期）；目标加载中/被删返回 null（调用方回退宽松区间）。
+  DateTime? _goalDeadline() {
+    final goal = ref.read(goalDetailProvider(widget.goalId)).valueOrNull;
+    if (goal == null) return null;
+    return parseLocalDate(goal.deadlineDate);
+  }
+
   Future<void> _pickDate({required bool isEnd}) async {
-    final now = DateTime.now();
+    final today = DateUtils.dateOnly(ref.read(clockProvider)());
+    final deadline = _goalDeadline();
+    // 上界：目标截止日（缺失时回退宽松）；截止日已过时退化为今天
+    // （datepicker 不允许 first > last）。
+    final last = deadline ?? DateTime(today.year + 10);
+    final effectiveLast = last.isBefore(today) ? today : last;
     final current = isEnd ? (_endDate ?? _startDate) : _startDate;
+    // 区间下界：起始日期选择器为「今天」；结束日期选择器为「起始日」
+    // （UI 层直接阻止「结束早于起始」，配合 _save 兜底校验，FR-4）。
+    // 编辑旧模板时起始日可能已超过截止日，firstDate 也钳制到上界之内，
+    // 避免 datepicker 的 first > last 断言崩溃。
+    final first = isEnd
+        ? (_startDate.isAfter(effectiveLast) ? effectiveLast : _startDate)
+        : today;
+    // initialDate 钳制到区间内（编辑历史重复模板时日期可能早于今天）。
+    final initial = current.isBefore(first)
+        ? first
+        : (current.isAfter(effectiveLast) ? effectiveLast : current);
     final picked = await showDatePicker(
       context: context,
-      initialDate: current,
-      // 结束日期选择器下界固定为起始日，UI 层直接阻止「结束早于起始」
-      // （配合 _save 的兜底校验，双保险，FR-4）。
-      firstDate: isEnd ? _startDate : DateTime(now.year - 10),
-      lastDate: DateTime(now.year + 10),
+      initialDate: initial,
+      firstDate: first,
+      lastDate: effectiveLast,
       helpText: isEnd ? '选择结束日期' : '选择起始日期',
     );
     if (picked == null) return;
@@ -192,7 +210,7 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
   }
 
   static String _plusDays(String yyyyMMdd, int days) {
-    final d = _parseDate(yyyyMMdd).add(Duration(days: days));
+    final d = parseLocalDate(yyyyMMdd).add(Duration(days: days));
     return DateFormat('yyyy-MM-dd').format(d);
   }
 
@@ -218,6 +236,27 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
     if (_endDate != null && _endDate!.isBefore(_startDate)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('结束日期不能早于起始日期')),
+      );
+      return;
+    }
+    // 兜底校验：起始日期不得早于今天或晚于目标截止日（选择器已置灰区间外
+    // 日期，此处防编辑旧模板/默认值越界导致任务静默消失）。
+    // 统一为纯日期比较（clockProvider 带时刻，datepicker 产出午夜）。
+    final today = DateUtils.dateOnly(ref.read(clockProvider)());
+    if (_startDate.isBefore(today)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('起始日期不能早于今天')),
+      );
+      return;
+    }
+    final deadline = _goalDeadline();
+    if (deadline != null && _startDate.isAfter(deadline)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '起始日期不能晚于目标截止日（${DateFormat('yyyy-MM-dd').format(deadline)}）',
+          ),
+        ),
       );
       return;
     }
@@ -301,10 +340,7 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
   /// 变更后刷新：模板、目标任务列表、今日/日历/未完成缓存。
   void _refresh() {
     ref.invalidate(recurrenceTemplatesProvider(widget.goalId));
-    ref.invalidate(taskListProvider(widget.goalId));
-    ref.invalidate(tasksByDateProvider);
-    ref.invalidate(tasksByMonthProvider);
-    ref.invalidate(unfinishedBeforeProvider);
+    invalidateTaskForms(ref, goalId: widget.goalId);
   }
 
   @override

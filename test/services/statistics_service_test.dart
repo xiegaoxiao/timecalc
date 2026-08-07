@@ -343,4 +343,53 @@ void main() {
       }
     });
   });
+
+  group('burndownWindowDoneMinutes（结论句「过去 N 天消化了 X」）', () {
+    // 固定时钟：2026-08-05 → 窗口起点 2026-07-07。
+    final today = DateTime(2026, 8, 5, 12);
+
+    test('窗口内完成的任务计入合计', () {
+      final doneMinutes = StatisticsService.burndownWindowDoneMinutes(
+        completedTasks: [
+          done('2026-08-01', minutes: 60, completedAt: DateTime(2026, 8, 1, 9)),
+          done('2026-08-03', minutes: 30, completedAt: DateTime(2026, 8, 3, 18)),
+        ],
+        today: today,
+      );
+      expect(doneMinutes, 90);
+    });
+
+    test('窗口前完成（含起点前一天）不计入', () {
+      final doneMinutes = StatisticsService.burndownWindowDoneMinutes(
+        completedTasks: [
+          done('2026-07-06', minutes: 60, completedAt: DateTime(2026, 7, 6, 12)),
+          // 默认 completedAt 2026-01-01，远早于窗口起点。
+          done('2026-08-01', minutes: 30),
+        ],
+        today: today,
+      );
+      expect(doneMinutes, 0);
+    });
+
+    test('完成日恰为窗口起点计入', () {
+      final doneMinutes = StatisticsService.burndownWindowDoneMinutes(
+        completedTasks: [
+          done('2026-07-07', minutes: 45, completedAt: DateTime(2026, 7, 7, 8)),
+        ],
+        today: today,
+      );
+      expect(doneMinutes, 45);
+    });
+
+    test('无预估时长的任务不计入（FR-7.4）', () {
+      final doneMinutes = StatisticsService.burndownWindowDoneMinutes(
+        completedTasks: [
+          done('2026-08-02'), // 无时长
+          done('2026-08-04', minutes: 120, completedAt: DateTime(2026, 8, 4, 12)),
+        ],
+        today: today,
+      );
+      expect(doneMinutes, 120);
+    });
+  });
 }

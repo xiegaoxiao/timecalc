@@ -373,10 +373,10 @@ class BackupService {
 
       // 计划偏好：覆盖模式下随备份一并恢复（FR-9.2 覆盖语义）。
       if (payload.settings.isNotEmpty) {
-        // 运行时配置不进备份文件（FR-9.5：关闭行为、自动备份配置），
-        // 备份 JSON 中无这些字段。覆盖清空 settings 行会把它们重置为
-        // 默认值，故在恢复前读取当前值并保留——桌面/备份行为不该被
-        // 「数据恢复」意外改变。
+        // 运行时配置不进备份文件（FR-9.5：关闭行为、自动备份配置、WebDAV
+        // 同步配置），备份 JSON 中无这些字段。覆盖清空 settings 行会把它们
+        // 重置为默认值，故在恢复前读取当前值并保留——桌面/备份/同步行为
+        // 不该被「数据恢复」意外改变。
         final previous = await _db.select(_db.settings).getSingleOrNull();
         final previousCloseBehavior = previous?.closeBehavior;
         final previousAutoBackupEnabled = previous?.autoBackupEnabled;
@@ -385,6 +385,10 @@ class BackupService {
         final previousWebdavUsername = previous?.webdavUsername;
         final previousWebdavPasswordSaved = previous?.webdavPasswordSaved;
         final previousLastAutoBackupAt = previous?.lastAutoBackupAt;
+        final previousSyncEnabled = previous?.webdavSyncEnabled;
+        final previousLastPushedSeq = previous?.lastPushedSeq;
+        final previousLastSyncedAt = previous?.lastSyncedAt;
+        final previousThemeMode = previous?.themeMode;
         await _db.delete(_db.settings).go();
         await _db.into(_db.settings).insert(
               _codec.settingsFromJson(
@@ -408,6 +412,18 @@ class BackupService {
                     : DateTime.tryParse(
                         payload.settings.first['lastAutoBackupAt'] as String,
                       ),
+                webdavSyncEnabled: payload.settings.first['webdavSyncEnabled'] as bool? ??
+                    previousSyncEnabled,
+                lastPushedSeq: payload.settings.first['lastPushedSeq'] == null
+                    ? previousLastPushedSeq
+                    : payload.settings.first['lastPushedSeq'] as int,
+                lastSyncedAt: payload.settings.first['lastSyncedAt'] == null
+                    ? previousLastSyncedAt
+                    : DateTime.tryParse(
+                        payload.settings.first['lastSyncedAt'] as String,
+                      ),
+                themeMode: payload.settings.first['themeMode'] as String? ??
+                    previousThemeMode,
               ),
             );
       }

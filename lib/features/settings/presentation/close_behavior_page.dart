@@ -11,7 +11,7 @@ import '../data/settings_repository_provider.dart';
 ///
 /// 由设置页「关闭行为」菜单项 push 进入。存储于 schema v6
 /// `Settings.close_behavior`；桌面层（DesktopController）据此决定关闭按钮
-/// 的拦截行为。保存后实时应用到桌面层，切换无需重启即生效。
+/// 的拦截行为。**点击即生效**（写库 + 实时应用桌面层，无需单独保存/重启）。
 class CloseBehaviorPage extends ConsumerStatefulWidget {
   const CloseBehaviorPage({super.key});
 
@@ -24,8 +24,45 @@ class CloseBehaviorPage extends ConsumerStatefulWidget {
 
 class _CloseBehaviorPageState extends ConsumerState<CloseBehaviorPage> {
   late String _behavior;
-  bool _saving = false;
   bool _initialized = false;
+
+  /// 点击分段即切换：立即写库并实时应用桌面层拦截行为（FR-8.1）。
+  Future<void> _selectBehavior(String behavior) async {
+    if (_initialized && behavior == _behavior) return; // 未变化
+    setState(() => _behavior = behavior); // 即时反馈
+
+    final ok = await runDbAction(
+      context,
+      action: () async {
+        await ref
+            .read(settingsRepositoryProvider)
+            .updateCloseBehavior(behavior);
+      },
+    );
+    if (!ok) {
+      // 写库失败：还原为库内值（runDbAction 已弹「数据保存失败」）。
+      if (mounted) {
+        final saved = ref.read(settingsProvider).valueOrNull?.closeBehavior;
+        setState(() => _behavior = saved ?? CloseBehavior.exit);
+      }
+      return;
+    }
+    ref.invalidate(settingsProvider);
+    // 实时应用到桌面层（退出 ↔ 最小化到托盘切换无需重启即生效）。
+    await ref.read(desktopControllerProvider)?.applyCloseBehavior();
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              '已切换为${behavior == CloseBehavior.minimizeToTray ? '最小化到托盘' : '直接退出'}',
+            ),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -48,7 +85,7 @@ class _CloseBehaviorPageState extends ConsumerState<CloseBehaviorPage> {
             padding: const EdgeInsets.all(16),
             children: [
               Text(
-                '点击窗口关闭按钮时的行为；最小化到托盘后可随时从托盘菜单恢复（FR-8.1/8.2）。',
+                '点击窗口关闭按钮时的行为，点击即生效；最小化到托盘后可随时从托盘菜单恢复（FR-8.1/8.2）。',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 16),
@@ -67,46 +104,12 @@ class _CloseBehaviorPageState extends ConsumerState<CloseBehaviorPage> {
                 ],
                 selected: {_behavior},
                 onSelectionChanged: (selection) =>
-                    setState(() => _behavior = selection.first),
-              ),
-              const SizedBox(height: 16),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.icon(
-                  onPressed: _saving ? null : _save,
-                  icon: const Icon(Icons.save_outlined, size: 18),
-                  label: const Text('保存'),
-                ),
+                    _selectBehavior(selection.first),
               ),
             ],
           );
         },
       ),
     );
-  }
-
-  Future<void> _save() async {
-    setState(() => _saving = true);
-    try {
-      final ok = await runDbAction(
-        context,
-        action: () async {
-          await ref
-              .read(settingsRepositoryProvider)
-              .updateCloseBehavior(_behavior);
-        },
-      );
-      if (!ok) return;
-      ref.invalidate(settingsProvider);
-      // FR-8.1：保存后实时应用窗口拦截行为，切换无需重启即生效。
-      await ref.read(desktopControllerProvider)?.applyCloseBehavior();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('关闭行为已保存')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
   }
 }

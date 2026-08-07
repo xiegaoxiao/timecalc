@@ -182,7 +182,7 @@ class TaskRepository {
       throw ArgumentError.value(dateIntervalDays, 'dateIntervalDays', '不能为负数');
     }
     final now = DateTime.now().toUtc();
-    final start = _parseLocalDate(startDate);
+    final start = parseLocalDate(startDate);
     final cleanTitles = titles.map((t) => t.trim()).where((t) => t.isNotEmpty).toList();
     if (cleanTitles.isEmpty) return Future.value(0);
 
@@ -205,11 +205,6 @@ class TaskRepository {
       }
       return count;
     });
-  }
-
-  static DateTime _parseLocalDate(String yyyyMMdd) {
-    final parts = yyyyMMdd.split('-');
-    return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
   }
 
   /// 批量导入（JSON 导入升级版）。

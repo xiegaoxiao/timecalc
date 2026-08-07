@@ -82,14 +82,19 @@ class AutoBackupService implements AutoBackupRunner {
       );
     }
 
-    final targets = await buildEnabledTargets(settings);
-    if (targets.isEmpty) {
+    // M11：自动备份目的地收敛为本地目录——WebDAV 数据保护由整库文件同步
+    // （M9）承担，不再往 WebDAV 传自动备份（用户确认精简）。
+    // 注意：buildEnabledTargets（含 WebDAV）仍保留给 backup_page
+    // 「从备份位置恢复」列历史备份文件用。
+    final localFolder = settings.localBackupFolder;
+    if (localFolder == null || localFolder.trim().isEmpty) {
       return const AutoBackupResult(
         skipped: true,
         succeeded: false,
-        skipReason: '未配置备份目的地（本地目录或 WebDAV）',
+        skipReason: '未配置备份目的地（本地目录）',
       );
     }
+    final targets = <BackupTarget>[LocalBackupTarget(Directory(localFolder))];
 
     // 「每日」语义（FR-9.4）：距上次成功不足 24 小时跳过（force 例外）。
     final last = settings.lastAutoBackupAt;
@@ -182,25 +187,6 @@ class AutoBackupService implements AutoBackupRunner {
     }
 
     return targets;
-  }
-
-  /// 测试 WebDAV 连接：确保目录存在 + 列出目录（只读探测）。
-  ///
-  /// 供「保存并测试连接」使用：成功说明地址/用户名/密码可用。
-  /// 注意：保存密码后调用（密码经 [credentialStore] 或参数传入）。
-  Future<void> testWebDavConnection({
-    required String url,
-    required String username,
-    required String password,
-  }) async {
-    final client = WebDavClient(
-      client: _httpClient,
-      baseUrl: url,
-      username: username,
-      password: password,
-    );
-    final target = WebDavBackupTarget(client);
-    await target.list(); // ensureFolder + PROPFIND 一次验证。
   }
 
   /// 保留策略：目的地只保留最近 [autoBackupRetentionCount] 份自动备份。

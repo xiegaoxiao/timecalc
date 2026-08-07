@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
+import '../../../core/utils/date_text.dart';
 import '../data/milestone_repository_provider.dart';
 
 /// 添加/编辑里程碑对话框（FR-2.1）。
@@ -61,19 +62,13 @@ class _MilestoneFormDialogState extends ConsumerState<MilestoneFormDialog> {
     super.initState();
     final milestone = widget.milestone;
     _titleController = TextEditingController(text: milestone?.title ?? '');
-    _date = milestone == null ? null : _parseDate(milestone.date);
+    _date = milestone == null ? null : parseLocalDate(milestone.date);
   }
 
   @override
   void dispose() {
     _titleController.dispose();
     super.dispose();
-  }
-
-  static DateTime? _parseDate(String yyyyMMdd) {
-    final parts = yyyyMMdd.split('-');
-    if (parts.length != 3) return null;
-    return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
   }
 
   Future<void> _pickDate() async {

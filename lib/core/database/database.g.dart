@@ -3321,6 +3321,55 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
         type: DriftSqlType.dateTime,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _webdavSyncEnabledMeta = const VerificationMeta(
+    'webdavSyncEnabled',
+  );
+  @override
+  late final GeneratedColumn<bool> webdavSyncEnabled = GeneratedColumn<bool>(
+    'webdav_sync_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("webdav_sync_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _lastPushedSeqMeta = const VerificationMeta(
+    'lastPushedSeq',
+  );
+  @override
+  late final GeneratedColumn<int> lastPushedSeq = GeneratedColumn<int>(
+    'last_pushed_seq',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lastSyncedAtMeta = const VerificationMeta(
+    'lastSyncedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastSyncedAt = GeneratedColumn<DateTime>(
+    'last_synced_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _themeModeMeta = const VerificationMeta(
+    'themeMode',
+  );
+  @override
+  late final GeneratedColumn<String> themeMode = GeneratedColumn<String>(
+    'theme_mode',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('system'),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -3355,6 +3404,10 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
     webdavUsername,
     webdavPasswordSaved,
     lastAutoBackupAt,
+    webdavSyncEnabled,
+    lastPushedSeq,
+    lastSyncedAt,
+    themeMode,
     createdAt,
     updatedAt,
   ];
@@ -3451,6 +3504,39 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
         ),
       );
     }
+    if (data.containsKey('webdav_sync_enabled')) {
+      context.handle(
+        _webdavSyncEnabledMeta,
+        webdavSyncEnabled.isAcceptableOrUnknown(
+          data['webdav_sync_enabled']!,
+          _webdavSyncEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_pushed_seq')) {
+      context.handle(
+        _lastPushedSeqMeta,
+        lastPushedSeq.isAcceptableOrUnknown(
+          data['last_pushed_seq']!,
+          _lastPushedSeqMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_synced_at')) {
+      context.handle(
+        _lastSyncedAtMeta,
+        lastSyncedAt.isAcceptableOrUnknown(
+          data['last_synced_at']!,
+          _lastSyncedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('theme_mode')) {
+      context.handle(
+        _themeModeMeta,
+        themeMode.isAcceptableOrUnknown(data['theme_mode']!, _themeModeMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -3516,6 +3602,22 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_auto_backup_at'],
       ),
+      webdavSyncEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}webdav_sync_enabled'],
+      )!,
+      lastPushedSeq: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}last_pushed_seq'],
+      ),
+      lastSyncedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_synced_at'],
+      ),
+      themeMode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}theme_mode'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -3581,6 +3683,32 @@ class Setting extends DataClass implements Insertable<Setting> {
   /// 调度判据：距离上次成功不足 1 天时跳过（FR-9.4「每日」语义）。
   /// 失败不推进该时间戳，避免静默跳过。
   final DateTime? lastAutoBackupAt;
+
+  /// WebDAV 整库文件同步开关（M9，schema v11 引入）。
+  ///
+  /// 与自动备份共享 webdav_url/username/密码（同一账号）；开启后
+  /// 启动拉取远端快照、数据变更后推送、退出推送，最近同步时间见
+  /// [lastSyncedAt]。运行时配置，不进入业务数据备份（FR-9.5，
+  /// 同 close_behavior 与自动备份配置）。
+  final bool webdavSyncEnabled;
+
+  /// 本设备最近成功推送的同步序号（schema v11，可空，null=从未推送）。
+  ///
+  /// 与远端 meta 的 seq 比较决定「拉取（远端较新）还是只推送」；
+  /// 不进入业务数据备份（运行时配置）。
+  final int? lastPushedSeq;
+
+  /// 最近同步完成时间（schema v11，UTC，可空，展示用）。
+  ///
+  /// 只在推送或拉取成功后更新；失败不动，便于用户看出同步停滞。
+  final DateTime? lastSyncedAt;
+
+  /// 主题模式（M10，schema v12 引入）。
+  ///
+  /// 取值与 [ThemeMode.name] 一致：`system`（默认，跟随 Windows 明暗）/
+  /// `light` / `dark`。设备级外观配置（同 close_behavior），不进入业务
+  /// 数据备份（FR-9.5），覆盖恢复/同步拉取时保留本设备选择。
+  final String themeMode;
   final DateTime createdAt;
   final DateTime updatedAt;
   const Setting({
@@ -3594,6 +3722,10 @@ class Setting extends DataClass implements Insertable<Setting> {
     this.webdavUsername,
     required this.webdavPasswordSaved,
     this.lastAutoBackupAt,
+    required this.webdavSyncEnabled,
+    this.lastPushedSeq,
+    this.lastSyncedAt,
+    required this.themeMode,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -3618,6 +3750,14 @@ class Setting extends DataClass implements Insertable<Setting> {
     if (!nullToAbsent || lastAutoBackupAt != null) {
       map['last_auto_backup_at'] = Variable<DateTime>(lastAutoBackupAt);
     }
+    map['webdav_sync_enabled'] = Variable<bool>(webdavSyncEnabled);
+    if (!nullToAbsent || lastPushedSeq != null) {
+      map['last_pushed_seq'] = Variable<int>(lastPushedSeq);
+    }
+    if (!nullToAbsent || lastSyncedAt != null) {
+      map['last_synced_at'] = Variable<DateTime>(lastSyncedAt);
+    }
+    map['theme_mode'] = Variable<String>(themeMode);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -3643,6 +3783,14 @@ class Setting extends DataClass implements Insertable<Setting> {
       lastAutoBackupAt: lastAutoBackupAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastAutoBackupAt),
+      webdavSyncEnabled: Value(webdavSyncEnabled),
+      lastPushedSeq: lastPushedSeq == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastPushedSeq),
+      lastSyncedAt: lastSyncedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastSyncedAt),
+      themeMode: Value(themeMode),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -3672,6 +3820,10 @@ class Setting extends DataClass implements Insertable<Setting> {
       lastAutoBackupAt: serializer.fromJson<DateTime?>(
         json['lastAutoBackupAt'],
       ),
+      webdavSyncEnabled: serializer.fromJson<bool>(json['webdavSyncEnabled']),
+      lastPushedSeq: serializer.fromJson<int?>(json['lastPushedSeq']),
+      lastSyncedAt: serializer.fromJson<DateTime?>(json['lastSyncedAt']),
+      themeMode: serializer.fromJson<String>(json['themeMode']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -3690,6 +3842,10 @@ class Setting extends DataClass implements Insertable<Setting> {
       'webdavUsername': serializer.toJson<String?>(webdavUsername),
       'webdavPasswordSaved': serializer.toJson<bool>(webdavPasswordSaved),
       'lastAutoBackupAt': serializer.toJson<DateTime?>(lastAutoBackupAt),
+      'webdavSyncEnabled': serializer.toJson<bool>(webdavSyncEnabled),
+      'lastPushedSeq': serializer.toJson<int?>(lastPushedSeq),
+      'lastSyncedAt': serializer.toJson<DateTime?>(lastSyncedAt),
+      'themeMode': serializer.toJson<String>(themeMode),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -3706,6 +3862,10 @@ class Setting extends DataClass implements Insertable<Setting> {
     Value<String?> webdavUsername = const Value.absent(),
     bool? webdavPasswordSaved,
     Value<DateTime?> lastAutoBackupAt = const Value.absent(),
+    bool? webdavSyncEnabled,
+    Value<int?> lastPushedSeq = const Value.absent(),
+    Value<DateTime?> lastSyncedAt = const Value.absent(),
+    String? themeMode,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => Setting(
@@ -3725,6 +3885,12 @@ class Setting extends DataClass implements Insertable<Setting> {
     lastAutoBackupAt: lastAutoBackupAt.present
         ? lastAutoBackupAt.value
         : this.lastAutoBackupAt,
+    webdavSyncEnabled: webdavSyncEnabled ?? this.webdavSyncEnabled,
+    lastPushedSeq: lastPushedSeq.present
+        ? lastPushedSeq.value
+        : this.lastPushedSeq,
+    lastSyncedAt: lastSyncedAt.present ? lastSyncedAt.value : this.lastSyncedAt,
+    themeMode: themeMode ?? this.themeMode,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -3756,6 +3922,16 @@ class Setting extends DataClass implements Insertable<Setting> {
       lastAutoBackupAt: data.lastAutoBackupAt.present
           ? data.lastAutoBackupAt.value
           : this.lastAutoBackupAt,
+      webdavSyncEnabled: data.webdavSyncEnabled.present
+          ? data.webdavSyncEnabled.value
+          : this.webdavSyncEnabled,
+      lastPushedSeq: data.lastPushedSeq.present
+          ? data.lastPushedSeq.value
+          : this.lastPushedSeq,
+      lastSyncedAt: data.lastSyncedAt.present
+          ? data.lastSyncedAt.value
+          : this.lastSyncedAt,
+      themeMode: data.themeMode.present ? data.themeMode.value : this.themeMode,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -3774,6 +3950,10 @@ class Setting extends DataClass implements Insertable<Setting> {
           ..write('webdavUsername: $webdavUsername, ')
           ..write('webdavPasswordSaved: $webdavPasswordSaved, ')
           ..write('lastAutoBackupAt: $lastAutoBackupAt, ')
+          ..write('webdavSyncEnabled: $webdavSyncEnabled, ')
+          ..write('lastPushedSeq: $lastPushedSeq, ')
+          ..write('lastSyncedAt: $lastSyncedAt, ')
+          ..write('themeMode: $themeMode, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -3792,6 +3972,10 @@ class Setting extends DataClass implements Insertable<Setting> {
     webdavUsername,
     webdavPasswordSaved,
     lastAutoBackupAt,
+    webdavSyncEnabled,
+    lastPushedSeq,
+    lastSyncedAt,
+    themeMode,
     createdAt,
     updatedAt,
   );
@@ -3809,6 +3993,10 @@ class Setting extends DataClass implements Insertable<Setting> {
           other.webdavUsername == this.webdavUsername &&
           other.webdavPasswordSaved == this.webdavPasswordSaved &&
           other.lastAutoBackupAt == this.lastAutoBackupAt &&
+          other.webdavSyncEnabled == this.webdavSyncEnabled &&
+          other.lastPushedSeq == this.lastPushedSeq &&
+          other.lastSyncedAt == this.lastSyncedAt &&
+          other.themeMode == this.themeMode &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -3824,6 +4012,10 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
   final Value<String?> webdavUsername;
   final Value<bool> webdavPasswordSaved;
   final Value<DateTime?> lastAutoBackupAt;
+  final Value<bool> webdavSyncEnabled;
+  final Value<int?> lastPushedSeq;
+  final Value<DateTime?> lastSyncedAt;
+  final Value<String> themeMode;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   const SettingsCompanion({
@@ -3837,6 +4029,10 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     this.webdavUsername = const Value.absent(),
     this.webdavPasswordSaved = const Value.absent(),
     this.lastAutoBackupAt = const Value.absent(),
+    this.webdavSyncEnabled = const Value.absent(),
+    this.lastPushedSeq = const Value.absent(),
+    this.lastSyncedAt = const Value.absent(),
+    this.themeMode = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
@@ -3851,6 +4047,10 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     this.webdavUsername = const Value.absent(),
     this.webdavPasswordSaved = const Value.absent(),
     this.lastAutoBackupAt = const Value.absent(),
+    this.webdavSyncEnabled = const Value.absent(),
+    this.lastPushedSeq = const Value.absent(),
+    this.lastSyncedAt = const Value.absent(),
+    this.themeMode = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
   }) : createdAt = Value(createdAt),
@@ -3866,6 +4066,10 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     Expression<String>? webdavUsername,
     Expression<bool>? webdavPasswordSaved,
     Expression<DateTime>? lastAutoBackupAt,
+    Expression<bool>? webdavSyncEnabled,
+    Expression<int>? lastPushedSeq,
+    Expression<DateTime>? lastSyncedAt,
+    Expression<String>? themeMode,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
   }) {
@@ -3882,6 +4086,10 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
       if (webdavPasswordSaved != null)
         'webdav_password_saved': webdavPasswordSaved,
       if (lastAutoBackupAt != null) 'last_auto_backup_at': lastAutoBackupAt,
+      if (webdavSyncEnabled != null) 'webdav_sync_enabled': webdavSyncEnabled,
+      if (lastPushedSeq != null) 'last_pushed_seq': lastPushedSeq,
+      if (lastSyncedAt != null) 'last_synced_at': lastSyncedAt,
+      if (themeMode != null) 'theme_mode': themeMode,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
@@ -3898,6 +4106,10 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     Value<String?>? webdavUsername,
     Value<bool>? webdavPasswordSaved,
     Value<DateTime?>? lastAutoBackupAt,
+    Value<bool>? webdavSyncEnabled,
+    Value<int?>? lastPushedSeq,
+    Value<DateTime?>? lastSyncedAt,
+    Value<String>? themeMode,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
   }) {
@@ -3913,6 +4125,10 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
       webdavUsername: webdavUsername ?? this.webdavUsername,
       webdavPasswordSaved: webdavPasswordSaved ?? this.webdavPasswordSaved,
       lastAutoBackupAt: lastAutoBackupAt ?? this.lastAutoBackupAt,
+      webdavSyncEnabled: webdavSyncEnabled ?? this.webdavSyncEnabled,
+      lastPushedSeq: lastPushedSeq ?? this.lastPushedSeq,
+      lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
+      themeMode: themeMode ?? this.themeMode,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -3953,6 +4169,18 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     if (lastAutoBackupAt.present) {
       map['last_auto_backup_at'] = Variable<DateTime>(lastAutoBackupAt.value);
     }
+    if (webdavSyncEnabled.present) {
+      map['webdav_sync_enabled'] = Variable<bool>(webdavSyncEnabled.value);
+    }
+    if (lastPushedSeq.present) {
+      map['last_pushed_seq'] = Variable<int>(lastPushedSeq.value);
+    }
+    if (lastSyncedAt.present) {
+      map['last_synced_at'] = Variable<DateTime>(lastSyncedAt.value);
+    }
+    if (themeMode.present) {
+      map['theme_mode'] = Variable<String>(themeMode.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -3975,6 +4203,10 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
           ..write('webdavUsername: $webdavUsername, ')
           ..write('webdavPasswordSaved: $webdavPasswordSaved, ')
           ..write('lastAutoBackupAt: $lastAutoBackupAt, ')
+          ..write('webdavSyncEnabled: $webdavSyncEnabled, ')
+          ..write('lastPushedSeq: $lastPushedSeq, ')
+          ..write('lastSyncedAt: $lastSyncedAt, ')
+          ..write('themeMode: $themeMode, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -4440,6 +4672,38 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $TasksTable tasks = $TasksTable(this);
   late final $SettingsTable settings = $SettingsTable(this);
   late final $ChecklistItemsTable checklistItems = $ChecklistItemsTable(this);
+  late final Index subjectsGoalIdx = Index(
+    'subjects_goal_idx',
+    'CREATE INDEX subjects_goal_idx ON subjects (goal_id)',
+  );
+  late final Index milestonesGoalIdx = Index(
+    'milestones_goal_idx',
+    'CREATE INDEX milestones_goal_idx ON milestones (goal_id)',
+  );
+  late final Index tasksGoalArchivedIdx = Index(
+    'tasks_goal_archived_idx',
+    'CREATE INDEX tasks_goal_archived_idx ON tasks (goal_id, archived_at)',
+  );
+  late final Index tasksPlannedDateIdx = Index(
+    'tasks_planned_date_idx',
+    'CREATE INDEX tasks_planned_date_idx ON tasks (planned_date)',
+  );
+  late final Index tasksStatusArchivedIdx = Index(
+    'tasks_status_archived_idx',
+    'CREATE INDEX tasks_status_archived_idx ON tasks (status, archived_at)',
+  );
+  late final Index tasksStatusCompletedIdx = Index(
+    'tasks_status_completed_idx',
+    'CREATE INDEX tasks_status_completed_idx ON tasks (status, completed_at)',
+  );
+  late final Index recurrenceTemplatesGoalIdx = Index(
+    'recurrence_templates_goal_idx',
+    'CREATE INDEX recurrence_templates_goal_idx ON recurrence_templates (goal_id)',
+  );
+  late final Index checklistItemsTaskIdx = Index(
+    'checklist_items_task_idx',
+    'CREATE INDEX checklist_items_task_idx ON checklist_items (task_id)',
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4452,6 +4716,14 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     tasks,
     settings,
     checklistItems,
+    subjectsGoalIdx,
+    milestonesGoalIdx,
+    tasksGoalArchivedIdx,
+    tasksPlannedDateIdx,
+    tasksStatusArchivedIdx,
+    tasksStatusCompletedIdx,
+    recurrenceTemplatesGoalIdx,
+    checklistItemsTaskIdx,
   ];
 }
 
@@ -7506,6 +7778,10 @@ typedef $$SettingsTableCreateCompanionBuilder =
       Value<String?> webdavUsername,
       Value<bool> webdavPasswordSaved,
       Value<DateTime?> lastAutoBackupAt,
+      Value<bool> webdavSyncEnabled,
+      Value<int?> lastPushedSeq,
+      Value<DateTime?> lastSyncedAt,
+      Value<String> themeMode,
       required DateTime createdAt,
       required DateTime updatedAt,
     });
@@ -7521,6 +7797,10 @@ typedef $$SettingsTableUpdateCompanionBuilder =
       Value<String?> webdavUsername,
       Value<bool> webdavPasswordSaved,
       Value<DateTime?> lastAutoBackupAt,
+      Value<bool> webdavSyncEnabled,
+      Value<int?> lastPushedSeq,
+      Value<DateTime?> lastSyncedAt,
+      Value<String> themeMode,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
     });
@@ -7581,6 +7861,26 @@ class $$SettingsTableFilterComposer
 
   ColumnFilters<DateTime> get lastAutoBackupAt => $composableBuilder(
     column: $table.lastAutoBackupAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get webdavSyncEnabled => $composableBuilder(
+    column: $table.webdavSyncEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get lastPushedSeq => $composableBuilder(
+    column: $table.lastPushedSeq,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastSyncedAt => $composableBuilder(
+    column: $table.lastSyncedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get themeMode => $composableBuilder(
+    column: $table.themeMode,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7654,6 +7954,26 @@ class $$SettingsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get webdavSyncEnabled => $composableBuilder(
+    column: $table.webdavSyncEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get lastPushedSeq => $composableBuilder(
+    column: $table.lastPushedSeq,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastSyncedAt => $composableBuilder(
+    column: $table.lastSyncedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get themeMode => $composableBuilder(
+    column: $table.themeMode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -7720,6 +8040,24 @@ class $$SettingsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<bool> get webdavSyncEnabled => $composableBuilder(
+    column: $table.webdavSyncEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get lastPushedSeq => $composableBuilder(
+    column: $table.lastPushedSeq,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get lastSyncedAt => $composableBuilder(
+    column: $table.lastSyncedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get themeMode =>
+      $composableBuilder(column: $table.themeMode, builder: (column) => column);
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -7765,6 +8103,10 @@ class $$SettingsTableTableManager
                 Value<String?> webdavUsername = const Value.absent(),
                 Value<bool> webdavPasswordSaved = const Value.absent(),
                 Value<DateTime?> lastAutoBackupAt = const Value.absent(),
+                Value<bool> webdavSyncEnabled = const Value.absent(),
+                Value<int?> lastPushedSeq = const Value.absent(),
+                Value<DateTime?> lastSyncedAt = const Value.absent(),
+                Value<String> themeMode = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => SettingsCompanion(
@@ -7778,6 +8120,10 @@ class $$SettingsTableTableManager
                 webdavUsername: webdavUsername,
                 webdavPasswordSaved: webdavPasswordSaved,
                 lastAutoBackupAt: lastAutoBackupAt,
+                webdavSyncEnabled: webdavSyncEnabled,
+                lastPushedSeq: lastPushedSeq,
+                lastSyncedAt: lastSyncedAt,
+                themeMode: themeMode,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),
@@ -7793,6 +8139,10 @@ class $$SettingsTableTableManager
                 Value<String?> webdavUsername = const Value.absent(),
                 Value<bool> webdavPasswordSaved = const Value.absent(),
                 Value<DateTime?> lastAutoBackupAt = const Value.absent(),
+                Value<bool> webdavSyncEnabled = const Value.absent(),
+                Value<int?> lastPushedSeq = const Value.absent(),
+                Value<DateTime?> lastSyncedAt = const Value.absent(),
+                Value<String> themeMode = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
               }) => SettingsCompanion.insert(
@@ -7806,6 +8156,10 @@ class $$SettingsTableTableManager
                 webdavUsername: webdavUsername,
                 webdavPasswordSaved: webdavPasswordSaved,
                 lastAutoBackupAt: lastAutoBackupAt,
+                webdavSyncEnabled: webdavSyncEnabled,
+                lastPushedSeq: lastPushedSeq,
+                lastSyncedAt: lastSyncedAt,
+                themeMode: themeMode,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),

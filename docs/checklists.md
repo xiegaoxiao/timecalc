@@ -107,6 +107,14 @@
 - [x]（P1）每日自动备份，默认保留最近 7 份；路径不可写时通知用户（FR-9.4）——M8 交付：设置页「自动备份」独立页（启用开关 + 本地目录 + WebDAV 双目的地）；应用运行期间语义（启动检查 + 每小时复查，距上次成功不足 24 小时跳过）；每目的地只保留最近 7 份自动备份（`timecalc-auto-` 前缀隔离，不删手动导出）；失败不推进时间戳、当日去重 SnackBar 提示；从备份位置恢复（本地目录/WebDAV 列表 → 下载 → 走合并/覆盖全链路）；WebDAV 密码经系统凭据存储（DPAPI，NFR-3）不落库不进备份；schema v9 新增 6 个配置列 + 覆盖恢复保留运行时配置；auto_backup_service_test 9 项 + webdav_client_test 11 项 + backup_target_test 8 项 + auto_backup_scheduler_test 4 项 + auto_backup_page_test 5 项 + migration v8→v9 3 项佐证。
 - [x] API Key、日志和窗口状态不进入业务数据备份（FR-9.5）——备份仅含业务表 + 计划偏好；settings.json 不含 close_behavior 与自动备份配置；窗口状态独立 JSON；WebDAV 密码存系统凭据存储；测试佐证。
 
+### 2.10 FR-10 WebDAV 整库文件同步（M9，云同步落地）
+
+- [x] 多设备数据同步：启动拉取远端快照、业务变更后推送、退出推送、设置页手动「立即同步」、运行中每 5 分钟周期复查——`WebDavSyncService.syncOnce`/`pushIfNeeded` + `DatabaseChangeWatcher`（6 张业务表 `managers.<table>.watch()` 合并 + 防抖 3s）+ main 启动/周期/退出接线；webdav_sync_service_test 8 项 + sync_page_test 4 项佐证。
+- [x] 后写者胜 + 安全副本：远端仅存一份最新快照（`webdav_sync/`，与自动备份目录隔离）+ meta（seq/schema 版本）；拉取覆盖本地前自动安全副本（复用 FR-9.3）；并发编辑的极端场景可从安全副本恢复；同步页明示语义。
+- [x] 运行时配置各设备独立：覆盖恢复/拉取保留 close_behavior、自动备份、同步自身（backup_codec + backup_service 保留分支）；backup_service_test「覆盖恢复后同步配置被保留」佐证。
+- [x] schema 版本守卫：远端快照由更高版本生成时中止并提示升级，不降级读坏——webdav_sync_service_test「schema 版本守卫」佐证。
+- [x] 数据层（schema v11）：Settings 新增 `webdav_sync_enabled`/`last_pushed_seq`/`last_synced_at`；`from10To11` 迁移 + drift 快照 v11 + migration 测试（v10→v11 / v1→v11 / 半迁移幂等）；FR-9.5 运行时配置不进备份。
+
 ## 3. 用户流程走查清单（手动回归，每个里程碑结束时执行）
 
 ### 3.1 首次使用（PRD §5.1）
@@ -263,6 +271,29 @@
 - [x] P1 不在缺少用户验证时同时全部启动（PRD §12）——仅 FR-2 纳入本轮；检查项/燃尽趋势/自动备份/悬浮窗/全局快捷键/AI 草稿均未启动。
 - [x] 所选功能对应的 §2 小节全部勾选通过——§2.2 FR-2 三项全过，证据见上。
 
+### M6 任务检查项（FR-4.1）
+
+- [x] 检查项 CRUD/排序/完成二次确认/级联删除交付——见 §2.4 FR-4.1 与 §14 M6 记录；13 项 repository + 4 项 widget + 3 项迁移测试。
+- [x] 备份纳入检查项（manifest/编解码/合并映射/覆盖恢复预览，旧备份兼容）——backup_service_test 佐证。
+
+### M7 燃尽趋势（FR-7.3）
+
+- [x] 剩余预估时长随日期变化 + 理想参考线交付——见 §2.7 FR-7.3；statistics_service_test 6 项 + progress_page_test 2 项。
+
+### M8 每日自动备份（FR-9.4）
+
+- [x] 本地目录 + WebDAV 双目的地自动备份（保留 7 份/运行期间语义/从备份位置恢复）交付——见 §2.9 FR-9.4 与 M8 验收记录；auto_backup_service_test 9 项 + webdav_client_test 11 项 + backup_target_test 8 项 + scheduler 4 项 + page 5 项 + 迁移 3 项。
+
+### M9 WebDAV 整库文件同步（云同步落地）
+
+- [x] 多设备整库快照同步（启动拉取/变更推送/退出推送/手动/周期复查）交付——见 §2.10 FR-10；webdav_sync_service_test 8 项 + sync_page_test 4 项 + 迁移 3 项 + backup 保留 1 项。
+- [x] 后写者胜语义、拉取安全副本、运行时配置各设备独立、schema 版本守卫——同步页说明 + 测试佐证。
+
+### M10 明暗主题切换
+
+- [x] 外观页三选一（跟随系统/浅色/深色）交付——`AppTheme.light()/dark()` 复用；`app.dart` watch `themeMode` 响应式换肤；appearance_page_test 4 项。
+- [x] 主题模式为设备级配置（schema v12 `theme_mode`），不进业务备份（FR-9.5），覆盖恢复/同步拉取保留——migration 3 项 + backup 保留 1 项 + settings_repository 3 项。
+
 ## 12. 使用场景速查表
 
 | 场景 | 使用哪些清单 |
@@ -345,13 +376,26 @@
 - **独立子页**：关闭行为页（保存实时应用到桌面层）、备份与恢复页、已归档任务页（平铺懒加载 + 空态）、外观/快捷键占位页；新增 `/settings/close-behavior`、`/settings/backup`、`/settings/archived`、`/settings/appearance`、`/settings/shortcuts` 顶层路由；「前往备份恢复」直达 `/settings/backup`。
 - **归档区计数优化**：折叠态只查 COUNT，展开/进入子页才加载全量列表（懒加载回看名副其实）。
 
-### 后续优化（P3 重构候选，未排期）
+### 已交付（2026-08-07，M9：WebDAV 整库文件同步）
 
-- 统一跨页缓存刷新 helper（消除各页面复制粘贴的 invalidate 块）。
-- 提取共享日期工具（`yyyy-MM-dd` 解析/格式化重复 8+ 处）。
-- 合并 `TaskTile` 与 `_TaskTile` 两个重复任务行组件及重复的删除/停止确认对话框。
-- `DurationStepInput` 对 `null` 值展示「未设置」而非 0 小时 0 分。
-- `CountdownService` terminated 分支返回的 days 为负数（仅内部使用）。
-- `QuickTaskFormDialog.defaultGoalId` 参数无调用方（死代码）。
-- `subject_manager` 加载指示器与其他页面统一（Linear vs Circular）。
-- 数据库补充常用查询索引与状态列 CHECK 约束。
+- **整库快照同步（FR-10，云同步落地）**：以整库快照为同步单元，业务数据（目标/科目/里程碑/任务/检查项/重复模板/计划偏好）同步到 WebDAV 多设备共用；远端 `webdav_sync/` 目录与自动备份隔离，仅存最新一份快照 + meta（seq/schema 版本）；触发 = 启动拉取/变更防抖 3s 推送/退出推送/手动/每 5 分钟周期复查。
+- **拉取守卫**：schema 版本更高中止 + 覆盖前安全副本（FR-9.3）+ 运行时配置各设备独立（backup_codec/_overwriteRestore 保留分支）；同步页「立即同步」+ 最近同步时间 + 后写者胜语义说明。
+- **数据层（schema v11）**：Settings 新增 `webdav_sync_enabled`/`last_pushed_seq`/`last_synced_at`；`from10To11` 迁移 + 快照 v11 + 迁移测试 3 项。版本号 bump 1.6.0。测试全绿 **450 项**。
+
+### 已交付（2026-08-07，M10：明暗主题切换）
+
+- **外观页落地**：占位页重写为三选一（跟随系统 / 浅色 / 深色，Material `SegmentedButton`）+ 「当前模式」预览卡（浅/深色板对比）；**点击即生效**（写库 + settingsProvider 失效整树换肤，无独立保存按钮）。
+- **应用层**：`TimeCalcApp` watch `settings.themeMode` 响应式 `themeMode`（未知值回退跟随系统）；`AppTheme.light()/dark()` 复用既有实现。
+- **数据层（schema v12）**：Settings 新增 `theme_mode` 列（默认 `system`）；`from11To12` 迁移 + 快照 v12 + 迁移测试 3 项；主题模式为设备级外观配置，不进业务备份（FR-9.5），覆盖恢复/同步拉取保留。版本号 bump 1.7.0。测试全绿 **461 项**。
+
+### 后续优化（P3 重构候选，2026-08-07 已完成 8/8）
+
+- ✅ **统一跨页缓存刷新 helper**——新增 `invalidateAppData`/`invalidateTaskForms`（`lib/core/providers/app_refresh.dart`），today/calendar/goal_list/backup 与 4 个任务对话框的复制粘贴 invalidate 块全部收敛。
+- ✅ **提取共享日期工具**——全库 15 处 `_parseDate` 副本收敛到 `date_text.dart` 的 `parseLocalDate`（含 form 对话框的 nullable 变体，null 语义保持不变）。
+- ✅ **合并 `TaskTile` 与 `_TaskTile`**——收敛为唯一组件（可选 `subjects`/`showPlannedDate` 参数吸收差异），重复的删除/停止重复确认对话框收敛为共享函数；**补齐目标详情页/科目页缺失的延期菜单**（FR-3.3 P0 能力）。
+- ✅ **`DurationStepInput` 对 `null` 值展示「未设置」**——字段禁用 + 「未设置时长」文案，与保存语义一致。
+- ✅ **`CountdownService` terminated 分支 days 归零**——杜绝负数外漏（label 恒返回「已结束」，3 处调用点不展示）。
+- ✅ **删除死代码 `QuickTaskFormDialog.defaultGoalId`**——确认无调用方后移除。
+- ✅ **`subject_manager` 加载指示器统一**——与 `milestone_section` 一并改为 `Center(CircularProgressIndicator())`，与全项目一致。
+- ✅ **数据库补充高频查询索引（schema v10，纯物理层）**——tasks 4 个 + milestones/subjects/recurrence_templates/checklist_items 各 1 个；`from9To10` 迁移 + 快照 v10 + migration 测试；备份兼容（行数据不变，appSchemaVersion 仅存清单）。
+- 剩余项（未纳入本次，留待后续）：status 列 CHECK 约束（需重建表，风险高）；`RecurrenceGroupTile.deleteAll` 确认框（文案不同，保留独立实现）。

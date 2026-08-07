@@ -57,9 +57,24 @@ void main() {
 
   testWidgets('月历展示每日任务数、完成数和预估总时长（FR-3.4）', (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
-    await tasks.create(goalId: goal.id, title: 'A', plannedDate: '2026-08-05', estimatedMinutes: 90);
-    await tasks.create(goalId: goal.id, title: 'B', plannedDate: '2026-08-05', estimatedMinutes: 60);
-    final doneTask = await tasks.create(goalId: goal.id, title: 'C', plannedDate: '2026-08-05', estimatedMinutes: 30);
+    await tasks.create(
+      goalId: goal.id,
+      title: 'A',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 90,
+    );
+    await tasks.create(
+      goalId: goal.id,
+      title: 'B',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 60,
+    );
+    final doneTask = await tasks.create(
+      goalId: goal.id,
+      title: 'C',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 30,
+    );
     await tasks.setDone(doneTask.id, true);
 
     await pumpApp(tester);
@@ -73,7 +88,12 @@ void main() {
 
   testWidgets('无任务日期保持中性（不显示 0/0 或过载）', (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
-    await tasks.create(goalId: goal.id, title: 'A', plannedDate: '2026-08-05', estimatedMinutes: 90);
+    await tasks.create(
+      goalId: goal.id,
+      title: 'A',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 90,
+    );
 
     await pumpApp(tester);
     await openCalendar(tester);
@@ -85,8 +105,18 @@ void main() {
 
   testWidgets('点击日期在选日面板展示当日任务并可完成任务（FR-3.2）', (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
-    await tasks.create(goalId: goal.id, title: '八五任务', plannedDate: '2026-08-05', estimatedMinutes: 90);
-    await tasks.create(goalId: goal.id, title: '八六任务', plannedDate: '2026-08-06', estimatedMinutes: 60);
+    await tasks.create(
+      goalId: goal.id,
+      title: '八五任务',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 90,
+    );
+    await tasks.create(
+      goalId: goal.id,
+      title: '八六任务',
+      plannedDate: '2026-08-06',
+      estimatedMinutes: 60,
+    );
 
     await pumpApp(tester);
     await openCalendar(tester);
@@ -163,7 +193,12 @@ void main() {
 
   testWidgets('日历与今天页数据一致：日历完成今日任务后今天页负载更新', (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
-    await tasks.create(goalId: goal.id, title: '共享任务', plannedDate: '2026-08-05', estimatedMinutes: 150);
+    await tasks.create(
+      goalId: goal.id,
+      title: '共享任务',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 150,
+    );
 
     await pumpApp(tester);
     await openCalendar(tester);
@@ -177,7 +212,12 @@ void main() {
     expect(find.text('超出30m'), findsNothing);
 
     // 回到今天页：负载归零，无「超出」提示。
-    await tester.tap(find.text('今天'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('今天'),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text('今日任务总计 0 分'), findsOneWidget);
     expect(find.text('可用 2 小时'), findsOneWidget);

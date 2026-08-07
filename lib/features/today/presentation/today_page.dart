@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
+import '../../../core/providers/app_refresh.dart';
+import '../../../core/utils/date_text.dart';
 import '../../../services/countdown_service.dart';
 import '../../../services/defer_service.dart';
 import '../../../services/duration_format.dart';
@@ -119,16 +121,8 @@ class _TodayPageState extends ConsumerState<TodayPage> {
         .toList();
 
     // 数据变更后的统一刷新（FR-3 验收：今日列表、日历、目标详情在同一
-    // 操作周期内同步更新）。family 级 invalidate 覆盖所有日期/月份实例。
-    void onChanged() {
-      ref.invalidate(tasksByDateProvider);
-      ref.invalidate(tasksByMonthProvider);
-      ref.invalidate(taskListProvider);
-      ref.invalidate(unfinishedBeforeProvider);
-      ref.invalidate(goalListProvider);
-      ref.invalidate(completedTasksProvider);
-      ref.invalidate(allTodoTasksProvider);
-    }
+    // 操作周期内同步更新）。公共集合见 invalidateAppData（P3 收敛）。
+    void onChanged() => invalidateAppData(ref);
 
     // 空态：无进行中目标、今日无任务、且无逾期未完成任务时展示。
     // 有逾期任务时保留 FR-3.7 横幅与任务区，避免横幅被空态遮蔽（回归）。
@@ -464,7 +458,7 @@ class _OverdueTasksSection extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
-                  '原计划 ${DateFormat('yyyy-MM-dd').format(_parseDate(task.plannedDate))}'
+                  '原计划 ${DateFormat('yyyy-MM-dd').format(parseLocalDate(task.plannedDate))}'
                   ' · 已逾期 ${_overdueDays(today, task.plannedDate)} 天',
                   style: Theme.of(context)
                       .textTheme
@@ -550,7 +544,7 @@ class _CountdownCard extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 2),
-            Text('截止 ${DateFormat('yyyy-MM-dd').format(_parseDate(goal.deadlineDate))}'),
+            Text('截止 ${DateFormat('yyyy-MM-dd').format(parseLocalDate(goal.deadlineDate))}'),
             const SizedBox(height: 2),
             Row(
               children: [
@@ -621,14 +615,8 @@ class _EmptyView extends StatelessWidget {
   }
 }
 
-/// 解析 `yyyy-MM-dd` 文本为本地日期。
-DateTime _parseDate(String yyyyMMdd) {
-  final parts = yyyyMMdd.split('-');
-  return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
-}
-
 /// 任务逾期天数：计划日期距今经过的整天数（计划日期必早于 [today]）。
 int _overdueDays(DateTime today, String plannedDate) {
-  final planned = _parseDate(plannedDate);
+  final planned = parseLocalDate(plannedDate);
   return DateUtils.dateOnly(today).difference(DateUtils.dateOnly(planned)).inDays;
 }

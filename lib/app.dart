@@ -5,14 +5,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/desktop/desktop_controller.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'features/settings/data/settings_repository_provider.dart';
 
 /// TimeCalc 应用根组件。
 class TimeCalcApp extends ConsumerWidget {
   const TimeCalcApp({super.key});
 
+  /// 主题模式文本 → [ThemeMode]（schema v12 存 `system`/`light`/`dark`，
+  /// 与 [ThemeMode.name] 一致；未知值回退跟随系统）。
+  static ThemeMode _themeModeFrom(String? mode) {
+    for (final candidate in ThemeMode.values) {
+      if (candidate.name == mode) return candidate;
+    }
+    return ThemeMode.system;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(appRouterProvider);
+    final themeMode = ref.watch(settingsProvider).valueOrNull?.themeMode;
     return MaterialApp.router(
       title: 'TimeCalc 时间计算器',
       debugShowCheckedModeBanner: false,
@@ -21,8 +32,9 @@ class TimeCalcApp extends ConsumerWidget {
       scaffoldMessengerKey: DesktopController.scaffoldMessengerKey,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
-      // M3 起改为可由用户在设置中选择；当前跟随系统。
-      themeMode: ThemeMode.system,
+      // M10：由外观页选择「跟随系统 / 浅色 / 深色」；保存后 settingsProvider
+      // 失效即整树换肤，无需重启。加载/失败时回退跟随系统。
+      themeMode: _themeModeFrom(themeMode),
       locale: const Locale('zh', 'CN'),
       supportedLocales: const [Locale('zh', 'CN')],
       localizationsDelegates: const [

@@ -89,14 +89,26 @@ void main() {
     expect(find.byTooltip('重复任务'), findsWidgets);
 
     final instances = await tasks.byGoal(goalId);
-    expect(instances.map((t) => t.plannedDate).toList(),
-        ['2026-08-05', '2026-08-06', '2026-08-07', '2026-08-09', '2026-08-12', '2026-08-20', '2026-09-04']);
+    expect(instances.map((t) => t.plannedDate).toList(), [
+      '2026-08-05',
+      '2026-08-06',
+      '2026-08-07',
+      '2026-08-09',
+      '2026-08-12',
+      '2026-08-20',
+      '2026-09-04',
+    ]);
     expect(instances.every((t) => t.recurrenceTemplateId != null), isTrue);
 
     // 今天页也出现今日实例（先返回计划页，再切到今天）。
     await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('今天'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('今天'),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text('复习单词'), findsOneWidget);
   });
@@ -174,10 +186,7 @@ void main() {
     final template = await recurrence.create(
       goalId: goalId,
       title: '旧版规则任务',
-      rule: RecurrenceRule.fromMap(
-        ruleType: 'daily',
-        json: const {},
-      ),
+      rule: RecurrenceRule.fromMap(ruleType: 'daily', json: const {}),
       startDate: '2026-08-05',
       today: fixedNow,
     );
@@ -308,7 +317,10 @@ void main() {
       expect(instances.first.plannedDate, '2026-08-05');
       expect(instances.first.status, 'done');
       // UI 复选框响应为已完成。
-      expect(tester.widget<Checkbox>(find.byType(Checkbox).first).value, isTrue);
+      expect(
+        tester.widget<Checkbox>(find.byType(Checkbox).first).value,
+        isTrue,
+      );
     });
 
     testWidgets('父卡片菜单删除：二次确认后模板与全部实例一并删除', (tester) async {

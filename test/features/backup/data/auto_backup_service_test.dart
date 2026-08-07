@@ -30,14 +30,14 @@ class FakeCredentialStore implements WebDavCredentialStore {
   }
 }
 
-/// AutoBackupService 测试（M8，FR-9.4）。
+/// AutoBackupService 测试（M8，FR-9.4；M11 目的地收敛为本地目录）。
 ///
 /// 覆盖：
 /// - 未启用 / 未配置目的地 / 距上次不足 24h → 跳过；
 /// - 成功：导出 zip 落本地目录 + 推进 last_auto_backup_at；
-/// - 失败不推进时间戳（部分目的地失败也整体不推进）；
+/// - 失败不推进时间戳（本地目录失败整体失败）；
 /// - 保留策略：只删 timecalc-auto-*、保留最新 7 份、不删手动导出；
-/// - WebDAV 目的地从凭据存储取密码。
+/// - 自动备份不往 WebDAV 上传（M11 精简：云端由 M9 同步承担）。
 void main() {
   late AppDatabase db;
   late SettingsRepository settings;
@@ -153,32 +153,18 @@ void main() {
     expect((await settings.get()).lastAutoBackupAt, isNull); // 未推进
   });
 
-  test('部分目的地失败时整体失败且不推进时间戳', () async {
+  test('本地目录写入失败时整体失败且不推进时间戳（M11 仅本地目的地）', () async {
     await seedGoal();
     await settings.updateAutoBackupEnabled(true);
-    await settings.updateLocalBackupFolder(tempDir.path);
-    await settings.updateWebDavConfig(
-      url: 'https://dav.example.com/dav',
-      username: 'alice',
-    );
-    await credentials.save('https://dav.example.com/dav', 'secret');
+    // 指向一个不可写路径（不存在的盘符），导出后上传失败。
+    await settings.updateLocalBackupFolder(r'X:\不存在的目录');
 
-    final result = await service(
-      // WebDAV 目的地失败：PROPFIND 返回 500。
-      client: MockClient((req) async {
-        if (req.method == 'PROPFIND') return http.Response('', 500);
-        return http.Response('', 201);
-      }),
-    ).run(now: DateTime.utc(2026, 8, 6, 1));
+    final result = await service().run(now: DateTime.utc(2026, 8, 6, 1));
 
     expect(result.succeeded, isFalse);
     expect(result.errors, hasLength(1));
-    expect(result.errors.single, contains('WebDAV'));
+    expect(result.errors.single, contains('本地目录'));
     expect((await settings.get()).lastAutoBackupAt, isNull); // 不推进
-
-    // 本地目录仍成功写入了一份。
-    final files = Directory(tempDir.path).listSync().whereType<File>().toList();
-    expect(files, hasLength(1));
   });
 
   test('保留策略：只保留最新 7 份自动备份，不删手动导出', () async {
@@ -213,55 +199,27 @@ void main() {
     expect(files, contains('manual-20260801.timecalc')); // 手动导出不受影响
   });
 
-  test('WebDAV 目的地从凭据存储取密码；密码缺失时不可用', () async {
+  test('自动备份只写本地目录：WebDAV 配置不参与上传（M11 精简）', () async {
     await seedGoal();
     await settings.updateAutoBackupEnabled(true);
+    // 配置了 WebDAV（含已保存密码），但自动备份不再往 WebDAV 上传——
+    // 云端数据保护由 M9 整库文件同步承担。
     await settings.updateWebDavConfig(
       url: 'https://dav.example.com/dav',
       username: 'alice',
     );
-    // 密码未保存 → WebDAV 目的地不可用，只有本地生效。
+    await credentials.save('https://dav.example.com/dav', 'secret');
     await settings.updateLocalBackupFolder(tempDir.path);
 
-    var proxied = false;
+    var webdavUploaded = false;
     final result = await service(
       client: MockClient((req) async {
-        if (req.method == 'MKCOL' || req.method == 'PUT') proxied = true;
+        if (req.method == 'MKCOL' || req.method == 'PUT') webdavUploaded = true;
         return http.Response('', 201);
       }),
-    ).run(now: DateTime.utc(2026, 8, 6, 1));
+    ).run(force: true, now: DateTime.utc(2026, 8, 6, 1));
     expect(result.succeeded, isTrue);
-    expect(result.uploadedTargets, 1); // 仅本地
-    expect(proxied, isFalse); // WebDAV 未参与
-
-    // 保存密码后 WebDAV 目的地加入。
-    await credentials.save('https://dav.example.com/dav', 'secret');
-    var webdavUploaded = false;
-    final result2 = await service(
-      client: MockClient((req) async {
-        if (req.method == 'PUT') webdavUploaded = true;
-        return http.Response('', 201);
-      }),
-    ).run(force: true, now: DateTime.utc(2026, 8, 6, 2));
-    expect(result2.uploadedTargets, 2); // 本地 + WebDAV
-    expect(webdavUploaded, isTrue);
-  });
-
-  test('testWebDavConnection：建目录 + 列目录成功即通过', () async {
-    final requested = <String>[];
-    await service(
-      client: MockClient((req) async {
-        requested.add(req.method);
-        if (req.method == 'PROPFIND') {
-          return http.Response('<multistatus xmlns="DAV:"/>', 207);
-        }
-        return http.Response('', 201);
-      }),
-    ).testWebDavConnection(
-      url: 'https://dav.example.com/dav',
-      username: 'alice',
-      password: 'secret',
-    );
-    expect(requested, containsAll(['MKCOL', 'PROPFIND']));
+    expect(result.uploadedTargets, 1); // 仅本地目录
+    expect(webdavUploaded, isFalse); // 未向 WebDAV 发起任何写请求
   });
 }

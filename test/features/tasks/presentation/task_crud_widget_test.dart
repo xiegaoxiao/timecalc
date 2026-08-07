@@ -72,7 +72,11 @@ void main() {
     // 填写标题。
     await tester.enterText(find.byType(TextFormField).first, '完成第一章');
 
-    // 用步进器设置预估时长 120 分钟（2 小时）：点「小时加」两次。
+    // 默认未设置时长（P3.3：null 显示「未设置时长」，字段禁用）。
+    // 先点「无时长」关闭开关，再用步进器设置 120 分钟（2 小时）：
+    // 点「小时加」两次。
+    await tester.tap(find.text('无时长'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('小时加'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('小时加'));
@@ -96,10 +100,13 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField).first, '任务');
 
-    // 默认未设置时长（0 分起步，可直接步进）。
-    expect(find.text('当前共 0 分'), findsOneWidget);
+    // 默认未设置时长（P3.3：null 展示「未设置时长」而非 0 分）。
+    expect(find.text('未设置时长'), findsOneWidget);
 
-    // 分钟步进：一次 +5 分钟。
+    // 点「无时长」关闭开关，字段恢复可用后步进：一次 +5 分钟。
+    await tester.tap(find.text('无时长'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前共 0 分'), findsOneWidget);
     await tester.tap(find.byTooltip('分钟加'));
     await tester.pumpAndSettle();
     expect(find.text('当前共 5 分'), findsOneWidget);
@@ -153,6 +160,25 @@ void main() {
 
     expect(find.text('要删除的任务'), findsNothing);
     expect(await tasks.byGoal(goalId), isEmpty);
+  });
+
+  testWidgets('目标详情页任务行菜单提供延期（P3.4 补齐 FR-3.3 回归）', (tester) async {
+    await tasks.create(
+      goalId: goalId,
+      title: '待延期任务',
+      plannedDate: '2026-08-05',
+    );
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    await tester.tap(find.byTooltip('任务操作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('延期至下一可用日'));
+    await tester.pumpAndSettle();
+
+    final fetched = await tasks.byGoal(goalId);
+    expect(fetched.single.plannedDate, '2026-08-06');
+    expect(fetched.single.originalPlannedDate, '2026-08-05');
   });
 
   testWidgets('JSON 导入：内容变化自动校验，非法数据不写库', (tester) async {

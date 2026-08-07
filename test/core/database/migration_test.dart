@@ -663,14 +663,20 @@ void main() {
     expect(goal.title, 'v8 目标');
 
     // v9 新增 6 个自动备份配置列，旧行取默认值（FR-9.4）。
-    final settings = await upgraded.select(upgraded.settings).getSingle();
-    expect(settings.autoBackupEnabled, isFalse);
-    expect(settings.localBackupFolder, isNull);
-    expect(settings.webdavUrl, isNull);
-    expect(settings.webdavUsername, isNull);
-    expect(settings.webdavPasswordSaved, isFalse);
-    expect(settings.lastAutoBackupAt, isNull);
-    expect(settings.closeBehavior, 'exit'); // 既有列保留
+    // 用原始 SQL 读取 settings：中间版本库没有 v11 新增的同步列，typed
+    // 读取会因缺列 map 失败（与 v2->v6 用例同款注释）。
+    final settingsRow = await upgraded.customSelect(
+      'SELECT auto_backup_enabled, local_backup_folder, webdav_url, '
+      'webdav_username, webdav_password_saved, last_auto_backup_at, '
+      'close_behavior FROM settings WHERE id = 1',
+    ).getSingle();
+    expect(settingsRow.read<int>('auto_backup_enabled'), 0);
+    expect(settingsRow.read<String?>('local_backup_folder'), isNull);
+    expect(settingsRow.read<String?>('webdav_url'), isNull);
+    expect(settingsRow.read<String?>('webdav_username'), isNull);
+    expect(settingsRow.read<int>('webdav_password_saved'), 0);
+    expect(settingsRow.read<String?>('last_auto_backup_at'), isNull);
+    expect(settingsRow.read<String>('close_behavior'), 'exit'); // 既有列保留
 
     await upgraded.close();
     schema.close();
@@ -723,6 +729,169 @@ void main() {
     schema.close();
   });
 
+  test('schema v9 -> v10：高频查询索引补齐，v9 数据保留（P3.6）', () async {
+    final verifier = SchemaVerifier(GeneratedHelper());
+    // 以 v9 结构初始化数据库并写入数据。
+    final schema = await verifier.schemaAt(9);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['v9 目标', '2026-08-05', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO tasks (goal_id, title, planned_date, status, created_at, updated_at) '
+      'VALUES (1, ?, ?, ?, ?, ?)',
+      ['v9 任务', '2026-08-05', 'todo', 1750000000, 1750000000],
+    );
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 10);
+
+    // v9 数据保留。
+    final goal = await (upgraded.select(upgraded.goals)..where((g) => g.id.equals(1))).getSingle();
+    expect(goal.title, 'v9 目标');
+
+    // v10 新增 8 个索引（纯物理层，行数据不变）。
+    final rows = await upgraded.customSelect(
+      "SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%'",
+    ).get();
+    final names = rows.map((row) => row.read<String>('name')).toSet();
+    expect(names, containsAll([
+      'tasks_goal_archived_idx',
+      'tasks_planned_date_idx',
+      'tasks_status_archived_idx',
+      'tasks_status_completed_idx',
+      'milestones_goal_idx',
+      'subjects_goal_idx',
+      'recurrence_templates_goal_idx',
+      'checklist_items_task_idx',
+    ]));
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('schema v1 -> v10：迁移成功保留数据，索引存在（P3.6）', () async {
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(1);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['迁移目标', '2026-08-05', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO tasks (goal_id, title, planned_date, created_at, updated_at) '
+      'VALUES (1, ?, ?, ?, ?)',
+      ['迁移任务', '2026-08-05', 1750000000, 1750000000],
+    );
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 10);
+
+    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    expect(task.title, '迁移任务');
+
+    final tables = await upgraded.customSelect(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+    ).get();
+    final names = tables.map((row) => row.read<String>('name')).toSet();
+    expect(
+      names,
+      containsAll(['settings', 'recurrence_templates', 'milestones', 'checklist_items']),
+    );
+
+    // v10 索引已随迁移创建。
+    final indexes = await upgraded.customSelect(
+      "SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%'",
+    ).get();
+    final indexNames = indexes.map((row) => row.read<String>('name')).toSet();
+    expect(indexNames, contains('tasks_planned_date_idx'));
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('schema v10 -> v11：WebDAV 同步配置列补齐，v10 数据保留（M9）', () async {
+    final verifier = SchemaVerifier(GeneratedHelper());
+    // 以 v10 结构初始化数据库并写入数据。
+    final schema = await verifier.schemaAt(10);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['v10 目标', '2026-08-05', 1750000000, 1750000000],
+    );
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 11);
+
+    // v10 数据保留。
+    final goal = await (upgraded.select(upgraded.goals)..where((g) => g.id.equals(1))).getSingle();
+    expect(goal.title, 'v10 目标');
+
+    // v11 新增 3 个同步配置列，旧行取默认值。
+    final columns = await upgraded.customSelect(
+      "SELECT name FROM pragma_table_info('settings')",
+    ).get();
+    final settingColumns = columns.map((row) => row.read<String>('name')).toSet();
+    expect(settingColumns, containsAll([
+      'webdav_sync_enabled',
+      'last_pushed_seq',
+      'last_synced_at',
+    ]));
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('schema v1 -> v11：迁移成功保留数据，同步配置列存在（M9）', () async {
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(1);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['迁移目标', '2026-08-05', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO tasks (goal_id, title, planned_date, created_at, updated_at) '
+      'VALUES (1, ?, ?, ?, ?)',
+      ['迁移任务', '2026-08-05', 1750000000, 1750000000],
+    );
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 11);
+
+    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    expect(task.title, '迁移任务');
+
+    final tables = await upgraded.customSelect(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+    ).get();
+    final names = tables.map((row) => row.read<String>('name')).toSet();
+    expect(
+      names,
+      containsAll(['settings', 'recurrence_templates', 'milestones', 'checklist_items']),
+    );
+
+    final columns = await upgraded.customSelect(
+      "SELECT name FROM pragma_table_info('settings')",
+    ).get();
+    final settingColumns = columns.map((row) => row.read<String>('name')).toSet();
+    expect(settingColumns, containsAll([
+      'webdav_sync_enabled',
+      'last_pushed_seq',
+      'last_synced_at',
+      'auto_backup_enabled', // v9 列随链路保留
+      'close_behavior', // v6 列随链路保留
+    ]));
+
+    await upgraded.close();
+    schema.close();
+  });
+
   test('半迁移状态：v8 版本号但自动备份配置列已存在时迁移可重复成功（幂等回归）', () async {
     // settings 用 v9 快照建库（含全部新列），再把版本号重置为 8，模拟
     // 「列已手工补上但 user_version 落后」的半迁移状态（addColumnIfMissing
@@ -735,15 +904,135 @@ void main() {
     final upgraded = AppDatabase(schema.newConnection());
     await verifier.migrateAndValidate(upgraded, 9);
 
-    final settings = await upgraded.select(upgraded.settings).getSingleOrNull();
     // 默认行由 SettingsRepository 惰性 seed；迁移本身不写 settings 行。
-    expect(settings, isNull);
+    // 用原始 SQL 计数（中间库缺 v11 列，typed 读取会因缺列 map 失败）。
+    final row = await upgraded.customSelect(
+      'SELECT COUNT(*) AS c FROM settings',
+    ).getSingle();
+    expect(row.read<int>('c'), 0);
 
     final columns = await upgraded.customSelect(
       "SELECT name FROM pragma_table_info('settings')",
     ).get();
     final settingColumns = columns.map((row) => row.read<String>('name')).toSet();
     expect(settingColumns, contains('auto_backup_enabled'));
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('半迁移状态：v10 版本号但同步配置列已存在时迁移可重复成功（幂等回归，M9）', () async {
+    // settings 用 v11 快照建库（含同步 3 列），再把版本号重置为 10，模拟
+    // 「列已手工补上但 user_version 落后」的半迁移状态（addColumnIfMissing
+    // 幂等，不抛 duplicate column name）。
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(11);
+    final raw = schema.rawDatabase;
+    raw.execute('PRAGMA user_version = 10'); // 模拟版本号落后
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 11);
+
+    final columns = await upgraded.customSelect(
+      "SELECT name FROM pragma_table_info('settings')",
+    ).get();
+    final settingColumns = columns.map((row) => row.read<String>('name')).toSet();
+    expect(settingColumns, containsAll(['webdav_sync_enabled', 'last_pushed_seq', 'last_synced_at']));
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('schema v11 -> v12：主题模式列补齐，v11 数据保留（M10）', () async {
+    final verifier = SchemaVerifier(GeneratedHelper());
+    // 以 v11 结构初始化数据库并写入数据。
+    final schema = await verifier.schemaAt(11);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['v11 目标', '2026-08-05', 1750000000, 1750000000],
+    );
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 12);
+
+    // v11 数据保留。
+    final goal = await (upgraded.select(upgraded.goals)..where((g) => g.id.equals(1))).getSingle();
+    expect(goal.title, 'v11 目标');
+
+    // v12 新增 theme_mode 列，旧行取默认值 system。
+    final columns = await upgraded.customSelect(
+      "SELECT name FROM pragma_table_info('settings')",
+    ).get();
+    final settingColumns = columns.map((row) => row.read<String>('name')).toSet();
+    expect(settingColumns, contains('theme_mode'));
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('schema v1 -> v12：迁移成功保留数据，主题模式列存在（M10）', () async {
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(1);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['迁移目标', '2026-08-05', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO tasks (goal_id, title, planned_date, created_at, updated_at) '
+      'VALUES (1, ?, ?, ?, ?)',
+      ['迁移任务', '2026-08-05', 1750000000, 1750000000],
+    );
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 12);
+
+    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    expect(task.title, '迁移任务');
+
+    final tables = await upgraded.customSelect(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+    ).get();
+    final names = tables.map((row) => row.read<String>('name')).toSet();
+    expect(
+      names,
+      containsAll(['settings', 'recurrence_templates', 'milestones', 'checklist_items']),
+    );
+
+    final columns = await upgraded.customSelect(
+      "SELECT name FROM pragma_table_info('settings')",
+    ).get();
+    final settingColumns = columns.map((row) => row.read<String>('name')).toSet();
+    expect(settingColumns, containsAll([
+      'theme_mode',
+      'webdav_sync_enabled', // v11 列随链路保留
+      'auto_backup_enabled', // v9 列随链路保留
+      'close_behavior', // v6 列随链路保留
+    ]));
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('半迁移状态：v11 版本号但主题模式列已存在时迁移可重复成功（幂等回归，M10）', () async {
+    // settings 用 v12 快照建库（含 theme_mode 列），再把版本号重置为 11，
+    // 模拟「列已手工补上但 user_version 落后」的半迁移状态。
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(12);
+    final raw = schema.rawDatabase;
+    raw.execute('PRAGMA user_version = 11'); // 模拟版本号落后
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 12);
+
+    final columns = await upgraded.customSelect(
+      "SELECT name FROM pragma_table_info('settings')",
+    ).get();
+    final settingColumns = columns.map((row) => row.read<String>('name')).toSet();
+    expect(settingColumns, contains('theme_mode'));
 
     await upgraded.close();
     schema.close();

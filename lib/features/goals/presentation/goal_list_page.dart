@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
+import '../../../core/providers/app_refresh.dart';
+import '../../../core/utils/date_text.dart';
 import '../../../services/countdown_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../tasks/data/recurrence_repository_provider.dart';
@@ -152,7 +154,7 @@ class _GoalCard extends ConsumerWidget {
           children: [
             const SizedBox(height: 2),
             Text(
-              '截止 ${DateFormat('yyyy-MM-dd').format(_parseDate(goal.deadlineDate))}',
+              '截止 ${DateFormat('yyyy-MM-dd').format(parseLocalDate(goal.deadlineDate))}',
             ),
             const SizedBox(height: 2),
             // 状态不只依赖颜色（NFR-4）：阶段文案 + 图标。
@@ -273,27 +275,15 @@ class _GoalCard extends ConsumerWidget {
     }
   }
 
-  /// 目标变更/删除后统一刷新：目标状态影响今天页倒计时卡，任务的级联删除
-  /// 影响今天页/日历/详情的历史任务缓存（family 级 invalidate 覆盖全部实例），
-  /// 保证跨页数据一致（FR-3 验收）。
+  /// 目标变更/删除后统一刷新：公共集合见 [invalidateAppData]，再追加目标
+  /// 详情、归档任务列表与重复模板族（级联删除会连带删模板，避免残留陈旧
+  /// 缓存）。保证跨页数据一致（FR-3 验收）。
   void _refreshGoalRelated(WidgetRef ref) {
-    ref.invalidate(goalListProvider);
+    invalidateAppData(ref);
     ref.invalidate(goalDetailProvider);
-    ref.invalidate(taskListProvider);
-    ref.invalidate(tasksByDateProvider);
-    ref.invalidate(tasksByMonthProvider);
-    ref.invalidate(unfinishedBeforeProvider);
     ref.invalidate(archivedTaskListProvider);
     // 目标级联删除会连带删除其重复模板（recurrence_repository.deleteWithCascade），
     // 模板缓存必须同步失效，避免删除后残留陈旧模板数据。
     ref.invalidate(recurrenceTemplatesProvider);
-    // 进度页统计（完成热力图 / 目标剩余工作量）随任务变化同步刷新。
-    ref.invalidate(completedTasksProvider);
-    ref.invalidate(allTodoTasksProvider);
-  }
-
-  static DateTime _parseDate(String yyyyMMdd) {
-    final parts = yyyyMMdd.split('-');
-    return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
   }
 }

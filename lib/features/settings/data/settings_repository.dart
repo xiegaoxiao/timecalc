@@ -102,6 +102,33 @@ class SettingsRepository {
     ));
   }
 
+  /// 更新 WebDAV 整库文件同步开关（M9，schema v11）。
+  Future<void> updateSyncEnabled(bool enabled) {
+    return _update(SettingsCompanion(
+      webdavSyncEnabled: Value(enabled),
+    ));
+  }
+
+  /// 更新同步状态（M9，schema v11）：最近成功推送序号 + 最近同步时间。
+  ///
+  /// 推送/拉取成功后调用；[seq] 与远端 meta 比较决定拉取与否，
+  /// [at] 为 UTC 时间戳（展示用）。失败不动，便于看出同步停滞。
+  Future<void> updateSyncState({required int seq, required DateTime at}) {
+    return _update(SettingsCompanion(
+      lastPushedSeq: Value(seq),
+      lastSyncedAt: Value(at),
+    ));
+  }
+
+  /// 更新主题模式（M10，schema v12）。
+  ///
+  /// [mode] 取值与 [ThemeMode.name] 一致：`system`/`light`/`dark`。
+  Future<void> updateThemeMode(String mode) {
+    return _update(SettingsCompanion(
+      themeMode: Value(mode),
+    ));
+  }
+
   Future<void> _update(SettingsCompanion companion) {
     return _db.transaction(() async {
       // 更新前确保默认行存在（极端场景：从未调用过 get 直接更新）。

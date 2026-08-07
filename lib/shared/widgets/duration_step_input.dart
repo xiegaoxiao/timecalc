@@ -64,8 +64,9 @@ class _DurationStepInputState extends State<DurationStepInput> {
 
   void _syncFromValue(int? minutes) {
     if (minutes == null) {
-      // 未设置：可从 0 分起步，步进/编辑按钮保持可用（除非显式「无时长」）。
-      _empty = false;
+      // 未设置（null）：展示「未设置时长」并禁用字段，与保存语义
+      // （0 分视为未设置）一致（P3.3）。
+      _empty = true;
       _hours = 0;
       _minutes = 0;
     } else {

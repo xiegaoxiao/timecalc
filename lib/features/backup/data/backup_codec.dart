@@ -220,6 +220,10 @@ class BackupCodec {
     String? webdavUsername,
     bool? webdavPasswordSaved,
     DateTime? lastAutoBackupAt,
+    bool? webdavSyncEnabled,
+    int? lastPushedSeq,
+    DateTime? lastSyncedAt,
+    String? themeMode,
   }) {
     final now = DateTime.now().toUtc();
     return SettingsCompanion.insert(
@@ -250,6 +254,18 @@ class BackupCodec {
       lastAutoBackupAt: lastAutoBackupAt == null
           ? const Value.absent()
           : Value(lastAutoBackupAt),
+      webdavSyncEnabled: webdavSyncEnabled == null
+          ? const Value.absent()
+          : Value(webdavSyncEnabled),
+      lastPushedSeq: lastPushedSeq == null
+          ? const Value.absent()
+          : Value(lastPushedSeq),
+      lastSyncedAt: lastSyncedAt == null
+          ? const Value.absent()
+          : Value(lastSyncedAt),
+      themeMode: themeMode == null
+          ? const Value.absent()
+          : Value(themeMode),
       createdAt: now,
       updatedAt: now,
     );

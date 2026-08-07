@@ -1,5 +1,7 @@
 import 'package:intl/intl.dart';
 
+import '../core/utils/date_text.dart';
+
 /// 延期规则（FR-3.3）。
 ///
 /// 纯 Dart service，不依赖数据库与 UI：
@@ -22,10 +24,11 @@ class DeferService {
         ? const {1, 2, 3, 4, 5, 6, 7}
         : availableWeekdays;
 
-    var candidate = DateTime(today.year, today.month, today.day)
-        .add(const Duration(days: 1));
+    var candidate = addLocalDays(today, 1);
     while (!weekdays.contains(_isoWeekday(candidate))) {
-      candidate = candidate.add(const Duration(days: 1));
+      // 纯日历加法（date_text）：Duration(days:) 在夏令时切换日会偏移
+      // 一小时，跨天加法可能落在相邻日期导致返回仍是「今天」。
+      candidate = addLocalDays(candidate, 1);
     }
     return DateFormat('yyyy-MM-dd').format(candidate);
   }

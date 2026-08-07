@@ -1,4 +1,5 @@
 import '../core/database/tables.dart';
+import '../core/utils/date_text.dart';
 
 /// 倒计时计算结果（FR-1.2 / FR-1.3）。
 enum CountdownPhase {
@@ -35,11 +36,13 @@ class CountdownService {
     required DateTime today,
     required String status,
   }) {
-    final deadline = _parseDate(deadlineDate);
+    final deadline = parseLocalDate(deadlineDate);
     if (status == GoalStatus.completed ||
         status == GoalStatus.abandoned ||
         status == GoalStatus.archived) {
-      return (CountdownPhase.terminated, _dayDiff(deadline, today));
+      // terminated 的 days 固定为 0：label 对 terminated 恒返回「已结束」，
+      // 不展示天数；0 与 today 分支一致，杜绝截止日为过去日期时负数外漏。
+      return (CountdownPhase.terminated, 0);
     }
 
     final diff = _dayDiff(deadline, today);
@@ -60,11 +63,6 @@ class CountdownService {
       case CountdownPhase.terminated:
         return '已结束';
     }
-  }
-
-  static DateTime _parseDate(String yyyyMMdd) {
-    final parts = yyyyMMdd.split('-');
-    return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
   }
 
   /// 以「日历日」为单位计算 [a] - [b] 的天数。

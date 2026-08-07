@@ -102,6 +102,25 @@ void main() {
       expect(requested, ['/dav/webdav_auto']);
     });
 
+    test('裸 host baseUrl（无认证根段）时目标目录即首段，必须创建（回归）', () async {
+      // baseUrl 无路径（如 https://dav.example.com）时没有认证根可跳过：
+      // webdav_auto 是首段，ensureFolder 必须对它发 MKCOL，否则目录从不
+      // 创建、后续 PUT/PROPFIND 落到不存在的目录。
+      final requested = <String>[];
+      final client = WebDavClient(
+        client: MockClient((req) async {
+          expect(req.method, 'MKCOL');
+          requested.add(req.url.toString());
+          return http.Response('', 201);
+        }),
+        baseUrl: 'https://dav.example.com',
+        username: 'a',
+        password: 'b',
+      );
+      await client.ensureFolder('webdav_auto');
+      expect(requested, ['https://dav.example.com/webdav_auto']);
+    });
+
     test('405 视为目录已存在（幂等）', () async {
       final client = clientWith(MockClient((_) async => http.Response('', 405)));
       await client.ensureFolder('webdav_auto');

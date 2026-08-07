@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/tables.dart';
 import '../../../core/errors/app_guard.dart';
+import '../../../core/utils/date_text.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../data/milestone_repository_provider.dart';
 import 'milestone_form_dialog.dart';
@@ -46,7 +47,8 @@ class MilestoneSection extends ConsumerWidget {
         ),
         const SizedBox(height: 8),
         milestonesAsync.when(
-          loading: () => const LinearProgressIndicator(),
+          loading: () =>
+              const Center(child: CircularProgressIndicator()),
           error: (error, _) => AppErrorView(error: error),
           data: (milestones) {
             if (milestones.isEmpty) {
@@ -161,7 +163,7 @@ class _MilestoneCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final done = milestone.status == MilestoneStatus.done;
     final scheme = Theme.of(context).colorScheme;
-    final date = _parseDate(milestone.date);
+    final date = parseLocalDate(milestone.date);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -206,10 +208,5 @@ class _MilestoneCard extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  static DateTime _parseDate(String yyyyMMdd) {
-    final parts = yyyyMMdd.split('-');
-    return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
   }
 }

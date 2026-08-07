@@ -5,8 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/tables.dart';
 import '../../backup/presentation/archived_tasks_page.dart';
-import '../../backup/presentation/auto_backup_page.dart';
 import '../../backup/presentation/backup_page.dart';
+import '../../sync/presentation/sync_page.dart';
 import '../data/settings_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
 import 'appearance_page.dart';
@@ -33,6 +33,10 @@ class SettingsPage extends ConsumerWidget {
     final autoBackupLabel = settings?.autoBackupEnabled ?? false
         ? '每日自动备份 · ${_autoBackupTargetsLabel(settings)}'
         : '每日自动备份（未开启）';
+    final syncLabel = settings?.webdavSyncEnabled ?? false
+        ? 'WebDAV 整库文件同步'
+        : 'WebDAV 整库文件同步（未开启）';
+    final appearanceLabel = _appearanceLabel(settings?.themeMode);
 
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
@@ -52,16 +56,16 @@ class SettingsPage extends ConsumerWidget {
                 ),
                 const Divider(height: 1),
                 _MenuTile(
-                  icon: Icons.backup_outlined,
-                  title: '自动备份',
-                  subtitle: autoBackupLabel,
-                  onTap: () => context.push(AutoBackupPage.route),
+                  icon: Icons.sync_outlined,
+                  title: '同步',
+                  subtitle: syncLabel,
+                  onTap: () => context.push(SyncPage.route),
                 ),
                 const Divider(height: 1),
                 _MenuTile(
-                  icon: Icons.file_download_outlined,
+                  icon: Icons.backup_outlined,
                   title: '备份与恢复',
-                  subtitle: '导出备份、从备份恢复数据',
+                  subtitle: autoBackupLabel,
                   onTap: () => context.push(BackupPage.route),
                 ),
                 const Divider(height: 1),
@@ -75,7 +79,7 @@ class SettingsPage extends ConsumerWidget {
                 _MenuTile(
                   icon: Icons.palette_outlined,
                   title: '外观',
-                  subtitle: '主题切换（后续里程碑提供）',
+                  subtitle: appearanceLabel,
                   onTap: () => context.push(AppearancePage.route),
                 ),
                 const Divider(height: 1),
@@ -94,16 +98,20 @@ class SettingsPage extends ConsumerWidget {
   }
 }
 
-/// 自动备份目的地摘要（本地目录 / WebDAV / 未配置）。
+/// 自动备份目的地摘要（本地目录；M11 起 WebDAV 交给同步，不再列出）。
 String _autoBackupTargetsLabel(Setting? settings) {
-  if (settings == null) return '本地/WebDAV';
-  final parts = <String>[];
-  final local = settings.localBackupFolder;
-  if (local != null && local.trim().isNotEmpty) parts.add('本地');
-  final url = settings.webdavUrl;
-  if (url != null && url.trim().isNotEmpty) parts.add('WebDAV');
-  if (parts.isEmpty) return '未配置目的地';
-  return parts.join(' + ');
+  final local = settings?.localBackupFolder;
+  if (local == null || local.trim().isEmpty) return '未配置目录';
+  return '本地目录';
+}
+
+/// 主题模式摘要（M10，schema v12 `theme_mode`）。
+String _appearanceLabel(String? mode) {
+  return switch (mode) {
+    'light' => '浅色',
+    'dark' => '深色',
+    _ => '跟随系统',
+  };
 }
 
 /// 整宽菜单项：图标 + 标题 + 摘要 + chevron。

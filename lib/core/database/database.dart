@@ -26,7 +26,7 @@ Future<void> addColumnIfMissing(
   await m.addColumn(table, column);
 }
 
-/// TimeCalc 本地数据库（schema v9）。
+/// TimeCalc 本地数据库（schema v12）。
 ///
 /// v1：目标/科目/任务三张表。
 /// v2：Tasks 增加 original_planned_date；新增 Settings 计划偏好表（M2）。
@@ -40,6 +40,12 @@ Future<void> addColumnIfMissing(
 /// v9：Settings 增加自动备份配置（FR-9.4 每日自动备份：auto_backup_enabled/
 ///     local_backup_folder/webdav_url/webdav_username/webdav_password_saved/
 ///     last_auto_backup_at，均为运行时配置，不进入业务备份，FR-9.5）。
+/// v10：高频查询列补充索引（P3.6：tasks 4 个、milestones/subjects/
+///     recurrence_templates/checklist_items 各 1 个；纯物理层，行数据不变）。
+/// v11：Settings 增加 WebDAV 整库文件同步配置（M9：webdav_sync_enabled/
+///     last_pushed_seq/last_synced_at，运行时配置，不进入业务备份）。
+/// v12：Settings 增加 theme_mode（M10 明暗主题：system/light/dark，设备级
+///     外观配置，不进入业务备份）。
 /// 后续 schema 变更必须提供 migration 与 migration 测试（SOP S3、NFR-2）。
 @DriftDatabase(tables: [
   Goals,
@@ -58,7 +64,7 @@ class AppDatabase extends _$AppDatabase {
       AppDatabase(driftDatabase(name: 'timecalc'));
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -150,6 +156,75 @@ class AppDatabase extends _$AppDatabase {
               m,
               schema.settings,
               schema.settings.lastAutoBackupAt,
+            );
+          },
+          from9To10: (m, schema) async {
+            // v9 -> v10：高频查询列补充索引（P3.6，纯物理层）。
+            // CREATE INDEX IF NOT EXISTS 幂等，重复升级/半迁移安全；
+            // 索引不影响行数据，备份文件内容不变（appSchemaVersion 仅存清单）。
+            // 迁移里用 `m.database` 执行原始语句（Migrator.createIndex 只接受
+            // 生成期 Index 实体；逐条 IF NOT EXISTS 与 @TableIndex 命名一致）。
+            final db = m.database;
+            await db.customStatement(
+              'CREATE INDEX IF NOT EXISTS tasks_goal_archived_idx '
+              'ON tasks (goal_id, archived_at)',
+            );
+            await db.customStatement(
+              'CREATE INDEX IF NOT EXISTS tasks_planned_date_idx '
+              'ON tasks (planned_date)',
+            );
+            await db.customStatement(
+              'CREATE INDEX IF NOT EXISTS tasks_status_archived_idx '
+              'ON tasks (status, archived_at)',
+            );
+            await db.customStatement(
+              'CREATE INDEX IF NOT EXISTS tasks_status_completed_idx '
+              'ON tasks (status, completed_at)',
+            );
+            await db.customStatement(
+              'CREATE INDEX IF NOT EXISTS milestones_goal_idx '
+              'ON milestones (goal_id)',
+            );
+            await db.customStatement(
+              'CREATE INDEX IF NOT EXISTS subjects_goal_idx '
+              'ON subjects (goal_id)',
+            );
+            await db.customStatement(
+              'CREATE INDEX IF NOT EXISTS recurrence_templates_goal_idx '
+              'ON recurrence_templates (goal_id)',
+            );
+            await db.customStatement(
+              'CREATE INDEX IF NOT EXISTS checklist_items_task_idx '
+              'ON checklist_items (task_id)',
+            );
+          },
+          from10To11: (m, schema) async {
+            // v10 -> v11：Settings 增加 WebDAV 整库文件同步配置（M9）。
+            // 3 个新列全部可空或带默认值，旧行免回填；加列用幂等 helper
+            // 防半迁移重复（与 v5->v6 / v8->v9 同模式）。
+            await addColumnIfMissing(
+              m,
+              schema.settings,
+              schema.settings.webdavSyncEnabled,
+            );
+            await addColumnIfMissing(
+              m,
+              schema.settings,
+              schema.settings.lastPushedSeq,
+            );
+            await addColumnIfMissing(
+              m,
+              schema.settings,
+              schema.settings.lastSyncedAt,
+            );
+          },
+          from11To12: (m, schema) async {
+            // v11 -> v12：Settings 增加主题模式（M10 明暗主题）。
+            // 带默认值，旧行免回填；加列用幂等 helper 防半迁移重复。
+            await addColumnIfMissing(
+              m,
+              schema.settings,
+              schema.settings.themeMode,
             );
           },
         ),

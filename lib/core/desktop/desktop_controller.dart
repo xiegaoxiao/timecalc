@@ -17,7 +17,9 @@ import 'window_state_store.dart';
 /// - 监听窗口移动/缩放/最大化事件并防抖保存状态（FR-8.3）；
 /// - 关闭按钮行为：exit 正常退出；minimize_to_tray 时拦截关闭、最小化到
 ///   托盘，并在首次触发时说明当前选择（FR-8.1）；
-/// - 托盘图标与菜单（显示主窗口 / 退出，FR-8.2）。
+/// - 托盘图标与菜单（显示主窗口 / 退出，FR-8.2）；
+/// - 真正退出前调用 [onQuit] 一次（M9 退出推送；minimizeToTray 分支不
+///   退出，不触发）。
 ///
 /// 窗口状态经 [WindowStateStore] 持久化在独立 JSON 文件，不进入业务
 /// 数据备份（FR-9.5）。所有平台调用封装在 [DesktopController]，widget
@@ -27,6 +29,7 @@ class DesktopController with WindowListener implements TrayListener {
     required this.stateStore,
     required SettingsRepository settingsRepository,
     String? trayIconAssetPath,
+    this.onQuit,
   })  : _settings = settingsRepository,
         _trayIconAssetPath = trayIconAssetPath ?? defaultTrayIconAsset;
 
@@ -35,6 +38,9 @@ class DesktopController with WindowListener implements TrayListener {
   final WindowStateStore stateStore;
   final SettingsRepository _settings;
   final String _trayIconAssetPath;
+
+  /// 真正退出前回调（M9 退出推送，带超时的尽力而为；失败不阻断退出）。
+  final Future<void> Function()? onQuit;
 
   static const WindowRestoreService _restoreService = WindowRestoreService();
 
@@ -120,7 +126,7 @@ class DesktopController with WindowListener implements TrayListener {
               key: 'quit',
               label: '退出',
               onClick: (_) async {
-                await windowManager.destroy();
+                await _quitApp();
               },
             ),
           ],
@@ -212,11 +218,23 @@ class DesktopController with WindowListener implements TrayListener {
         }
         await windowManager.hide();
       } else {
-        await windowManager.destroy();
+        await _quitApp();
       }
     } catch (_) {
       await windowManager.destroy();
     }
+  }
+
+  /// 真正退出：先执行 onQuit（M9 退出推送，尽力而为），再销毁窗口。
+  ///
+  /// 同步/网络失败或超时都不阻断退出——退出必须及时，推送是可丢的兜底。
+  Future<void> _quitApp() async {
+    try {
+      await onQuit?.call();
+    } catch (_) {
+      // 忽略：不阻塞退出。
+    }
+    await windowManager.destroy();
   }
 
   @override

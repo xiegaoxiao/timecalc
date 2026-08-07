@@ -85,21 +85,24 @@ class WebDavClient {
   /// 直接 MKCOL `.../timecalc/webdav_auto` 会因 `timecalc` 不存在而 409
   /// （坚果云/NAS 等合规服务器行为）。这里把 baseUrl 路径段与相对 path 段
   /// 合并，从 baseUrl 第二段起逐级 MKCOL：
-  /// - 第一个路径段是用户的认证 WebDAV 根（如 `/dav`），必然存在且不可
-  ///   创建（MKCOL 返回 401/403），跳过不试；
+  /// - baseUrl 携带路径段时，其第一个路径段是用户的认证 WebDAV 根
+  ///   （如 `/dav`），必然存在且不可创建（MKCOL 返回 401/403），跳过不试；
+  /// - baseUrl 无路径段（裸 host，如 `https://host`）时没有认证根可跳过，
+  ///   目标目录本身就是首段，必须创建；
   /// - 其余段逐级创建，每段 2xx/405/409/301/302 视为该段已就绪；
   /// - 目录真实可用性仍由随后的 PROPFIND/PUT 兜底验证（NFR-2）。
   Future<void> ensureFolder(String path) async {
     final baseUri = Uri.parse(_baseUrl);
+    final baseSegments = baseUri.pathSegments.where((s) => s.isNotEmpty).toList();
     final segments = [
-      ...baseUri.pathSegments.where((s) => s.isNotEmpty),
+      ...baseSegments,
       ...path.split('/').where((s) => s.isNotEmpty),
     ];
 
     var current = baseUri.origin;
     for (var i = 0; i < segments.length; i++) {
       current = '$current/${Uri.encodeComponent(segments[i])}';
-      if (i == 0) continue; // WebDAV 根：跳过，不尝试创建。
+      if (i == 0 && baseSegments.isNotEmpty) continue; // 认证根：跳过，不尝试创建。
       final response = await _sendUri('MKCOL', Uri.parse(current));
       if (_isOk(response) ||
           response.statusCode == 405 ||

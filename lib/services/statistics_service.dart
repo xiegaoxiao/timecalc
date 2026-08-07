@@ -281,6 +281,30 @@ class StatisticsService {
     return points;
   }
 
+  /// 燃尽窗口内「已完成时长」合计（供卡片结论句「过去 N 天消化了 X」）。
+  ///
+  /// 口径与 [burndownSeries] 完全一致：只计 `completedAt ≥ 窗口起点` 的
+  /// 已完成任务（窗口前完成的早已消化，不属本窗口），无预估时长不计入
+  /// （FR-7.4）。纯计算，便于与结论句分开单测。
+  static int burndownWindowDoneMinutes({
+    required List<Task> completedTasks,
+    required DateTime today,
+    int windowDays = 30,
+  }) {
+    final todayDay = _localDay(today);
+    final start = _localDay(todayDay.subtract(Duration(days: windowDays - 1)));
+    var done = 0;
+    for (final task in completedTasks) {
+      final minutes = task.estimatedMinutes;
+      final completedAt = task.completedAt;
+      if (minutes == null || completedAt == null) continue;
+      final day = _localDay(completedAt.toLocal());
+      if (day.isBefore(start)) continue;
+      done += minutes;
+    }
+    return done;
+  }
+
   static DateTime _localDay(DateTime date) {
     return DateTime(date.year, date.month, date.day);
   }

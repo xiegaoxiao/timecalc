@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
+import '../../../core/utils/date_text.dart';
 import '../data/goal_repository_provider.dart';
 
 /// 创建/编辑目标对话框（FR-1.1：名称与截止日期为必填项）。
@@ -46,7 +47,7 @@ class _GoalFormDialogState extends ConsumerState<GoalFormDialog> {
     final goal = widget.goal;
     _titleController = TextEditingController(text: goal?.title ?? '');
     _descriptionController.text = goal?.description ?? '';
-    _deadline = goal == null ? null : _parseDate(goal.deadlineDate);
+    _deadline = goal == null ? null : parseLocalDate(goal.deadlineDate);
   }
 
   @override
@@ -55,12 +56,6 @@ class _GoalFormDialogState extends ConsumerState<GoalFormDialog> {
     _descriptionController.dispose();
     _subjectController.dispose();
     super.dispose();
-  }
-
-  static DateTime? _parseDate(String yyyyMMdd) {
-    final parts = yyyyMMdd.split('-');
-    if (parts.length != 3) return null;
-    return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
   }
 
   Future<void> _pickDeadline() async {

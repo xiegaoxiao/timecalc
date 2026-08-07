@@ -12,7 +12,7 @@ import 'package:timecalc/features/backup/data/auto_backup_service_provider.dart'
 import 'package:timecalc/features/backup/data/backup_folder_picker.dart';
 import 'package:timecalc/features/backup/data/backup_service.dart';
 import 'package:timecalc/features/backup/data/credential_store.dart';
-import 'package:timecalc/features/backup/presentation/auto_backup_page.dart';
+import 'package:timecalc/features/backup/presentation/backup_page.dart';
 import 'package:timecalc/core/database/database.dart';
 import 'package:timecalc/core/database/database_provider.dart';
 import 'package:timecalc/features/settings/data/settings_repository.dart';
@@ -45,12 +45,12 @@ class _FakeCredentialStore implements WebDavCredentialStore {
   Future<void> delete(String url) async => store.remove(url);
 }
 
-/// AutoBackupPage widget 测试（M8，FR-9.4）。
+/// BackupPage widget 测试（M8 FR-9.4；M11 自动备份并入本页）。
 ///
 /// 覆盖：
-/// - 初始状态：开关关闭、本地目录未选择、WebDAV 留空；
-/// - 选择目录 → 显示路径；保存 → 持久化到 settings；
-/// - 保存并测试连接：完整填写 → 连接成功 → 密码写入凭据存储；
+/// - 初始状态：自动备份开关关闭、本地目录未选择；
+/// - 选择目录 → 显示路径 + 点击即写库（无保存按钮）；
+/// - 开关点击即写库（无需再点保存）+ 开启后立即触发一次检查反馈；
 /// - 立即备份 → force 执行成功 → SnackBar 反馈。
 void main() {
   late AppDatabase db;
@@ -60,9 +60,9 @@ void main() {
   late FakeBackupFolderPicker picker;
 
   Future<void> pumpPage(WidgetTester tester) async {
-    // 页面较长（开关卡 + 本地卡 + WebDAV 卡 + 立即备份卡），放大视口
-    // 避免按钮落在 600px 默认视口外（ListView 惰性构建，视口外 tap 不中）。
-    tester.view.physicalSize = const Size(900, 2000);
+    // 页面较长（自动备份区 + 手动区），放大视口避免按钮落在默认
+    // 600px 视口外（ListView 惰性构建，视口外 tap 不中）。
+    tester.view.physicalSize = const Size(900, 2200);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
@@ -80,7 +80,7 @@ void main() {
             ),
           ),
         ],
-        child: const MaterialApp(home: AutoBackupPage()),
+        child: const MaterialApp(home: BackupPage()),
       ),
     );
     await tester.pumpAndSettle();
@@ -98,7 +98,7 @@ void main() {
     await db.close();
   });
 
-  testWidgets('初始状态：开关关闭、目录未选择、WebDAV 留空', (tester) async {
+  testWidgets('初始状态：自动备份开关关闭、目录未选择', (tester) async {
     await pumpPage(tester);
     expect(find.text('启用每日自动备份'), findsOneWidget);
     expect(find.text('未选择（本地目的地不启用）'), findsOneWidget);
@@ -110,9 +110,13 @@ void main() {
       find.widgetWithText(SwitchListTile, '启用每日自动备份'),
     );
     expect(switchTile.value, isFalse);
+    // 手动区入口存在。
+    expect(find.text('导出备份'), findsOneWidget);
+    expect(find.text('从备份恢复'), findsOneWidget);
+    expect(find.text('从备份位置恢复'), findsOneWidget);
   });
 
-  testWidgets('选择目录后显示路径并持久化', (tester) async {
+  testWidgets('选择目录后显示路径并点击即写库', (tester) async {
     await pumpPage(tester);
 
     await tester.tap(find.text('选择目录…'));
@@ -120,46 +124,9 @@ void main() {
     expect(find.text('C:\\Backups'), findsOneWidget);
     expect(picker.calls, 1);
 
-    await tester.tap(find.text('仅保存'));
-    await tester.pumpAndSettle();
-
+    // 点击即写库（无保存按钮）。
     final saved = await settings.get();
     expect(saved.localBackupFolder, 'C:\\Backups');
-  });
-
-  testWidgets('保存并测试连接：WebDAV 完整填写后连接成功并保存密码', (tester) async {
-    await pumpPage(tester);
-
-    await tester.enterText(
-      find.widgetWithText(TextField, '服务器地址'),
-      'https://dav.example.com/dav',
-    );
-    await tester.enterText(find.widgetWithText(TextField, '用户名'), 'alice');
-    await tester.enterText(find.widgetWithText(TextField, '密码'), 'secret');
-    await tester.tap(find.text('保存并测试连接'));
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('连接成功'), findsOneWidget);
-
-    final saved = await settings.get();
-    expect(saved.webdavUrl, 'https://dav.example.com/dav');
-    expect(saved.webdavUsername, 'alice');
-    expect(saved.webdavPasswordSaved, isTrue);
-    expect(credentials.store['https://dav.example.com/dav'], 'secret');
-  });
-
-  testWidgets('WebDAV 填写不完整时提示，不发起连接', (tester) async {
-    await pumpPage(tester);
-
-    await tester.enterText(
-      find.widgetWithText(TextField, '服务器地址'),
-      'https://dav.example.com/dav',
-    );
-    await tester.tap(find.text('保存并测试连接'));
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('请完整填写'), findsOneWidget);
-    expect(credentials.store, isEmpty);
   });
 
   testWidgets('立即备份：配置本地目录后执行成功并显示反馈', (tester) async {
@@ -181,6 +148,45 @@ void main() {
     });
     await tester.pumpAndSettle();
 
+    expect(find.textContaining('自动备份完成'), findsOneWidget);
+  });
+
+  testWidgets('开关点击即写库：无需再点保存（review 修复）', (tester) async {
+    await pumpPage(tester);
+
+    await tester.tap(find.widgetWithText(SwitchListTile, '启用每日自动备份'));
+    await tester.pumpAndSettle();
+    // 推进时间让「正在检查…」SnackBar 消失，结果反馈（跳过原因）显示。
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+
+    // 未点任何保存按钮，开关已落库。
+    expect((await settings.get()).autoBackupEnabled, isTrue);
+    // 未配置目录 → 立即检查反馈跳过原因（明确而非静默）。
+    expect(find.textContaining('已启用'), findsOneWidget);
+    expect(find.textContaining('未配置备份目的地'), findsOneWidget);
+  });
+
+  testWidgets('开启后立即触发一次检查：配置本地目录则直接完成备份', (tester) async {
+    final tempDir = Directory.systemTemp.createTempSync('timecalc-auto-ui');
+    addTearDown(() {
+      if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+    });
+    await settings.updateLocalBackupFolder(tempDir.path);
+    await pumpPage(tester);
+
+    // 开关点击 → 写库 + 立即 run()（含磁盘 I/O，需 runAsync）。
+    await tester.runAsync(() async {
+      await tester.tap(find.widgetWithText(SwitchListTile, '启用每日自动备份'));
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await tester.pumpAndSettle();
+    // 推进时间让「正在检查…」消失，完成反馈显示。
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+
+    expect((await settings.get()).autoBackupEnabled, isTrue);
     expect(find.textContaining('自动备份完成'), findsOneWidget);
   });
 }

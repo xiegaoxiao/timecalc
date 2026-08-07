@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
+import '../../../core/utils/date_text.dart';
 import '../../../services/defer_service.dart';
 import '../../../services/duration_format.dart';
 import '../../goals/data/subject_repository_provider.dart';
@@ -16,17 +17,25 @@ import 'checklist_dialog.dart';
 import 'recurrence_task_dialog.dart';
 import 'task_form_dialog.dart';
 
-/// 跨目标任务条目（M2：今日页与日历选日面板共用）。
+/// 跨目标任务条目（P3.4 合并 TaskTile 与 _TaskTile 后的唯一实现）。
 ///
 /// 支持：完成/取消完成、编辑、延期至下一可用日、指定日期延期、删除。
 /// [onChanged] 由父级触发相关 Provider 刷新；任务内容/归属/预估时长
 /// 在延期时保持不变（FR-3.3 验收）。
+///
+/// 两种使用场景由可选参数区分：
+/// - 跨目标列表（今日页/日历选日面板）：默认不展示计划日期、科目名经
+///   [subjectListProvider] 自查；
+/// - 目标内列表（目标详情页/科目任务页）：父级批量查询后经 [subjects]
+///   传入科目（避免 N+1），[showPlannedDate] 为 true 时展示计划日期。
 class TaskTile extends ConsumerWidget {
   const TaskTile({
     super.key,
     required this.task,
     required this.onChanged,
     this.goalTitle,
+    this.subjects,
+    this.showPlannedDate = false,
   });
 
   final Task task;
@@ -37,19 +46,33 @@ class TaskTile extends ConsumerWidget {
   /// 跨目标场景下展示目标名（如今日页）。
   final String? goalTitle;
 
+  /// 父级已批量取好的科目列表（避免每行独立查询，N+1）；
+  /// 为 null 时经 [subjectListProvider] 自查。
+  final List<Subject>? subjects;
+
+  /// 是否在副标题展示计划日期（目标内列表需要，跨目标列表冗余）。
+  final bool showPlannedDate;
+
   static const _defer = DeferService();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final done = task.status == 'done';
 
-    // 科目名：任务归属科目的名称；无科目或科目加载中则为空。
-    final subjectName = ref
-        .watch(subjectListProvider(task.goalId))
-        .valueOrNull
-        ?.where((s) => s.id == task.subjectId)
-        .map((s) => s.name)
-        .firstOrNull;
+    // 科目名：优先用父级传入列表（N+1 优化）；否则 watch 自查。
+    final subjectName = subjects != null
+        ? (task.subjectId == null
+              ? null
+              : subjects!
+                  .where((s) => s.id == task.subjectId)
+                  .map((s) => s.name)
+                  .firstOrNull)
+        : ref
+            .watch(subjectListProvider(task.goalId))
+            .valueOrNull
+            ?.where((s) => s.id == task.subjectId)
+            .map((s) => s.name)
+            .firstOrNull;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -99,6 +122,8 @@ class TaskTile extends ConsumerWidget {
             Text(
               [
                 ?goalTitle,
+                if (showPlannedDate)
+                  DateFormat('yyyy-MM-dd').format(parseLocalDate(task.plannedDate)),
                 ?subjectName,
                 if (task.estimatedMinutes != null)
                   DurationFormat.minutes(task.estimatedMinutes!),
@@ -165,8 +190,9 @@ class TaskTile extends ConsumerWidget {
     if (templateId == null) return;
     final template = await ref.read(recurrenceTemplateProvider(templateId).future);
     if (template == null || !context.mounted) return;
-    final subjects =
-        ref.read(subjectListProvider(task.goalId)).valueOrNull ?? const <Subject>[];
+    final subjects = this.subjects ??
+        ref.read(subjectListProvider(task.goalId)).valueOrNull ??
+        const <Subject>[];
     final saved = await RecurrenceTaskDialog.show(
       context,
       goalId: task.goalId,
@@ -180,23 +206,7 @@ class TaskTile extends ConsumerWidget {
   Future<void> _stopRecurrence(BuildContext context, WidgetRef ref) async {
     final templateId = task.recurrenceTemplateId;
     if (templateId == null) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('停止重复？'),
-        content: const Text('停止后不再生成新的重复任务，已生成的任务保留。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('停止重复'),
-          ),
-        ],
-      ),
-    );
+    final confirmed = await confirmStopRecurrence(context);
     if (confirmed != true) return;
     if (!context.mounted) return;
     final repo = ref.read(recurrenceRepositoryProvider);
@@ -211,13 +221,15 @@ class TaskTile extends ConsumerWidget {
 
   Future<void> _edit(BuildContext context, WidgetRef ref) async {
     // 编辑对话框需要该目标下的科目列表（含无科目选项）。
-    final subjects = await ref.read(subjectListProvider(task.goalId).future);
+    final subjects = this.subjects ??
+        await ref.read(subjectListProvider(task.goalId).future);
+    final subjectList = subjects ?? const <Subject>[];
     if (!context.mounted) return;
     final saved = await TaskFormDialog.show(
       context,
       goalId: task.goalId,
       task: task,
-      subjects: subjects,
+      subjects: subjectList,
     );
     if (saved) onChanged();
   }
@@ -244,7 +256,7 @@ class TaskTile extends ConsumerWidget {
     final now = DateTime.now();
     // 任务计划日期可早于 firstDate（逾期一年以上是真实场景）：initialDate
     // 越界会在 debug 下触发 datepicker 断言、release 下落到错误初值，故钳制。
-    final planned = _parseDate(task.plannedDate);
+    final planned = parseLocalDate(task.plannedDate);
     final first = DateTime(now.year - 1);
     final initial = planned.isBefore(first) ? first : planned;
     final picked = await showDatePicker(
@@ -265,23 +277,7 @@ class TaskTile extends ConsumerWidget {
   }
 
   Future<void> _delete(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('删除任务「${task.title}」？'),
-        content: const Text('此操作不可撤销。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
+    final confirmed = await confirmDeleteTask(context, task.title);
     if (confirmed != true) return;
     if (!context.mounted) return;
     final repo = ref.read(taskRepositoryProvider);
@@ -291,9 +287,46 @@ class TaskTile extends ConsumerWidget {
     );
     if (ok) onChanged();
   }
+}
 
-  static DateTime _parseDate(String yyyyMMdd) {
-    final parts = yyyyMMdd.split('-');
-    return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
-  }
+/// 删除任务二次确认（P3.4 收敛：TaskTile 与重复任务父卡片共用）。
+Future<bool?> confirmDeleteTask(BuildContext context, String title) {
+  return showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text('删除任务「$title」？'),
+      content: const Text('此操作不可撤销。'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('删除'),
+        ),
+      ],
+    ),
+  );
+}
+
+/// 停止重复二次确认（P3.4 收敛：TaskTile 与重复任务父卡片共用）。
+Future<bool?> confirmStopRecurrence(BuildContext context) {
+  return showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('停止重复？'),
+      content: const Text('停止后不再生成新的重复任务，已生成的任务保留。'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('停止重复'),
+        ),
+      ],
+    ),
+  );
 }

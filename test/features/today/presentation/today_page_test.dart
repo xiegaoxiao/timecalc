@@ -76,8 +76,18 @@ void main() {
 
   testWidgets('当日负载超过可用时长时显示「超出 X 分钟」（FR-3.5）', (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
-    await tasks.create(goalId: goal.id, title: '任务A', plannedDate: '2026-08-05', estimatedMinutes: 90);
-    await tasks.create(goalId: goal.id, title: '任务B', plannedDate: '2026-08-05', estimatedMinutes: 60);
+    await tasks.create(
+      goalId: goal.id,
+      title: '任务A',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 90,
+    );
+    await tasks.create(
+      goalId: goal.id,
+      title: '任务B',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 60,
+    );
 
     await pumpApp(tester);
 
@@ -214,9 +224,7 @@ void main() {
     await tester.tap(find.byTooltip('任务操作'));
     await tester.pumpAndSettle();
     // 菜单项与红条按钮同名，用 PopupMenuItem 精确匹配菜单项。
-    await tester.tap(
-      find.widgetWithText(PopupMenuItem<String>, '延期至下一可用日'),
-    );
+    await tester.tap(find.widgetWithText(PopupMenuItem<String>, '延期至下一可用日'));
     await tester.pumpAndSettle();
 
     expect(find.text('过期任务'), findsNothing);
@@ -265,8 +273,18 @@ void main() {
   testWidgets('今日任务跨目标展示并标注目标名（FR-1.5）', (tester) async {
     final goalA = await goals.create(title: '考研', deadlineDate: '2026-12-31');
     final goalB = await goals.create(title: '论文', deadlineDate: '2026-09-30');
-    await tasks.create(goalId: goalA.id, title: '背单词', plannedDate: '2026-08-05', estimatedMinutes: 90);
-    await tasks.create(goalId: goalB.id, title: '写引言', plannedDate: '2026-08-05', estimatedMinutes: 60);
+    await tasks.create(
+      goalId: goalA.id,
+      title: '背单词',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 90,
+    );
+    await tasks.create(
+      goalId: goalB.id,
+      title: '写引言',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 60,
+    );
 
     await pumpApp(tester);
 
@@ -321,7 +339,12 @@ void main() {
 
   testWidgets('删除目标后今天页任务立即消失（回归：级联删除跨页刷新）', (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
-    await tasks.create(goalId: goal.id, title: '背单词', plannedDate: '2026-08-05', estimatedMinutes: 90);
+    await tasks.create(
+      goalId: goal.id,
+      title: '背单词',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 90,
+    );
 
     await pumpApp(tester);
     // 今天页初始展示该任务。
@@ -339,7 +362,12 @@ void main() {
     await tester.pumpAndSettle();
 
     // 回到今天页：任务与负载卡都不再显示。
-    await tester.tap(find.text('今天'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('今天'),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text('背单词'), findsNothing);
     expect(find.textContaining('今日任务总计'), findsNothing);

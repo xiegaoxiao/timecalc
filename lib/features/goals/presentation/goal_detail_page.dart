@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/providers/clock_provider.dart';
+import '../../../core/utils/date_text.dart';
 import '../../../services/countdown_service.dart';
 import '../../../services/duration_format.dart';
 import '../../../services/load_service.dart';
@@ -284,7 +285,7 @@ class _GoalHeader extends ConsumerWidget {
             Icon(phaseIcon, size: 18, color: phaseColor),
             const SizedBox(width: 6),
             Text(
-              '${CountdownService.label(phase, days)} · 截止 ${DateFormat('yyyy-MM-dd').format(_parseDate(goal.deadlineDate))}',
+              '${CountdownService.label(phase, days)} · 截止 ${DateFormat('yyyy-MM-dd').format(parseLocalDate(goal.deadlineDate))}',
               style: TextStyle(
                 color: phaseColor,
                 fontWeight: FontWeight.w500,
@@ -294,10 +295,5 @@ class _GoalHeader extends ConsumerWidget {
         ),
       ],
     );
-  }
-
-  static DateTime _parseDate(String yyyyMMdd) {
-    final parts = yyyyMMdd.split('-');
-    return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
   }
 }

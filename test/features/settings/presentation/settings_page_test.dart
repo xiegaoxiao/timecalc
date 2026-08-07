@@ -79,22 +79,20 @@ void main() {
     expect(find.text('最小化到托盘'), findsNothing);
   });
 
-  testWidgets('切换关闭行为为「最小化到托盘」并保存写库（FR-8.1）', (tester) async {
+  testWidgets('切换关闭行为为「最小化到托盘」即写库（FR-8.1，点击即生效）', (tester) async {
     await pumpApp(tester);
     await openCloseBehavior(tester);
 
     await tester.tap(find.text('最小化到托盘'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('保存'));
-    await tester.pumpAndSettle();
 
-    // 写库成功（SnackBar 提示）。
-    expect(find.text('关闭行为已保存'), findsOneWidget);
+    // 点击即写库（无保存按钮）。
+    expect(find.text('已切换为最小化到托盘'), findsOneWidget);
     final settings = await db.select(db.settings).getSingle();
     expect(settings.closeBehavior, 'minimize_to_tray');
   });
 
-  testWidgets('保存关闭行为后实时应用到桌面层（FR-8.1 无需重启）', (tester) async {
+  testWidgets('点击关闭行为分段后实时应用到桌面层（FR-8.1 无需重启）', (tester) async {
     final controller = _RecordingDesktopController(SettingsRepository(db));
     await tester.pumpWidget(
       ProviderScope(
@@ -110,18 +108,12 @@ void main() {
     await tester.pumpAndSettle();
     await openCloseBehavior(tester);
 
+    // 点击分段即写库 + 实时应用桌面层。
     await tester.tap(find.text('最小化到托盘'));
     await tester.pumpAndSettle();
 
-    // 保存前未应用关闭行为。
-    expect(controller.applyCalls, 0);
-
-    await tester.tap(find.text('保存'));
-    await tester.pumpAndSettle();
-
-    // 保存后桌面层收到 applyCloseBehavior 调用，切换实时生效。
     expect(controller.applyCalls, 1);
-    expect(find.text('关闭行为已保存'), findsOneWidget);
+    expect(find.text('已切换为最小化到托盘'), findsOneWidget);
   });
 }
 

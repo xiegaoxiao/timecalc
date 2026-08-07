@@ -470,5 +470,49 @@ void main() {
       expect(settings.webdavPasswordSaved, isTrue);
       expect(settings.lastAutoBackupAt?.toUtc(), DateTime.utc(2026, 8, 6, 1, 0, 0));
     });
+
+    test('覆盖恢复后 WebDAV 同步配置被保留（M9 回归）', () async {
+      await seedBaseData();
+      // 当前同步配置（运行时状态，不进备份文件）。
+      await db.into(db.settings).insertOnConflictUpdate(
+            SettingsCompanion.insert(
+              id: const Value(1),
+              webdavSyncEnabled: const Value(true),
+              lastPushedSeq: const Value(7),
+              lastSyncedAt: Value(DateTime.utc(2026, 8, 7, 3, 30, 0)),
+              createdAt: DateTime.utc(2026, 1, 1),
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+      final file = tempFile('backup.timecalc');
+      await backup.exportBackup(file);
+
+      // 覆盖恢复：业务数据被替换，同步开关/序号/时间不被重置。
+      await backup.restoreBackup(file, mode: RestoreMode.overwrite);
+      final settings = await db.select(db.settings).getSingle();
+      expect(settings.webdavSyncEnabled, isTrue);
+      expect(settings.lastPushedSeq, 7);
+      expect(settings.lastSyncedAt?.toUtc(), DateTime.utc(2026, 8, 7, 3, 30, 0));
+    });
+
+    test('覆盖恢复后主题模式被保留（M10 回归）', () async {
+      await seedBaseData();
+      // 当前主题模式（设备级外观配置，不进备份文件）。
+      await db.into(db.settings).insertOnConflictUpdate(
+            SettingsCompanion.insert(
+              id: const Value(1),
+              themeMode: const Value('dark'),
+              createdAt: DateTime.utc(2026, 1, 1),
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+      final file = tempFile('backup.timecalc');
+      await backup.exportBackup(file);
+
+      // 覆盖恢复：业务数据被替换，主题模式不被重置回默认。
+      await backup.restoreBackup(file, mode: RestoreMode.overwrite);
+      final settings = await db.select(db.settings).getSingle();
+      expect(settings.themeMode, 'dark');
+    });
   });
 }

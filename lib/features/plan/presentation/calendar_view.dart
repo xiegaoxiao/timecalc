@@ -6,6 +6,8 @@ import '../../../core/database/database.dart';
 import '../../../core/database/tables.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
+import '../../../core/providers/app_refresh.dart';
+import '../../../core/utils/date_text.dart';
 import '../../../services/load_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../goals/data/goal_repository_provider.dart';
@@ -137,7 +139,7 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
                       Expanded(
                         child: Text(
                           DateFormat('yyyy-MM-dd EEEE', 'zh_CN')
-                              .format(_parseDate(_selectedDate)),
+                              .format(parseLocalDate(_selectedDate)),
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),
@@ -147,7 +149,7 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
                             : () async {
                                 await QuickTaskFormDialog.show(
                                   context,
-                                  date: _parseDate(_selectedDate),
+                                  date: parseLocalDate(_selectedDate),
                                   goals: addGoals,
                                 );
                                 onChanged();
@@ -202,23 +204,10 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
     );
   }
 
-  static DateTime _parseDate(String yyyyMMdd) {
-    final parts = yyyyMMdd.split('-');
-    return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
-  }
-
   /// 数据变更后的统一刷新（FR-3 验收：日历月视图、选日列表、今日页与
-  /// 目标详情在同一操作周期内同步更新）。family 级 invalidate 覆盖所有
-  /// 日期/月份实例。
-  void _invalidateAll() {
-    ref.invalidate(tasksByMonthProvider);
-    ref.invalidate(tasksByDateProvider);
-    ref.invalidate(taskListProvider);
-    ref.invalidate(unfinishedBeforeProvider);
-    ref.invalidate(goalListProvider);
-    ref.invalidate(completedTasksProvider);
-    ref.invalidate(allTodoTasksProvider);
-  }
+  /// 目标详情在同一操作周期内同步更新）。公共集合见 invalidateAppData
+  /// （P3 收敛）。
+  void _invalidateAll() => invalidateAppData(ref);
 
   /// FR-5.1：任务被拖到某一天（网格 DragTarget 命中）时改期。
   ///

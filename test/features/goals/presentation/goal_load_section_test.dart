@@ -65,8 +65,18 @@ void main() {
   testWidgets('目标详情展示剩余任务时长、剩余可用天数和建议日均时长（FR-5.3）', (tester) async {
     // 截止 08-08（周五），距 08-05 还有 4 天全可用；任务共 360 分钟。
     final goal = await goals.create(title: '考研', deadlineDate: '2026-08-08');
-    await tasks.create(goalId: goal.id, title: '任务A', plannedDate: '2026-08-05', estimatedMinutes: 120);
-    await tasks.create(goalId: goal.id, title: '任务B', plannedDate: '2026-08-06', estimatedMinutes: 240);
+    await tasks.create(
+      goalId: goal.id,
+      title: '任务A',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 120,
+    );
+    await tasks.create(
+      goalId: goal.id,
+      title: '任务B',
+      plannedDate: '2026-08-06',
+      estimatedMinutes: 240,
+    );
 
     await pumpApp(tester);
     await openGoalDetail(tester, '考研');
@@ -81,8 +91,18 @@ void main() {
   testWidgets('建议日均超过每日可用时长时显示计划风险（FR-5.4）', (tester) async {
     // 任务量远超剩余可用天数可承载范围。
     final goal = await goals.create(title: '考研', deadlineDate: '2026-08-07');
-    await tasks.create(goalId: goal.id, title: '任务A', plannedDate: '2026-08-05', estimatedMinutes: 300);
-    await tasks.create(goalId: goal.id, title: '任务B', plannedDate: '2026-08-06', estimatedMinutes: 300);
+    await tasks.create(
+      goalId: goal.id,
+      title: '任务A',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 300,
+    );
+    await tasks.create(
+      goalId: goal.id,
+      title: '任务B',
+      plannedDate: '2026-08-06',
+      estimatedMinutes: 300,
+    );
 
     await pumpApp(tester);
     await openGoalDetail(tester, '考研');
@@ -99,7 +119,12 @@ void main() {
     // 截止 08-11（下周二）。仅工作日可用：08-05~07、10、11 共 5 天。
     await settings.updateAvailableWeekdays({1, 2, 3, 4, 5});
     final goal = await goals.create(title: '论文', deadlineDate: '2026-08-11');
-    await tasks.create(goalId: goal.id, title: '任务A', plannedDate: '2026-08-05', estimatedMinutes: 500);
+    await tasks.create(
+      goalId: goal.id,
+      title: '任务A',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 500,
+    );
 
     await pumpApp(tester);
     await openGoalDetail(tester, '论文');
@@ -112,7 +137,12 @@ void main() {
 
   testWidgets('设置计划偏好：修改每日可用时长后今天页负载提示随之变化', (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
-    await tasks.create(goalId: goal.id, title: '背单词', plannedDate: '2026-08-05', estimatedMinutes: 150);
+    await tasks.create(
+      goalId: goal.id,
+      title: '背单词',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 150,
+    );
 
     await pumpApp(tester);
     // 默认 120 分钟：今日负载 150 超 30。
@@ -131,7 +161,12 @@ void main() {
     // 偏好页是独立路由（无底部导航），返回进度页后再切今天页。
     await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('今天'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('今天'),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text('今日任务总计 2 小时 30 分'), findsOneWidget);
     expect(find.text('可用 3 小时'), findsOneWidget);
@@ -235,7 +270,12 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('今天'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('今天'),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text('今日任务总计 1 小时'), findsOneWidget);
     expect(find.text('可用 5 小时'), findsOneWidget);
@@ -262,7 +302,12 @@ void main() {
 
   testWidgets('详情页不展示历史任务区（归档任务移入设置页数据管理）', (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
-    await tasks.create(goalId: goal.id, title: '旧任务', plannedDate: '2026-08-06', estimatedMinutes: 60);
+    await tasks.create(
+      goalId: goal.id,
+      title: '旧任务',
+      plannedDate: '2026-08-06',
+      estimatedMinutes: 60,
+    );
     // 归档全部任务（模拟 JSON 导入替换）。
     await tasks.archiveAllActive(goal.id);
     expect((await tasks.archivedByGoal(goal.id)), isNotEmpty);

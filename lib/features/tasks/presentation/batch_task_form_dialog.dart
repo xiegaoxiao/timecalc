@@ -5,8 +5,11 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
+import '../../../core/providers/app_refresh.dart';
+import '../../../core/utils/date_text.dart';
 import '../../../services/duration_format.dart';
 import '../../../shared/widgets/duration_step_input.dart';
+import '../../goals/data/goal_repository_provider.dart';
 import '../data/last_minutes_provider.dart';
 import '../data/task_repository_provider.dart';
 
@@ -81,11 +84,15 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
   }
 
   Future<void> _pickStartDate() async {
+    final (first, last) = _dateRange();
+    final initial = _startDate.isBefore(first)
+        ? first
+        : (_startDate.isAfter(last) ? last : _startDate);
     final picked = await showDatePicker(
       context: context,
-      initialDate: _startDate,
-      firstDate: DateTime(_startDate.year - 2),
-      lastDate: DateTime(_startDate.year + 2),
+      initialDate: initial,
+      firstDate: first,
+      lastDate: last,
       helpText: '选择起始日期',
     );
     if (picked != null) {
@@ -93,11 +100,71 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
     }
   }
 
+  /// 目标截止日（本地日期）；目标加载中/被删返回 null（调用方回退宽松区间）。
+  DateTime? _goalDeadline() {
+    final goal = ref.read(goalDetailProvider(widget.goalId)).valueOrNull;
+    if (goal == null) return null;
+    return parseLocalDate(goal.deadlineDate);
+  }
+
+  /// 日期选择区间：[今天, 目标截止日]（截止日缺失时回退宽松上界）。
+  ///
+  /// 截止日已过时区间退化为只能选今天（datepicker 不允许 first > last）。
+  (DateTime, DateTime) _dateRange() {
+    final today = DateUtils.dateOnly(ref.read(clockProvider)());
+    final deadline = _goalDeadline();
+    final last = deadline ?? DateTime(today.year + 10);
+    final effectiveLast = last.isBefore(today) ? today : last;
+    return (today, effectiveLast);
+  }
+
+  /// 起始日期越界提示（不静默失败）。
+  void _showDateError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  /// 保存守卫：起始日期与递推的最后一个任务日期都必须在 [今天, 目标截止日]。
+  ///
+  /// 选择器只约束起始日期，递推（每 N 天一个）可能把后续任务铺到截止日
+  /// 之后——这里一并兜底校验，避免任务静默消失。
+  bool _validateDateRange() {
+    // 统一为纯日期比较（clockProvider 带时刻，addLocalDays 产出午夜，
+    // 混用会误判「今天早于今天」）。
+    final today = DateUtils.dateOnly(ref.read(clockProvider)());
+    final deadline = _goalDeadline();
+    final lines = _lines;
+    final intervalDays =
+        _useInterval ? (int.tryParse(_intervalController.text.trim()) ?? 1) : 0;
+    // 最后一个任务的计划日期（纯日历加法，同 batchCreate 语义）。
+    final lastTaskDate = addLocalDays(
+      _startDate,
+      intervalDays * (lines.length - 1),
+    );
+    if (_startDate.isBefore(today) || lastTaskDate.isBefore(today)) {
+      _showDateError('任务日期不能早于今天');
+      return false;
+    }
+    if (deadline != null &&
+        (lastTaskDate.isAfter(deadline) || _startDate.isAfter(deadline))) {
+      _showDateError(
+        '任务日期不能晚于目标截止日（${DateFormat('yyyy-MM-dd').format(deadline)}）',
+      );
+      return false;
+    }
+    return true;
+  }
+
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final lines = _lines;
     // 0 分钟视为未设置（预估时长合法范围为 1～1440，FR-3 验收）。
     final minutes = _estimatedMinutes == 0 ? null : _estimatedMinutes;
+
+    // 日期范围守卫：起始/递推日期不得早于今天或晚于目标截止日
+    // （否则任务从目标详情/日历静默消失且无提示）。
+    if (!_validateDateRange()) return;
 
     // 间隔天数以输入框为准重新解析（validator 已保证合法）；状态 _intervalDays
     // 仅为未提交时的旧值，此处直接解析避免「所见≠所存」。
@@ -122,10 +189,7 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
         ref.read(lastMinutesProvider.notifier).state = minutes;
       }
       // 跨页刷新（FR-3 验收）：批量新增影响今天页、日历、逾期横幅。
-      ref.invalidate(taskListProvider(widget.goalId));
-      ref.invalidate(tasksByDateProvider);
-      ref.invalidate(tasksByMonthProvider);
-      ref.invalidate(unfinishedBeforeProvider);
+      invalidateTaskForms(ref, goalId: widget.goalId);
       if (mounted) Navigator.of(context).pop();
     } finally {
       if (mounted) setState(() => _saving = false);

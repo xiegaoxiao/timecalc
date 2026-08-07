@@ -38,7 +38,8 @@ class SubjectManager extends ConsumerWidget {
         ),
         const SizedBox(height: 8),
         subjectsAsync.when(
-          loading: () => const LinearProgressIndicator(),
+          loading: () =>
+              const Center(child: CircularProgressIndicator()),
           error: (error, _) => AppErrorView(error: error),
           data: (subjects) {
             final taskCounts = <int, List<Task>>{};

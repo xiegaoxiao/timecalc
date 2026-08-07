@@ -4,14 +4,13 @@ import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
-import '../../../services/duration_format.dart';
+import '../../../core/utils/date_text.dart';
 import '../data/recurrence_repository_provider.dart';
-import '../data/task_repository_provider.dart';
 import 'batch_task_form_dialog.dart';
-import 'checklist_dialog.dart';
 import 'recurrence_task_dialog.dart';
 import 'task_form_dialog.dart';
 import 'task_import_dialog.dart';
+import 'task_tile.dart';
 
 /// 任务列表区域（FR-3.1/FR-3.2）：创建、编辑、删除、完成任务。
 ///
@@ -213,10 +212,10 @@ class _TaskListSectionState extends ConsumerState<TaskListSection> {
     for (final unit in units) {
       if (!unit.isGroup) {
         if (index == 0) {
-          return _TaskTile(
-            goalId: widget.goalId,
+          return TaskTile(
             task: unit.task!,
             subjects: widget.subjects,
+            showPlannedDate: true,
             onChanged: widget.onChanged,
           );
         }
@@ -242,10 +241,10 @@ class _TaskListSectionState extends ConsumerState<TaskListSection> {
       // 展开态：实例行。
       if (expanded) {
         if (index < unit.instances.length) {
-          return _TaskTile(
-            goalId: widget.goalId,
+          return TaskTile(
             task: unit.instances[index],
             subjects: widget.subjects,
+            showPlannedDate: true,
             onChanged: widget.onChanged,
           );
         }
@@ -302,209 +301,6 @@ class _ListUnit {
   String get minDate => task?.plannedDate ?? instances.first.plannedDate;
 }
 
-class _TaskTile extends ConsumerWidget {
-  const _TaskTile({
-    required this.goalId,
-    required this.task,
-    required this.subjects,
-    required this.onChanged,
-  });
-
-  final int goalId;
-  final Task task;
-  final List<Subject> subjects;
-  final VoidCallback onChanged;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final done = task.status == 'done';
-    final subjectName = task.subjectId == null
-        ? null
-        : subjects
-            .where((s) => s.id == task.subjectId)
-            .map((s) => s.name)
-            .firstOrNull;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Checkbox(
-          value: done,
-          // 读屏可读的名称（NFR-4）：任务完成复选框不依赖相邻文本推断。
-          semanticLabel: done ? '标记未完成' : '标记完成',
-          onChanged: (value) async {
-            // FR-4.1：勾选完成且存在未完成检查项时二次确认。
-            if (value == true && !done) {
-              final proceed = await confirmCompleteTask(context, ref, task);
-              if (!proceed) return;
-              if (!context.mounted) return;
-            }
-            final repo = ref.read(taskRepositoryProvider);
-            final ok = await runDbAction(
-              context,
-              action: () => repo.setDone(task.id, value ?? false),
-            );
-            if (ok) onChanged();
-          },
-        ),
-        title: Row(
-          children: [
-            Flexible(
-              child: Text(
-                task.title,
-                style: done
-                    ? const TextStyle(decoration: TextDecoration.lineThrough)
-                    : null,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (task.recurrenceTemplateId != null) ...[
-              const SizedBox(width: 6),
-              const Tooltip(
-                message: '重复任务',
-                child: Icon(Icons.autorenew, size: 16),
-              ),
-            ],
-          ],
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              [
-                DateFormat('yyyy-MM-dd').format(_parseDate(task.plannedDate)),
-                if (task.estimatedMinutes != null)
-                  DurationFormat.minutes(task.estimatedMinutes!),
-                ?subjectName,
-              ].join(' · '),
-            ),
-            if (task.note?.isNotEmpty ?? false)
-              Text(
-                task.note!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-          ],
-        ),
-        trailing: PopupMenuButton<String>(
-          tooltip: '任务操作',
-          onSelected: (action) =>
-              _handleAction(context, ref, action),
-          itemBuilder: (_) => [
-            const PopupMenuItem(value: 'edit', child: Text('编辑')),
-            const PopupMenuItem(value: 'checklist', child: Text('检查项…')),
-            if (task.recurrenceTemplateId != null) ...[
-              const PopupMenuItem(value: 'editRecurrence', child: Text('编辑重复规则')),
-              const PopupMenuItem(value: 'stopRecurrence', child: Text('停止重复')),
-            ],
-            const PopupMenuItem(value: 'delete', child: Text('删除')),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _handleAction(
-      BuildContext context, WidgetRef ref, String action) async {
-    final repo = ref.read(taskRepositoryProvider);
-    switch (action) {
-      case 'edit':
-        final saved = await TaskFormDialog.show(
-          context,
-          goalId: goalId,
-          task: task,
-          subjects: subjects,
-        );
-        if (saved) onChanged();
-        break;
-      case 'checklist':
-        await ChecklistDialog.show(context, task: task);
-        break;
-      case 'editRecurrence':
-        final templateId = task.recurrenceTemplateId;
-        if (templateId != null) {
-          final template =
-              await ref.read(recurrenceTemplateProvider(templateId).future);
-          if (template != null && context.mounted) {
-            final saved = await RecurrenceTaskDialog.show(
-              context,
-              goalId: goalId,
-              subjects: subjects,
-              editTemplate: template,
-            );
-            if (saved) onChanged();
-          }
-        }
-        break;
-      case 'stopRecurrence':
-        final templateId = task.recurrenceTemplateId;
-        if (templateId != null) {
-          final confirmed = await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('停止重复？'),
-              content: const Text('停止后不再生成新的重复任务，已生成的任务保留。'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('停止重复'),
-                ),
-              ],
-            ),
-          );
-          if (confirmed == true) {
-            if (!context.mounted) return;
-            final ok = await runDbAction(
-              context,
-              action: () => ref.read(recurrenceRepositoryProvider).stop(templateId),
-            );
-            if (!ok) return;
-            ref.invalidate(recurrenceTemplatesProvider(goalId));
-            onChanged();
-          }
-        }
-        break;
-      case 'delete':
-        final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text('删除任务「${task.title}」？'),
-            content: const Text('此操作不可撤销。'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('删除'),
-              ),
-            ],
-          ),
-        );
-        if (confirmed == true) {
-          if (!context.mounted) return;
-          final ok = await runDbAction(
-            context,
-            action: () => repo.delete(task.id),
-          );
-          if (ok) onChanged();
-        }
-        break;
-    }
-  }
-
-  static DateTime _parseDate(String yyyyMMdd) {
-    final parts = yyyyMMdd.split('-');
-    return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
-  }
-}
-
 /// 重复任务折叠父卡片头（FR-4 迭代：手风琴折叠）。
 ///
 /// 仅渲染父卡片一行（标题 + 日期区间 + N 个任务 + 展开/收起图标 + 模板级
@@ -552,8 +348,8 @@ class RecurrenceGroupTile extends ConsumerWidget {
     final template = this.template;
     final title = template?.title ?? instances.first.title;
     final stopped = template != null && !template.active;
-    final first = _parseDate(instances.first.plannedDate);
-    final last = _parseDate(instances.last.plannedDate);
+    final first = parseLocalDate(instances.first.plannedDate);
+    final last = parseLocalDate(instances.last.plannedDate);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -628,23 +424,7 @@ class RecurrenceGroupTile extends ConsumerWidget {
         if (saved) _refresh(ref);
         break;
       case 'stopRecurrence':
-        final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('停止重复？'),
-            content: const Text('停止后不再生成新的重复任务，已生成的任务保留。'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('停止重复'),
-              ),
-            ],
-          ),
-        );
+        final confirmed = await confirmStopRecurrence(context);
         if (confirmed != true) return;
         if (!context.mounted) return;
         final ok = await runDbAction(
@@ -693,10 +473,5 @@ class RecurrenceGroupTile extends ConsumerWidget {
   void _refresh(WidgetRef ref) {
     ref.invalidate(recurrenceTemplatesProvider(goalId));
     onChanged();
-  }
-
-  static DateTime _parseDate(String yyyyMMdd) {
-    final parts = yyyyMMdd.split('-');
-    return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
   }
 }

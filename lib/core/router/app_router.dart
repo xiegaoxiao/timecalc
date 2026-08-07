@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/backup/presentation/archived_tasks_page.dart';
-import '../../features/backup/presentation/auto_backup_page.dart';
 import '../../features/backup/presentation/backup_page.dart';
+import '../../features/sync/presentation/sync_page.dart';
 import '../../features/goals/presentation/goal_detail_page.dart';
 import '../../features/plan/presentation/plan_page.dart';
 import '../../features/progress/presentation/progress_page.dart';
@@ -106,9 +106,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const BackupPage(),
       ),
       GoRoute(
-        path: AutoBackupPage.route,
-        name: 'autoBackup',
-        builder: (context, state) => const AutoBackupPage(),
+        path: SyncPage.route,
+        name: 'sync',
+        builder: (context, state) => const SyncPage(),
       ),
       GoRoute(
         path: ArchivedTasksPage.route,

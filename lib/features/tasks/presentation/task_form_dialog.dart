@@ -6,7 +6,10 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
+import '../../../core/providers/app_refresh.dart';
+import '../../../core/utils/date_text.dart';
 import '../../../shared/widgets/duration_step_input.dart';
+import '../../goals/data/goal_repository_provider.dart';
 import '../data/task_repository_provider.dart';
 
 /// 创建/编辑任务对话框（FR-3.1：标题、计划日期、预估时长、状态、可选备注与科目）。
@@ -53,6 +56,7 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _titleController;
   final _noteController = TextEditingController();
+  late DateTime _initialPlannedDate;
   DateTime? _plannedDate;
   int? _subjectId;
   int? _estimatedMinutes;
@@ -66,7 +70,12 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
     final task = widget.task;
     _titleController = TextEditingController(text: task?.title ?? '');
     _noteController.text = task?.note ?? '';
-    _plannedDate = task == null ? ref.read(clockProvider)() : _parseDate(task.plannedDate);
+    // 记录进入对话框时的计划日期：保存守卫只在「用户改动日期」时校验，
+    // 避免编辑历史任务（计划日期早于今天）改其他字段被卡住。
+    _initialPlannedDate = task == null
+        ? ref.read(clockProvider)()
+        : parseLocalDate(task.plannedDate);
+    _plannedDate = _initialPlannedDate;
     // 编辑模式沿用任务原科目；创建模式默认归属 defaultSubjectId（科目页入口）。
     _subjectId = task?.subjectId ?? widget.defaultSubjectId;
     _estimatedMinutes = task?.estimatedMinutes;
@@ -79,19 +88,38 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
     super.dispose();
   }
 
-  static DateTime? _parseDate(String yyyyMMdd) {
-    final parts = yyyyMMdd.split('-');
-    if (parts.length != 3) return null;
-    return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+  /// 目标截止日（本地日期）；目标加载中/被删返回 null（调用方回退宽松区间）。
+  DateTime? _goalDeadline() {
+    final goal = ref.read(goalDetailProvider(widget.goalId)).valueOrNull;
+    if (goal == null) return null;
+    return parseLocalDate(goal.deadlineDate);
+  }
+
+  /// 日期选择区间：[今天, 目标截止日]（截止日缺失时回退宽松上界）。
+  ///
+  /// 目标截止日已过（逾期目标仍可添加任务）时 `first > last` 会触发
+  /// datepicker 断言——区间退化为只能选今天。
+  (DateTime, DateTime) _dateRange() {
+    final today = DateUtils.dateOnly(ref.read(clockProvider)());
+    final deadline = _goalDeadline();
+    final last = deadline ?? DateTime(today.year + 10);
+    final effectiveLast = last.isBefore(today) ? today : last;
+    return (today, effectiveLast);
   }
 
   Future<void> _pickDate() async {
-    final now = ref.read(clockProvider)();
+    final (first, last) = _dateRange();
+    final planned = _plannedDate ?? first;
+    // initialDate 钳制到区间内（编辑历史任务时计划日期可能早于 today，
+    // 越界会触发 datepicker 断言，release 下落到错误初值）。
+    final initial = planned.isBefore(first)
+        ? first
+        : (planned.isAfter(last) ? last : planned);
     final picked = await showDatePicker(
       context: context,
-      initialDate: _plannedDate ?? now,
-      firstDate: DateTime(now.year - 10),
-      lastDate: DateTime(now.year + 10),
+      initialDate: initial,
+      firstDate: first,
+      lastDate: last,
       helpText: '选择计划日期',
     );
     if (picked != null) {
@@ -99,11 +127,48 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
     }
   }
 
+  /// 日期越界提示（不静默失败）：SnackBar 明确告知原因。
+  void _showDateError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  /// 保存守卫：计划日期必须在 [今天, 目标截止日]。
+  ///
+  /// 选择器已把区间外日期置灰，这里兜底防「粘贴/默认值」等路径越界；
+  /// 编辑模式仅当用户改动日期时才校验（未改动直接保存其他字段放行）。
+  bool _validateDateRange() {
+    // 统一为纯日期比较（clockProvider 带时刻，datepicker 产出午夜，
+    // 混用会误判「今天早于今天」）。
+    final today = DateUtils.dateOnly(ref.read(clockProvider)());
+    final planned = _plannedDate!;
+    final dateChanged = planned.isBefore(_initialPlannedDate) ||
+        planned.isAfter(_initialPlannedDate);
+    if (!dateChanged) return true;
+    if (planned.isBefore(today)) {
+      _showDateError('任务日期不能早于今天');
+      return false;
+    }
+    final deadline = _goalDeadline();
+    if (deadline != null && planned.isAfter(deadline)) {
+      _showDateError(
+        '任务日期不能晚于目标截止日（${DateFormat('yyyy-MM-dd').format(deadline)}）',
+      );
+      return false;
+    }
+    return true;
+  }
+
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final title = _titleController.text.trim();
     // 0 分钟视为未设置（预估时长合法范围为 1～1440，FR-3 验收）。
     final minutes = _estimatedMinutes == 0 ? null : _estimatedMinutes;
+
+    // 日期范围守卫：选择器已把越界日期置灰，这里兜底防数据层越界
+    // （否则任务计划在截止日后，保存后从目标详情/日历消失且无提示）。
+    if (!_validateDateRange()) return;
 
     setState(() => _saving = true);
     try {
@@ -140,10 +205,7 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
       );
       if (!ok) return;
       // 跨页刷新（FR-3 验收）：任务日期/状态变更影响今天页、日历、逾期横幅。
-      ref.invalidate(taskListProvider(widget.goalId));
-      ref.invalidate(tasksByDateProvider);
-      ref.invalidate(tasksByMonthProvider);
-      ref.invalidate(unfinishedBeforeProvider);
+      invalidateTaskForms(ref, goalId: widget.goalId);
       if (mounted) Navigator.of(context).pop(true);
     } finally {
       if (mounted) setState(() => _saving = false);

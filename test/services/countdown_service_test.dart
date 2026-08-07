@@ -62,12 +62,14 @@ void main() {
 
   group('FR-1.4 完成/放弃停止逾期提醒', () {
     test('已完成目标不计逾期', () {
-      final (phase, _) = service.evaluate(
+      final (phase, days) = service.evaluate(
         deadlineDate: '2026-07-01',
         today: DateTime(2026, 8, 5),
         status: GoalStatus.completed,
       );
       expect(phase, CountdownPhase.terminated);
+      // terminated 的 days 恒为 0（截止日为过去日期也不外漏负数，P3.5）。
+      expect(days, 0);
     });
 
     test('已放弃目标不计逾期', () {

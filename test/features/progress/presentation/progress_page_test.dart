@@ -319,7 +319,7 @@ void main() {
     expect(find.byType(BackButton), findsOneWidget);
   });
 
-  testWidgets('燃尽趋势展示剩余预估时长、理想参考线与图例（FR-7.3）', (tester) async {
+  testWidgets('燃尽趋势展示剩余预估时长、匀速参考线与图例（FR-7.3）', (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-08-19');
     // 当前未完成 120 分钟。
     await tasks.create(
@@ -339,12 +339,16 @@ void main() {
     await pumpApp(tester);
     await openProgress(tester);
 
-    expect(find.text('燃尽趋势'), findsOneWidget);
-    expect(find.textContaining('最近 30 天剩余预估时长'), findsOneWidget);
+    expect(find.text('剩余工作量趋势'), findsOneWidget);
+    // 白话结论句：过去 30 天消化 60 分钟（1 小时）、还剩 120 分钟（2 小时）。
+    expect(
+      find.textContaining('过去 30 天消化了 1 小时，还剩 2 小时'),
+      findsOneWidget,
+    );
 
     // Header 当前剩余 = today 点剩余 120（FR-7.1 口径一致）。
     expect(find.text('当前剩余'), findsOneWidget);
-    final burnCard = find.widgetWithText(Card, '燃尽趋势');
+    final burnCard = find.widgetWithText(Card, '剩余工作量趋势');
     expect(
       find.descendant(of: burnCard, matching: find.text('2 小时')),
       findsOneWidget,
@@ -352,11 +356,11 @@ void main() {
 
     // 图例（只在燃尽 Card 内断言，避免与热力图图例/底部导航歧义）。
     expect(
-      find.descendant(of: burnCard, matching: find.text('实际剩余')),
+      find.descendant(of: burnCard, matching: find.text('剩余工作量')),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: burnCard, matching: find.text('理想参考线')),
+      find.descendant(of: burnCard, matching: find.text('匀速参考线')),
       findsOneWidget,
     );
 
@@ -378,8 +382,43 @@ void main() {
     await pumpApp(tester);
     await openProgress(tester);
 
-    expect(find.text('燃尽趋势'), findsOneWidget);
+    expect(find.text('剩余工作量趋势'), findsOneWidget);
     // 燃尽空态文案与甘特图空态区分，避免歧义。
-    expect(find.text('还没有可展示的燃尽数据'), findsOneWidget);
+    expect(find.text('还没有可展示的剩余工作量数据'), findsOneWidget);
+  });
+
+  testWidgets('燃尽图 X 轴最右端标注「今天」，结论句含窗口消化时长', (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-08-19');
+    await tasks.create(
+      goalId: goal.id,
+      title: '后续任务',
+      plannedDate: '2026-08-10',
+      estimatedMinutes: 120,
+    );
+    await completeTask(
+      goalId: goal.id,
+      title: '已完成任务',
+      minutes: 60,
+      completedAtUtc: DateTime.utc(2026, 8, 1, 12),
+    );
+
+    await pumpApp(tester);
+    await openProgress(tester);
+
+    final burnCard = find.widgetWithText(Card, '剩余工作量趋势');
+    // 结论句四种状态中的「有消化 + 有剩余」分支。
+    expect(
+      find.textContaining('过去 30 天消化了 1 小时'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('还剩 2 小时'),
+      findsOneWidget,
+    );
+    // X 轴最右端标注「今天」。
+    expect(
+      find.descendant(of: burnCard, matching: find.text('今天')),
+      findsOneWidget,
+    );
   });
 }

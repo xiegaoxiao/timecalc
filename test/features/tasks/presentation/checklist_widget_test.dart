@@ -157,7 +157,7 @@ void main() {
     expect((await tasks.byId(taskId))?.status, 'done');
   });
 
-  testWidgets('目标详情页任务行菜单也提供「检查项…」入口（_TaskTile）', (tester) async {
+  testWidgets('目标详情页任务行菜单也提供「检查项…」入口（P3.4 合并后的 TaskTile）', (tester) async {
     final goal = await goals.create(title: '考研数学', deadlineDate: '2026-12-20');
     await tasks.create(
       goalId: goal.id,

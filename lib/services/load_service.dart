@@ -1,5 +1,6 @@
 import '../core/database/database.dart';
 import '../core/database/tables.dart';
+import '../core/utils/date_text.dart';
 
 /// 每日任务负载聚合结果（FR-3.4 日历展示）。
 ///
@@ -61,7 +62,7 @@ class LoadService {
     required DateTime today,
     required Set<int> availableWeekdays,
   }) {
-    final deadline = _parseDate(deadlineDate);
+    final deadline = parseLocalDate(deadlineDate);
     final start = DateTime(today.year, today.month, today.day);
     if (deadline.isBefore(start)) return 0;
 
@@ -120,7 +121,7 @@ class LoadService {
           entry.value,
           availableMinutes: availableMinutes,
           weekdayAvailable: weekdays.contains(
-            _parseDate(entry.key).weekday,
+            parseLocalDate(entry.key).weekday,
           ),
         ),
     };
@@ -158,10 +159,5 @@ class LoadService {
       }
     }
     return sum;
-  }
-
-  static DateTime _parseDate(String yyyyMMdd) {
-    final parts = yyyyMMdd.split('-');
-    return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
   }
 }
