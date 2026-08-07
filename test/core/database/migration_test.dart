@@ -1037,6 +1037,98 @@ void main() {
     await upgraded.close();
     schema.close();
   });
+
+  test('v14 库降级到 v12：清理 AI 残留结构，数据保留（回退兼容）', () async {
+    // 模拟「AI 功能已移除但本地库仍停在 v14」：先建 v12 库并写入数据，
+    // 再手工加回 v13/v14 的 AI 残留结构（ai_providers 表 + settings 的
+    // ai_* 列），并把 user_version 提到 14。
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(12);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['回退保留目标', '2026-12-31', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO tasks (goal_id, title, planned_date, created_at, updated_at) '
+      'VALUES (1, ?, ?, ?, ?)',
+      ['回退保留任务', '2026-08-10', 1750000000, 1750000000],
+    );
+    raw.execute('CREATE TABLE ai_providers ('
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+        'name TEXT NOT NULL, protocol TEXT NOT NULL, base_url TEXT, '
+        'selected_model TEXT, ai_key_saved INTEGER NOT NULL DEFAULT 0, '
+        'enabled INTEGER NOT NULL DEFAULT 1, '
+        'created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)');
+    for (final column in const [
+      'ai_protocol',
+      'ai_base_url',
+      'ai_key_saved',
+      'ai_selected_model',
+      'ai_active_provider_id',
+    ]) {
+      raw.execute('ALTER TABLE settings ADD COLUMN $column TEXT');
+    }
+    raw.execute('PRAGMA user_version = 14');
+
+    // 真实 AppDatabase（schemaVersion=12）打开 v14 库：onUpgrade 检测到
+    // 降级，清理残留并让 drift 把版本写回 12。
+    final downgraded = AppDatabase(schema.newConnection());
+    await downgraded.customSelect('SELECT 1').get();
+
+    // 版本已写回当前版本。
+    final version = await downgraded
+        .customSelect('PRAGMA user_version')
+        .get();
+    expect(version.single.read<int>('user_version'), 12);
+
+    // AI 残留结构已清理。
+    final tables = await downgraded
+        .customSelect("SELECT name FROM sqlite_master WHERE type='table'")
+        .get();
+    final tableNames =
+        tables.map((row) => row.read<String>('name')).toSet();
+    expect(tableNames, isNot(contains('ai_providers')));
+
+    final settingColumns = await _columns(downgraded, 'settings');
+    expect(settingColumns, isNot(contains('ai_protocol')));
+    expect(settingColumns, isNot(contains('ai_active_provider_id')));
+
+    // 原数据全部保留。
+    final goal = await (downgraded.select(downgraded.goals)
+          ..where((g) => g.id.equals(1)))
+        .getSingle();
+    expect(goal.title, '回退保留目标');
+    final task = await (downgraded.select(downgraded.tasks)
+          ..where((t) => t.id.equals(1)))
+        .getSingle();
+    expect(task.title, '回退保留任务');
+
+    await downgraded.close();
+    schema.close();
+  });
+
+  test('v13 库降级到 v12：无 ai_providers 表也能清理，幂等（列不存在跳过）', () async {
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(12);
+    final raw = schema.rawDatabase;
+    raw.execute('ALTER TABLE settings ADD COLUMN ai_base_url TEXT');
+    raw.execute('PRAGMA user_version = 13'); // 仅 v13（settings 带 ai 列、无表）
+
+    final downgraded = AppDatabase(schema.newConnection());
+    await downgraded.customSelect('SELECT 1').get();
+
+    final version = await downgraded
+        .customSelect('PRAGMA user_version')
+        .get();
+    expect(version.single.read<int>('user_version'), 12);
+    final settingColumns = await _columns(downgraded, 'settings');
+    expect(settingColumns, isNot(contains('ai_base_url')));
+
+    await downgraded.close();
+    schema.close();
+  });
 }
 
 /// 打开时即抛错的迁移策略（验证 onUpgrade 失败回滚与数据保全）。
