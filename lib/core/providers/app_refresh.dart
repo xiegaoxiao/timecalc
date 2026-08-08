@@ -1,6 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/goals/data/goal_repository_provider.dart';
+import '../../features/goals/data/milestone_repository_provider.dart';
+import '../../features/goals/data/subject_repository_provider.dart';
+import '../../features/settings/data/settings_repository_provider.dart';
+import '../../features/tasks/data/recurrence_repository_provider.dart';
 import '../../features/tasks/data/task_repository_provider.dart';
 
 /// 跨页数据刷新统一入口（P3 收敛）。
@@ -38,4 +42,22 @@ void invalidateTaskForms(WidgetRef ref, {int? goalId}) {
   ref.invalidate(tasksByDateProvider);
   ref.invalidate(tasksByMonthProvider);
   ref.invalidate(unfinishedBeforeProvider);
+}
+
+/// 全量数据刷新（影响面最广的操作专用：覆盖恢复 / 重置数据）。
+///
+/// 在 [invalidateAppData] 基础上补齐其余页面/入口的缓存：目标详情、
+/// 科目、归档任务、重复模板、里程碑与设置。覆盖恢复原本在 backup_page
+/// 内私有实现，提取后供重置数据页复用，避免两份逐字副本漂移。
+void invalidateAllAppData(WidgetRef ref) {
+  invalidateAppData(ref);
+  ref.invalidate(goalDetailProvider); // family 无参失效整族（详情页缓存）
+  ref.invalidate(subjectListProvider); // family 整族（科目页/表单缓存）
+  ref.invalidate(archivedCountProvider);
+  ref.invalidate(archivedTaskListProvider);
+  ref.invalidate(allArchivedTasksProvider);
+  ref.invalidate(recurrenceTemplatesProvider); // family 整族（重复任务入口）
+  ref.invalidate(recurrenceTemplateProvider); // family 整族（任务条目标注）
+  ref.invalidate(milestoneListProvider); // family 整族（里程碑列表/首页卡片）
+  ref.invalidate(settingsProvider);
 }

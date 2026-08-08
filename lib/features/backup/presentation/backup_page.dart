@@ -7,12 +7,7 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/app_refresh.dart';
-import '../../goals/data/goal_repository_provider.dart';
-import '../../goals/data/milestone_repository_provider.dart';
-import '../../goals/data/subject_repository_provider.dart';
 import '../../settings/data/settings_repository_provider.dart';
-import '../../tasks/data/recurrence_repository_provider.dart';
-import '../../tasks/data/task_repository_provider.dart';
 import '../data/auto_backup_service_provider.dart';
 import '../data/backup_file_picker.dart';
 import '../data/backup_folder_picker.dart';
@@ -458,7 +453,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
         mode: choice.mode,
       );
       // 恢复生效后刷新各页缓存（跨页统一刷新）。
-      _invalidateAll(ref);
+      invalidateAllAppData(ref);
       final message = switch (choice.mode) {
         RestoreMode.merge => '已合并备份数据',
         RestoreMode.overwrite =>
@@ -468,21 +463,6 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     } on Exception catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('恢复失败：$e')));
     }
-  }
-
-  void _invalidateAll(WidgetRef ref) {
-    // 公共集合见 invalidateAppData（P3 收敛）；恢复影响面最全，其余 provider
-    // 全部追加失效。
-    invalidateAppData(ref);
-    ref.invalidate(goalDetailProvider); // family 无参失效整族（详情页缓存）
-    ref.invalidate(subjectListProvider); // family 整族（科目页/表单缓存）
-    ref.invalidate(archivedCountProvider);
-    ref.invalidate(archivedTaskListProvider);
-    ref.invalidate(allArchivedTasksProvider);
-    ref.invalidate(recurrenceTemplatesProvider); // family 整族（重复任务入口）
-    ref.invalidate(recurrenceTemplateProvider); // family 整族（任务条目标注）
-    ref.invalidate(milestoneListProvider); // family 整族（里程碑列表/首页卡片）
-    ref.invalidate(settingsProvider);
   }
 
   String _lastBackupText(Setting settings) {

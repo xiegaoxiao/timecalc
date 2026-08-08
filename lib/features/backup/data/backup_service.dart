@@ -203,6 +203,34 @@ class BackupService {
     return file;
   }
 
+  /// 重置全部业务数据（设置页「重置数据」，FR-9 数据管理扩展）。
+  ///
+  /// 重置前先自动创建当前数据的安全副本（FR-9.3 同款语义），随后在单个
+  /// 事务内按子表→父表清空全部业务表（checklist_items → tasks →
+  /// recurrence_templates → milestones → subjects → goals），返回副本路径
+  /// 供 UI 提示。
+  ///
+  /// [includeSettings] 为 true 时额外删除 settings 单行——完全恢复出厂，
+  /// 设置由 [SettingsRepository.get] 惰性重建默认值（同步/自动备份关闭、
+  /// 主题跟随系统、计划偏好默认），WebDAV 远端副本保留为安全网，不会被
+  /// 空库覆盖、也不会被旧数据拉回；为 false 时仅清空业务数据，设置与
+  /// 运行时配置（含同步开关）保持不变。
+  Future<File> resetData({required bool includeSettings}) async {
+    final safety = await exportSafetyCopy();
+    await _db.transaction(() async {
+      await _db.delete(_db.checklistItems).go();
+      await _db.delete(_db.tasks).go();
+      await _db.delete(_db.recurrenceTemplates).go();
+      await _db.delete(_db.milestones).go();
+      await _db.delete(_db.subjects).go();
+      await _db.delete(_db.goals).go();
+      if (includeSettings) {
+        await _db.delete(_db.settings).go();
+      }
+    });
+    return safety;
+  }
+
   /// 合并模式：单事务追加备份数据。
   ///
   /// - 目标按 (title, deadlineDate, status) 去重：已存在则复用，任务挂到

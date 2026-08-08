@@ -11,6 +11,7 @@ import '../data/settings_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
 import 'appearance_page.dart';
 import 'close_behavior_page.dart';
+import 'reset_data_page.dart';
 import 'shortcuts_page.dart';
 
 /// 设置页：整宽长条形菜单，每个菜单项点击进入独立子页。
@@ -89,6 +90,14 @@ class SettingsPage extends ConsumerWidget {
                   subtitle: '全局快捷键（P1 功能，后续迭代提供）',
                   onTap: () => context.push(ShortcutsPage.route),
                 ),
+                const Divider(height: 1),
+                _MenuTile(
+                  icon: Icons.delete_forever_outlined,
+                  title: '重置数据',
+                  subtitle: '清空全部数据（可选同时恢复默认设置），执行前自动备份',
+                  iconColor: Theme.of(context).colorScheme.error,
+                  onTap: () => context.push(ResetDataPage.route),
+                ),
               ],
             ),
           ),
@@ -121,6 +130,7 @@ class _MenuTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.iconColor,
   });
 
   final IconData icon;
@@ -128,10 +138,13 @@ class _MenuTile extends StatelessWidget {
   final String subtitle;
   final VoidCallback onTap;
 
+  /// 图标颜色（警示类菜单项用 error 色，如「重置数据」）。
+  final Color? iconColor;
+
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: Icon(icon),
+      leading: Icon(icon, color: iconColor),
       title: Text(title),
       subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
       trailing: const Icon(Icons.chevron_right),

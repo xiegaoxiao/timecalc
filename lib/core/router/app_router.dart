@@ -11,6 +11,7 @@ import '../../features/progress/presentation/progress_page.dart';
 import '../../features/settings/presentation/appearance_page.dart';
 import '../../features/settings/presentation/close_behavior_page.dart';
 import '../../features/settings/presentation/plan_preference_page.dart';
+import '../../features/settings/presentation/reset_data_page.dart';
 import '../../features/settings/presentation/settings_page.dart';
 import '../../features/settings/presentation/shortcuts_page.dart';
 import '../../features/tasks/data/recurrence_repository_provider.dart';
@@ -124,6 +125,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: ShortcutsPage.route,
         name: 'shortcuts',
         builder: (context, state) => const ShortcutsPage(),
+      ),
+      GoRoute(
+        path: ResetDataPage.route,
+        name: 'resetData',
+        builder: (context, state) => const ResetDataPage(),
       ),
     ],
   );

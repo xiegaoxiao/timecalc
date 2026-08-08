@@ -12,6 +12,7 @@ import 'package:timecalc/features/backup/data/backup_service.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/goals/data/milestone_repository.dart';
 import 'package:timecalc/features/goals/data/subject_repository.dart';
+import 'package:timecalc/features/settings/data/settings_repository.dart';
 import 'package:timecalc/features/tasks/data/checklist_item_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 
@@ -589,6 +590,111 @@ void main() {
       await backup.restoreBackup(file, mode: RestoreMode.overwrite);
       final settings = await db.select(db.settings).getSingle();
       expect(settings.themeMode, 'dark');
+    });
+  });
+
+  group('重置数据（resetData）', () {
+    test('仅重置数据：业务表全清空，设置保留', () async {
+      await seedBaseData();
+      // 补充一张重复模板（验证该表也被清空）。
+      final goal = (await goals.watchAll()).single;
+      await db.into(db.recurrenceTemplates).insert(
+            RecurrenceTemplatesCompanion.insert(
+              goalId: goal.id,
+              title: '每日复习',
+              ruleType: 'daily',
+              ruleJson: '{}',
+              startDate: '2026-08-01',
+              generatedThroughDate: '2026-08-05',
+              createdAt: DateTime.utc(2026, 8, 1),
+              updatedAt: DateTime.utc(2026, 8, 1),
+            ),
+          );
+      // 修改设置（计划偏好 + 同步开启 + 深色主题），验证重置后保留。
+      await db.into(db.settings).insertOnConflictUpdate(
+            SettingsCompanion.insert(
+              id: const Value(1),
+              dailyAvailableMinutes: const Value(90),
+              webdavSyncEnabled: const Value(true),
+              themeMode: const Value('dark'),
+              createdAt: DateTime.utc(2026, 1, 1),
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+
+      final safety = await backup.resetData(includeSettings: false);
+      expect(await safety.exists(), isTrue);
+
+      // 6 张业务表全部清空。
+      expect(await db.select(db.goals).get(), isEmpty);
+      expect(await db.select(db.subjects).get(), isEmpty);
+      expect(await db.select(db.milestones).get(), isEmpty);
+      expect(await db.select(db.tasks).get(), isEmpty);
+      expect(await db.select(db.recurrenceTemplates).get(), isEmpty);
+      expect(await db.select(db.checklistItems).get(), isEmpty);
+
+      // 设置行保留原值。
+      final settings = await db.select(db.settings).getSingle();
+      expect(settings.dailyAvailableMinutes, 90);
+      expect(settings.webdavSyncEnabled, isTrue);
+      expect(settings.themeMode, 'dark');
+    });
+
+    test('重置数据+设置：业务表全清空，设置行删除后由仓库重建默认值', () async {
+      await seedBaseData();
+      // 修改设置（同步/自动备份开启 + 深色主题 + 计划偏好 90 分钟）。
+      await db.into(db.settings).insertOnConflictUpdate(
+            SettingsCompanion.insert(
+              id: const Value(1),
+              dailyAvailableMinutes: const Value(90),
+              autoBackupEnabled: const Value(true),
+              webdavSyncEnabled: const Value(true),
+              themeMode: const Value('dark'),
+              createdAt: DateTime.utc(2026, 1, 1),
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+
+      final safety = await backup.resetData(includeSettings: true);
+      expect(await safety.exists(), isTrue);
+
+      // 6 张业务表全部清空。
+      expect(await db.select(db.goals).get(), isEmpty);
+      expect(await db.select(db.subjects).get(), isEmpty);
+      expect(await db.select(db.milestones).get(), isEmpty);
+      expect(await db.select(db.tasks).get(), isEmpty);
+      expect(await db.select(db.recurrenceTemplates).get(), isEmpty);
+      expect(await db.select(db.checklistItems).get(), isEmpty);
+
+      // 设置行已删除；仓库惰性重建默认行（同步/自动备份关闭、主题跟随系统）。
+      expect(await db.select(db.settings).getSingleOrNull(), isNull);
+      final rebuilt = await SettingsRepository(db).get();
+      expect(rebuilt.dailyAvailableMinutes, 120);
+      expect(rebuilt.availableWeekdays, '1,2,3,4,5,6,7');
+      expect(rebuilt.closeBehavior, CloseBehavior.exit);
+      expect(rebuilt.autoBackupEnabled, isFalse);
+      expect(rebuilt.webdavSyncEnabled, isFalse);
+      expect(rebuilt.themeMode, 'system');
+    });
+
+    test('两种模式的安全副本均可往返恢复原数据（FR-9.3 语义）', () async {
+      await seedBaseData();
+      for (final includeSettings in [false, true]) {
+        final safety = await backup.resetData(includeSettings: includeSettings);
+        expect(await safety.exists(), isTrue);
+
+        // 从安全副本覆盖恢复：目标/任务/里程碑/检查项与原数据一致。
+        await backup.restoreBackup(safety, mode: RestoreMode.overwrite);
+        final allGoals = await goals.watchAll();
+        expect(allGoals.single.title, '考研');
+        final tasks = await tasksFor(allGoals.single.id);
+        expect(tasks.single.title, '完成第一章');
+        expect(tasks.single.estimatedMinutes, 120);
+        final milestoneRows = await milestones.byGoal(allGoals.single.id);
+        expect(milestoneRows.single.title, '完成一轮复习');
+        final items = await checklist.byTask(tasks.single.id);
+        expect(items.single.title, '背诵并默写');
+      }
     });
   });
 }

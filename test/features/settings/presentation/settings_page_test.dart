@@ -17,7 +17,7 @@ import 'package:timecalc/features/settings/data/settings_repository.dart';
 /// 设置页 Widget 测试（整宽菜单 + FR-8.1 关闭行为子页 / FR-9 备份入口）。
 ///
 /// 固定时钟 2026-08-05，验证：
-/// - 设置页为整宽长条形菜单，五项入口齐全（FR-8.1 / FR-9.1）
+/// - 设置页为整宽长条形菜单，六项入口齐全（FR-8.1 / FR-9.1 / 重置数据）
 /// - 关闭行为子页：分段选择与保存写库（FR-8.1）
 /// - 保存后实时应用到桌面层（FR-8.1 无需重启）
 /// - 文件选择器以假实现注入，不触碰平台对话框
@@ -63,7 +63,7 @@ void main() {
     await db.close();
   });
 
-  testWidgets('设置页为整宽菜单，五项入口齐全（FR-8.1 / FR-9.1）', (tester) async {
+  testWidgets('设置页为整宽菜单，六项入口齐全（FR-8.1 / FR-9.1 / 重置数据）', (tester) async {
     await pumpApp(tester);
     await openSettings(tester);
 
@@ -72,6 +72,7 @@ void main() {
     expect(find.text('已归档任务'), findsOneWidget);
     expect(find.text('外观'), findsOneWidget);
     expect(find.text('快捷键'), findsOneWidget);
+    expect(find.text('重置数据'), findsOneWidget);
 
     // 菜单页本身不再平铺关闭行为按钮或备份操作按钮（收敛到子页）。
     expect(find.text('导出备份'), findsNothing);
