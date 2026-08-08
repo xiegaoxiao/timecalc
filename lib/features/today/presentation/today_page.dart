@@ -59,51 +59,44 @@ class _TodayPageState extends ConsumerState<TodayPage> {
     final unfinishedAsync = ref.watch(unfinishedBeforeProvider(todayStr));
     final todoAsync = ref.watch(allTodoTasksProvider);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('今天')),
-      body: goalsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => AppErrorView(
-          error: error,
-          onRetry: () => ref.invalidate(goalListProvider),
-        ),
-        data: (goals) => settingsAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => AppErrorView(
-            error: error,
-            onRetry: () => ref.invalidate(settingsProvider),
+    // 核心数据（目标/设置）：仅首次加载或出错时整页占位；此后刷新期间
+    // valueOrNull 保留旧值继续渲染，不再整页塌陷（去闪烁核心）。
+    final goals = goalsAsync.valueOrNull;
+    final settings = settingsAsync.valueOrNull;
+    if (goals == null || settings == null) {
+      if (goalsAsync.hasError || settingsAsync.hasError) {
+        return Scaffold(
+          appBar: AppBar(title: const Text('今天')),
+          body: AppErrorView(
+            error:
+                goalsAsync.hasError ? goalsAsync.error! : settingsAsync.error!,
+            onRetry: () {
+              ref.invalidate(goalListProvider);
+              ref.invalidate(settingsProvider);
+            },
           ),
-          data: (settings) => tasksAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => AppErrorView(
-              error: error,
-              onRetry: () => ref.invalidate(tasksByDateProvider),
-            ),
-            data: (tasks) => unfinishedAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => AppErrorView(
-                error: error,
-                onRetry: () => ref.invalidate(unfinishedBeforeProvider),
-              ),
-              data: (unfinished) => todoAsync.when(
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, _) => AppErrorView(
-                  error: error,
-                  onRetry: () => ref.invalidate(allTodoTasksProvider),
-                ),
-                data: (todo) => _buildBody(
-                  goals: goals,
-                  settings: settings,
-                  today: today,
-                  todayTasks: tasks,
-                  unfinished: unfinished,
-                  todoTasks: todo,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+        );
+      }
+      return Scaffold(
+        appBar: AppBar(title: const Text('今天')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    // 任务类数据：刷新/换参期间 valueOrNull 保留旧值，兜底空表继续渲染；
+    // 首次加载与局部错误在 _buildBody 内以细进度条/局部错误条呈现。
+    return _buildBody(
+      goals: goals,
+      settings: settings,
+      today: today,
+      todayTasks: tasksAsync.valueOrNull ?? const <Task>[],
+      unfinished: unfinishedAsync.valueOrNull ?? const <Task>[],
+      todoTasks: todoAsync.valueOrNull ?? const <Task>[],
+      tasksLoading: tasksAsync.isLoading && !tasksAsync.isRefreshing,
+      tasksError: tasksAsync.error,
+      unfinishedError: unfinishedAsync.error,
+      onRetryTasks: () => ref.invalidate(tasksByDateProvider),
+      onRetryUnfinished: () => ref.invalidate(unfinishedBeforeProvider),
     );
   }
 
@@ -114,6 +107,11 @@ class _TodayPageState extends ConsumerState<TodayPage> {
     required List<Task> todayTasks,
     required List<Task> unfinished,
     required List<Task> todoTasks,
+    required bool tasksLoading,
+    required Object? tasksError,
+    required Object? unfinishedError,
+    required VoidCallback onRetryTasks,
+    required VoidCallback onRetryUnfinished,
   }) {
     final activeGoals = goals
         .where(
@@ -163,6 +161,11 @@ class _TodayPageState extends ConsumerState<TodayPage> {
           ),
           const SizedBox(height: 8),
         ],
+        if (unfinished.isEmpty && unfinishedError != null)
+          _SectionError(
+            error: unfinishedError,
+            onRetry: onRetryUnfinished,
+          ),
         if (unfinished.isNotEmpty && !_bannerDismissed) ...[
           _UnfinishedBanner(
             count: unfinished.length,
@@ -239,7 +242,17 @@ class _TodayPageState extends ConsumerState<TodayPage> {
             ),
           ],
         ),
-        if (todayTasks.isEmpty)
+        if (todayTasks.isEmpty && tasksLoading)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 4),
+            child: LinearProgressIndicator(minHeight: 2),
+          ),
+        if (todayTasks.isEmpty && tasksError != null)
+          _SectionError(
+            error: tasksError,
+            onRetry: onRetryTasks,
+          ),
+        if (todayTasks.isEmpty && !tasksLoading && tasksError == null)
           _TodayEmptyView(
             onAddTask: addGoals.isEmpty
                 ? null
@@ -511,6 +524,46 @@ class _TodayEmptyView extends StatelessWidget {
               icon: const Icon(Icons.add),
               label: const Text('添加任务'),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 局部错误条（区块级提示，替代整页 AppErrorView）：错误文案 + 重试。
+class _SectionError extends StatelessWidget {
+  const _SectionError({required this.error, required this.onRetry});
+
+  final Object error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: scheme.errorContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, size: 18, color: scheme.onErrorContainer),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '$error',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: scheme.onErrorContainer,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          TextButton(onPressed: onRetry, child: const Text('重试')),
         ],
       ),
     );

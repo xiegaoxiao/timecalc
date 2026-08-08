@@ -59,155 +59,120 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
     final tasksAsync = ref.watch(tasksByMonthProvider(monthKey));
     final selectedTasksAsync = ref.watch(tasksByDateProvider(_selectedDate));
 
-    return goalsAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => AppErrorView(
-        error: error,
-        onRetry: () => ref.invalidate(goalListProvider),
-      ),
-      data: (goals) => settingsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => AppErrorView(
-          error: error,
-          onRetry: () => ref.invalidate(settingsProvider),
-        ),
-        data: (settings) => tasksAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => AppErrorView(
-            error: error,
-            onRetry: () => ref.invalidate(tasksByMonthProvider),
+    // 核心数据（目标/设置）：仅首次加载或出错时整页占位；此后刷新期间
+    // valueOrNull 保留旧值继续渲染，不再整页塌陷（去闪烁核心）。
+    final goals = goalsAsync.valueOrNull;
+    final settings = settingsAsync.valueOrNull;
+    if (goals == null || settings == null) {
+      if (goalsAsync.hasError || settingsAsync.hasError) {
+        return AppErrorView(
+          error:
+              goalsAsync.hasError ? goalsAsync.error! : settingsAsync.error!,
+          onRetry: () {
+            ref.invalidate(goalListProvider);
+            ref.invalidate(settingsProvider);
+          },
+        );
+      }
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    void onChanged() => _invalidateAll();
+
+    final activeGoals = goals
+        .where(
+          (g) =>
+              g.status != 'completed' &&
+              g.status != 'abandoned' &&
+              g.status != 'archived',
+        )
+        .toList();
+    final addGoals = activeGoals.isNotEmpty ? activeGoals : goals;
+    final goalsById = {for (final g in goals) g.id: g};
+    final weekdays = SettingsRepository.decodeWeekdays(
+      settings.availableWeekdays,
+    );
+    // 月份任务：换月/刷新期间 valueOrNull 保留旧值（首次换到新月份时兜底
+    // 空表），网格始终渲染不塌陷；聚合只随已就绪数据重算。
+    final monthTasks = tasksAsync.valueOrNull ?? const <Task>[];
+    final aggregate = _load.calendarAggregate(
+      tasks: monthTasks,
+      availableMinutes: settings.dailyAvailableMinutes,
+      availableWeekdays: weekdays,
+    );
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _MonthHeader(
+            month: _month,
+            isCurrentMonth: todayStr.startsWith(monthKey),
+            onPrev: () => setState(() {
+              _month = DateTime(_month.year, _month.month - 1);
+            }),
+            onNext: () => setState(() {
+              _month = DateTime(_month.year, _month.month + 1);
+            }),
+            onBackToToday: () => setState(() {
+              _month = DateTime(today.year, today.month);
+              _selectedDate = todayStr;
+            }),
           ),
-          data: (monthTasks) => selectedTasksAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => AppErrorView(
-              error: error,
-              onRetry: () => ref.invalidate(tasksByDateProvider),
+          const SizedBox(height: 8),
+          // 月份数据加载/出错：网格区顶部细进度条或局部错误提示，不整页塌陷。
+          if (monthTasks.isEmpty)
+            if (tasksAsync.hasError)
+              _SectionError(
+                error: tasksAsync.error!,
+                onRetry: () => ref.invalidate(tasksByMonthProvider),
+              )
+            else if (tasksAsync.isLoading)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: LinearProgressIndicator(minHeight: 2),
+              ),
+          // 月份切换淡入淡出（keyed by month；刷新原位更新，不触发动画）。
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: _MonthGrid(
+              key: ValueKey(monthKey),
+              month: _month,
+              todayStr: todayStr,
+              selectedDate: _selectedDate,
+              weekdays: weekdays,
+              aggregate: aggregate,
+              onSelect: (dateStr) =>
+                  setState(() => _selectedDate = dateStr),
+              // FR-5.1：把任务拖到某一天改期。
+              onDropTask: (task, date) => _handleTaskDropped(task, date),
             ),
-            data: (selectedTasks) {
-              void onChanged() => _invalidateAll();
-
-              final activeGoals = goals
-                  .where(
-                    (g) =>
-                        g.status != 'completed' &&
-                        g.status != 'abandoned' &&
-                        g.status != 'archived',
-                  )
-                  .toList();
-              final addGoals = activeGoals.isNotEmpty ? activeGoals : goals;
-              final goalsById = {for (final g in goals) g.id: g};
-              final weekdays = SettingsRepository.decodeWeekdays(
-                settings.availableWeekdays,
-              );
-              final aggregate = _load.calendarAggregate(
-                tasks: monthTasks,
-                availableMinutes: settings.dailyAvailableMinutes,
-                availableWeekdays: weekdays,
-              );
-
-              // SingleChildScrollView：网格与选日面板全部构建（日历面板
-              // 体积有限，避免 ListView 懒加载导致面板在窄屏被裁剪）。
-              return SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _MonthHeader(
-                      month: _month,
-                      isCurrentMonth: todayStr.startsWith(monthKey),
-                      onPrev: () => setState(() {
-                        _month = DateTime(_month.year, _month.month - 1);
-                      }),
-                      onNext: () => setState(() {
-                        _month = DateTime(_month.year, _month.month + 1);
-                      }),
-                      onBackToToday: () => setState(() {
-                        _month = DateTime(today.year, today.month);
-                        _selectedDate = todayStr;
-                      }),
-                    ),
-                    const SizedBox(height: 8),
-                    _MonthGrid(
-                      month: _month,
-                      todayStr: todayStr,
-                      selectedDate: _selectedDate,
-                      weekdays: weekdays,
-                      aggregate: aggregate,
-                      onSelect: (dateStr) =>
-                          setState(() => _selectedDate = dateStr),
-                      // FR-5.1：把任务拖到某一天改期。
-                      onDropTask: (task, date) =>
-                          _handleTaskDropped(task, date),
-                    ),
-                    const Divider(height: 32),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            DateFormat(
-                              'yyyy-MM-dd EEEE',
-                              'zh_CN',
-                            ).format(parseLocalDate(_selectedDate)),
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                        ),
-                        TextButton.icon(
-                          onPressed: addGoals.isEmpty
-                              ? null
-                              : () async {
-                                  await QuickTaskFormDialog.show(
-                                    context,
-                                    date: parseLocalDate(_selectedDate),
-                                    goals: addGoals,
-                                  );
-                                  onChanged();
-                                },
-                          icon: const Icon(Icons.add, size: 18),
-                          label: const Text('添加任务'),
-                        ),
-                      ],
-                    ),
-                    if (selectedTasks.isEmpty)
-                      const ChartEmptyState(
-                        icon: Icons.event_outlined,
-                        title: '这一天没有任务',
-                      )
-                    else
-                      for (final task in selectedTasks)
-                        // FR-5.1：长按任务条目即可拖动到网格中的目标日期改期。
-                        LongPressDraggable<Task>(
-                          data: task,
-                          feedback: Material(
-                            elevation: 4,
-                            borderRadius: BorderRadius.circular(8),
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Text(
-                                task.title,
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ),
-                          ),
-                          childWhenDragging: Opacity(
-                            opacity: 0.4,
-                            child: TaskTile(
-                              task: task,
-                              goalTitle: goalsById[task.goalId]?.title,
-                              onChanged: onChanged,
-                            ),
-                          ),
-                          child: TaskTile(
-                            task: task,
-                            goalTitle: goalsById[task.goalId]?.title,
-                            onChanged: onChanged,
-                          ),
-                        ),
-                  ],
-                ),
-              );
-            },
           ),
-        ),
+          const Divider(height: 32),
+          // 选日面板：换日淡入淡出（keyed by date），加载/错误只影响面板区。
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: _DayPanel(
+              key: ValueKey(_selectedDate),
+              dateLabel: DateFormat('yyyy-MM-dd EEEE', 'zh_CN')
+                  .format(parseLocalDate(_selectedDate)),
+              selectedTasksAsync: selectedTasksAsync,
+              addGoals: addGoals,
+              goalsById: goalsById,
+              onChanged: onChanged,
+              onAddTask: () async {
+                await QuickTaskFormDialog.show(
+                  context,
+                  date: parseLocalDate(_selectedDate),
+                  goals: addGoals,
+                );
+                onChanged();
+              },
+              onRetryTasks: () => ref.invalidate(tasksByDateProvider),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -242,6 +207,144 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
     );
     if (!ok) return;
     _invalidateAll();
+  }
+}
+
+/// 选日面板：日期标题 + 添加任务 + 当日任务列表（或空态/局部加载）。
+///
+/// 作为 [AnimatedSwitcher] 的子级（keyed by 日期）整体淡入淡出；选日任务
+/// 的加载/错误只影响本面板，不塌陷整个日历。
+class _DayPanel extends StatelessWidget {
+  const _DayPanel({
+    super.key,
+    required this.dateLabel,
+    required this.selectedTasksAsync,
+    required this.addGoals,
+    required this.goalsById,
+    required this.onChanged,
+    required this.onAddTask,
+    required this.onRetryTasks,
+  });
+
+  final String dateLabel;
+  final AsyncValue<List<Task>> selectedTasksAsync;
+  final List<Goal> addGoals;
+  final Map<int, Goal> goalsById;
+  final VoidCallback onChanged;
+  final Future<void> Function() onAddTask;
+  final VoidCallback onRetryTasks;
+
+  @override
+  Widget build(BuildContext context) {
+    // 换日/刷新期间 valueOrNull 保留旧值继续展示；仅首次无数据时兜底空表。
+    final selectedTasks = selectedTasksAsync.valueOrNull ?? const <Task>[];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                dateLabel,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            TextButton.icon(
+              onPressed: addGoals.isEmpty ? null : onAddTask,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('添加任务'),
+            ),
+          ],
+        ),
+        // 选日数据局部状态：加载细进度条 / 错误条，均不整页塌陷。
+        if (selectedTasks.isEmpty)
+          if (selectedTasksAsync.hasError)
+            _SectionError(
+              error: selectedTasksAsync.error!,
+              onRetry: onRetryTasks,
+            )
+          else if (selectedTasksAsync.isLoading)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 4),
+              child: LinearProgressIndicator(minHeight: 2),
+            )
+          else
+            const ChartEmptyState(
+              icon: Icons.event_outlined,
+              title: '这一天没有任务',
+            )
+        else
+          for (final task in selectedTasks)
+            // FR-5.1：长按任务条目即可拖动到网格中的目标日期改期。
+            LongPressDraggable<Task>(
+              data: task,
+              feedback: Material(
+                elevation: 4,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(
+                    task.title,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ),
+              childWhenDragging: Opacity(
+                opacity: 0.4,
+                child: TaskTile(
+                  task: task,
+                  goalTitle: goalsById[task.goalId]?.title,
+                  onChanged: onChanged,
+                ),
+              ),
+              child: TaskTile(
+                task: task,
+                goalTitle: goalsById[task.goalId]?.title,
+                onChanged: onChanged,
+              ),
+            ),
+      ],
+    );
+  }
+}
+
+/// 局部错误条（区块级提示，替代整页 AppErrorView）：错误文案 + 重试。
+class _SectionError extends StatelessWidget {
+  const _SectionError({required this.error, required this.onRetry});
+
+  final Object error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: scheme.errorContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, size: 18, color: scheme.onErrorContainer),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '$error',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: scheme.onErrorContainer,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          TextButton(onPressed: onRetry, child: const Text('重试')),
+        ],
+      ),
+    );
   }
 }
 
@@ -292,6 +395,7 @@ class _MonthHeader extends StatelessWidget {
 /// 手写月历网格（周一开头，PRD §7 日历视图）。
 class _MonthGrid extends StatelessWidget {
   const _MonthGrid({
+    super.key,
     required this.month,
     required this.todayStr,
     required this.selectedDate,
