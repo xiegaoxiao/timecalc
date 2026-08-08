@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:screen_retriever/screen_retriever.dart';
@@ -17,7 +18,9 @@ import 'window_state_store.dart';
 /// - 监听窗口移动/缩放/最大化事件并防抖保存状态（FR-8.3）；
 /// - 关闭按钮行为：exit 正常退出；minimize_to_tray 时拦截关闭、最小化到
 ///   托盘，并在首次触发时说明当前选择（FR-8.1）；
-/// - 托盘图标与菜单（显示主窗口 / 退出，FR-8.2）；
+/// - 托盘图标与菜单（FR-8.2）：左键单击恢复主窗口，右键弹出菜单
+///   （显示主窗口 / 退出）；Windows 图标必须为 .ico（见
+///   [_windowsTrayIconAsset]）。
 /// - 真正退出前调用 [onQuit] 一次（M9 退出推送；minimizeToTray 分支不
 ///   退出，不触发）。
 ///
@@ -31,9 +34,18 @@ class DesktopController with WindowListener implements TrayListener {
     String? trayIconAssetPath,
     this.onQuit,
   })  : _settings = settingsRepository,
-        _trayIconAssetPath = trayIconAssetPath ?? defaultTrayIconAsset;
+        _trayIconAssetPath =
+            trayIconAssetPath ?? _defaultTrayIconAsset(Platform.isWindows);
 
   static const String defaultTrayIconAsset = 'assets/icons/tray_icon.png';
+
+  /// Windows 托盘图标（.ico）：tray_manager 在 Windows 用
+  /// LoadImage(IMAGE_ICON) 加载，仅支持 .ico 文件；PNG 会导致 LoadImage
+  /// 返回空句柄、托盘无图标（实测验证）。其他平台沿用 PNG。
+  static const String _windowsTrayIconAsset = 'assets/icons/tray_icon.ico';
+
+  static String _defaultTrayIconAsset(bool isWindows) =>
+      isWindows ? _windowsTrayIconAsset : defaultTrayIconAsset;
 
   final WindowStateStore stateStore;
   final SettingsRepository _settings;
@@ -267,7 +279,8 @@ class DesktopController with WindowListener implements TrayListener {
 
   @override
   void onTrayIconMouseDown() {
-    // 单击图标：不做操作（菜单交互为主）。
+    // 左键单击：恢复主窗口（与菜单「显示主窗口」一致）。
+    unawaited(showMainWindow());
   }
 
   @override
@@ -277,7 +290,9 @@ class DesktopController with WindowListener implements TrayListener {
 
   @override
   void onTrayIconRightMouseDown() {
-    // 右键弹出菜单由托盘管理，无额外处理。
+    // 右键：手动弹出菜单。Windows 插件只把该事件转发到 Dart，不会自动
+    // 弹菜单，必须显式调用 popUpContextMenu。
+    unawaited(_popUpTrayMenu());
   }
 
   @override
@@ -288,6 +303,15 @@ class DesktopController with WindowListener implements TrayListener {
   @override
   void onTrayMenuItemClick(MenuItem menuItem) {
     // 菜单项 onClick 已处理。
+  }
+
+  /// 在光标位置弹出托盘上下文菜单（FR-8.2）。
+  Future<void> _popUpTrayMenu() async {
+    try {
+      await trayManager.popUpContextMenu();
+    } catch (_) {
+      // 菜单不可用时忽略（非阻断）。
+    }
   }
 
   // ---- 工具 ----

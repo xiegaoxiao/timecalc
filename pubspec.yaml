@@ -76,8 +76,11 @@ flutter:
   uses-material-design: true
 
   # 托盘图标（FR-8.2）：tray_manager 通过 flutter_assets 路径加载。
+  # Windows 必须用 .ico（插件以 LoadImage(IMAGE_ICON) 加载，不支持 PNG），
+  # 其他平台沿用 PNG。
   assets:
     - assets/icons/tray_icon.png
+    - assets/icons/tray_icon.ico
 
   # To add assets to your application, add an assets section, like this:
   # assets:
