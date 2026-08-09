@@ -110,10 +110,13 @@ bash tool/release.sh
 
 ## ⭐ Star History
 
-![Star History](docs/star-history.svg)
-
-> 图表由 [GitHub Actions 工作流](.github/workflows/star-history.yml) 每日自动更新，基于公开 stargazers 数据，不依赖第三方服务。
-
+<a href="https://www.star-history.com/?repos=xiegaoxiao%2Ftimecalc&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=xiegaoxiao/timecalc&type=date&theme=dark&legend=top-left&sealed_token=IrPhZumCHJeMDzxNEj9mn72KCkbLlnKg3VbFUUn5JX3KWpPj9dOv-rziWw3yTO0Mwi8M9Y9d8iN2bgaJJ16lctW2JsdyqYt-VMv4ADGNUNKjf8KyJuguTDStwc9wuMxj2KThBsSlEZ_KVTQ1RBeDmDTJMjbM_LW53w1CZJBkkppNOqHZPFDFytjnkf1I" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=xiegaoxiao/timecalc&type=date&legend=top-left&sealed_token=IrPhZumCHJeMDzxNEj9mn72KCkbLlnKg3VbFUUn5JX3KWpPj9dOv-rziWw3yTO0Mwi8M9Y9d8iN2bgaJJ16lctW2JsdyqYt-VMv4ADGNUNKjf8KyJuguTDStwc9wuMxj2KThBsSlEZ_KVTQ1RBeDmDTJMjbM_LW53w1CZJBkkppNOqHZPFDFytjnkf1I" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=xiegaoxiao/timecalc&type=date&legend=top-left&sealed_token=IrPhZumCHJeMDzxNEj9mn72KCkbLlnKg3VbFUUn5JX3KWpPj9dOv-rziWw3yTO0Mwi8M9Y9d8iN2bgaJJ16lctW2JsdyqYt-VMv4ADGNUNKjf8KyJuguTDStwc9wuMxj2KThBsSlEZ_KVTQ1RBeDmDTJMjbM_LW53w1CZJBkkppNOqHZPFDFytjnkf1I" />
+ </picture>
+</a>
 ## 📂 项目文档
 
 - [产品需求文档](docs/requirements.md) — 需求基线
