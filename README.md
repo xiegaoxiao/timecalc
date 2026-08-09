@@ -7,11 +7,11 @@
 本地优先的个人目标与截止日期管理工具（Windows 桌面）。
 目标倒计时 · 今日驾驶舱 · 计划日历 · 学习日负载 · 重复任务（含艾宾浩斯间隔复习）· 进度统计 · 备份与 WebDAV 同步。
 
-[下载 v1.9.0](https://github.com/xiegaoxiao/timecalc/releases) ·
+[下载 v1.10.0](https://github.com/xiegaoxiao/timecalc/releases) ·
 [更新日志](CHANGELOG.md) ·
 [产品文档](docs/requirements.md)
 
-[![Release](https://img.shields.io/badge/version-1.9.0-2ea44f)](https://github.com/xiegaoxiao/timecalc/releases)
+[![Release](https://img.shields.io/badge/version-1.10.0-2ea44f)](https://github.com/xiegaoxiao/timecalc/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue)]()
 [![Framework](https://img.shields.io/badge/framework-Flutter-02569B)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -54,7 +54,7 @@ TimeCalc 把长期目标换算成每天可执行的任务量，并用一张「�
 ### 免安装便携版（推荐）
 
 1. 前往 [Releases 页面](https://github.com/xiegaoxiao/timecalc/releases) 下载最新版：
-   `timecalc-v1.9.0-windows-x64.zip`
+   `timecalc-v1.10.0-windows-x64.zip`
 2. 解压到任意目录，运行 `timecalc.exe` 即可，无需安装。
 
 ### 从源码构建
@@ -105,7 +105,7 @@ bash tool/release.sh
 
 ## 📚 项目状态
 
-- **v1.9.0 已发布**（2026-08-09）：全链路 UI 交互打磨，529 项测试通过。
+- **v1.10.0 已发布**（2026-08-09）：热力图全灰网格与点击查看、完整导入预估时长、任务变更全量刷新收敛。
 - 里程碑演进（M1~M13）与完整变更记录见 [CHANGELOG.md](CHANGELOG.md) 与 [里程碑记录](docs/milestone-records/)。
 
 ## ⭐ Star History
