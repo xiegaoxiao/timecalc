@@ -143,6 +143,12 @@ class _TodayPageState extends ConsumerState<TodayPage> {
       settings.availableWeekdays,
     );
     final addGoals = activeGoals.isNotEmpty ? activeGoals : goals;
+    // 应用是否完全没有任务：决定「目标剩余工作量」显示 `-- 分`（没计划）
+    // 还是实际数值（计划已满但全部完成）。
+    final hasAnyTask = todoTasks.isNotEmpty || todayTasks.isNotEmpty;
+    // 今日任务区空态（显示 _TodayEmptyView）：此时标题行右上角按钮隐藏，
+    // 由空态大按钮承担唯一「添加任务」入口，避免两个相同入口。
+    final todayEmpty = todayTasks.isEmpty && !tasksLoading && tasksError == null;
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -151,13 +157,16 @@ class _TodayPageState extends ConsumerState<TodayPage> {
           for (final goal in activeGoals) _CountdownCard(goal: goal),
           const SizedBox(height: 8),
         ],
-        if (todayTasks.isNotEmpty) ...[
+        // 今日概览常驻：有活跃目标即显示（空态用 `--` 无数据语义），
+        // 把「今日计划量与完成度」前置到首页。
+        if (activeGoals.isNotEmpty) ...[
           _LoadOverviewCard(
             load: load,
             available: availableMinutes,
             over: over,
             stats: _stats.completionStats(todayTasks),
             remainingMinutes: _stats.remainingMinutes(todoTasks),
+            hasAnyTask: hasAnyTask,
           ),
           const SizedBox(height: 8),
         ],
@@ -225,21 +234,24 @@ class _TodayPageState extends ConsumerState<TodayPage> {
         Row(
           children: [
             Text('今日任务', style: Theme.of(context).textTheme.titleMedium),
-            const Spacer(),
-            TextButton.icon(
-              onPressed: addGoals.isEmpty
-                  ? null
-                  : () async {
-                      await QuickTaskFormDialog.show(
-                        context,
-                        date: today,
-                        goals: addGoals,
-                      );
-                      onChanged();
-                    },
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('添加任务'),
-            ),
+            // 空态时不重复右上角按钮：唯一的「添加任务」入口由空态大按钮承担。
+            if (!todayEmpty) ...[
+              const Spacer(),
+              TextButton.icon(
+                onPressed: addGoals.isEmpty
+                    ? null
+                    : () async {
+                        await QuickTaskFormDialog.show(
+                          context,
+                          date: today,
+                          goals: addGoals,
+                        );
+                        onChanged();
+                      },
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('添加任务'),
+              ),
+            ],
           ],
         ),
         if (todayTasks.isEmpty && tasksLoading)
@@ -299,6 +311,7 @@ class _LoadOverviewCard extends StatelessWidget {
     required this.over,
     required this.stats,
     required this.remainingMinutes,
+    required this.hasAnyTask,
   });
 
   final int load;
@@ -307,16 +320,24 @@ class _LoadOverviewCard extends StatelessWidget {
   final DayCompletionStats stats;
   final int remainingMinutes;
 
+  /// 应用是否完全没有任务：控制「目标剩余工作量」显示 `-- 分`（没计划）。
+  final bool hasAnyTask;
+
   @override
   Widget build(BuildContext context) {
     final semantics = AppSemanticColors.of(context);
+    // 无数据语义：今日无任务时「总计/完成」用 `--`，避免 0/0 误导；
+    // 应用完全无任务时「目标剩余」也用 `--`（区分「没计划」与「已排完」）。
+    final hasTodayTask = stats.totalCount > 0;
     return Card(
       child: ListTile(
         leading: Icon(
           over > 0 ? Icons.warning_amber_rounded : Icons.balance,
           color: over > 0 ? semantics.warning : null,
         ),
-        title: Text('今日任务总计 ${DurationFormat.minutes(load)}'),
+        title: Text(
+          '今日任务总计 ${hasTodayTask ? DurationFormat.minutes(load) : '-- 分'}',
+        ),
         subtitle: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -328,9 +349,9 @@ class _LoadOverviewCard extends StatelessWidget {
                 style: TextStyle(color: semantics.warning),
               ),
             Text(
-              '完成 ${stats.doneCount}/${stats.totalCount} · '
-              '已完成 ${DurationFormat.minutes(stats.doneMinutes)} · '
-              '目标剩余 ${DurationFormat.minutes(remainingMinutes)}',
+              '完成 ${hasTodayTask ? '${stats.doneCount}/${stats.totalCount}' : '-- / --'} · '
+              '已完成 ${hasTodayTask ? DurationFormat.minutes(stats.doneMinutes) : '-- 分'} · '
+              '目标剩余 ${hasAnyTask ? DurationFormat.minutes(remainingMinutes) : '-- 分'}',
             ),
           ],
         ),
@@ -518,12 +539,21 @@ class _TodayEmptyView extends StatelessWidget {
           const SizedBox(height: 8),
           const Text('今天没有安排'),
           const SizedBox(height: 12),
-          if (onAddTask != null)
+          if (onAddTask != null) ...[
             FilledButton.icon(
               onPressed: onAddTask,
               icon: const Icon(Icons.add),
               label: const Text('添加任务'),
             ),
+            const SizedBox(height: 8),
+            // 引导小字：指向「计划」页的按周批量排期能力，降低空态迷失感。
+            Text(
+              '小提示：可以在「计划」页按周批量添加学习任务',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+            ),
+          ],
         ],
       ),
     );
@@ -576,11 +606,13 @@ class _CountdownCard extends ConsumerWidget {
   final Goal goal;
 
   static const _countdown = CountdownService();
+  static const _load = LoadService();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final today = ref.watch(clockProvider)();
     final nextMilestone = ref.watch(nextUpcomingMilestoneProvider(goal.id));
+    final settings = ref.watch(settingsProvider).valueOrNull;
     final (phase, days) = _countdown.evaluate(
       deadlineDate: goal.deadlineDate,
       today: today,
@@ -596,6 +628,27 @@ class _CountdownCard extends ConsumerWidget {
     // 白/深绿对已由 contrast_test 的 onPrimary/primary 断言覆盖）。
     final onHero = Colors.white;
     final onHeroSoft = Colors.white.withValues(alpha: 0.88);
+
+    // 学习日剩余：按「计划偏好」的每周可用日排除休息日（与目标详情页
+    // 「学习日」口径一致），让首页倒计时与负载计算共享同一规则。
+    final weekdays = settings == null
+        ? const {1, 2, 3, 4, 5, 6, 7}
+        : SettingsRepository.decodeWeekdays(settings.availableWeekdays);
+    final studyDays = _load.remainingAvailableDays(
+      deadlineDate: goal.deadlineDate,
+      today: today,
+      availableWeekdays: weekdays,
+    );
+
+    // 时间进度：已走过时长占（创建日 → 截止日）的比例，夹取 0~1。
+    final deadline = parseLocalDate(goal.deadlineDate);
+    final createdDay = DateUtils.dateOnly(goal.createdAt.toLocal());
+    final todayDay = DateUtils.dateOnly(today);
+    final totalDays = deadline.difference(createdDay).inDays;
+    final elapsedDays = todayDay.difference(createdDay).inDays;
+    final progress = totalDays <= 0
+        ? 1.0
+        : (elapsedDays / totalDays).clamp(0.0, 1.0).toDouble();
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -641,6 +694,24 @@ class _CountdownCard extends ConsumerWidget {
                       style: TextStyle(color: onHero, fontWeight: FontWeight.w600),
                     ),
                   ],
+                ),
+                // 时间进度条：已走过时长占比（创建日→截止日），每天打开首页
+                // 直观感受「这段旅程走了多少」。
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 4,
+                    backgroundColor: Colors.white24,
+                    valueColor: const AlwaysStoppedAnimation(Colors.white),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                // 学习日剩余（按计划偏好排除休息日），与目标详情页口径一致。
+                Text(
+                  '约 $studyDays 个学习日',
+                  style: TextStyle(color: onHeroSoft, fontSize: 12),
                 ),
                 // FR-2.3：首页仅展示距离最近的一个未完成里程碑。
                 if (nextMilestone.valueOrNull case final milestone?) ...[

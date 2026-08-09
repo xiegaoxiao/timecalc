@@ -201,8 +201,11 @@ void main() {
     expect(find.text('过期任务'), findsOneWidget);
     expect(find.text('昨日及更早有 1 个未完成任务'), findsOneWidget);
 
-    // 区块内 TaskTile 的完成复选框。
-    await tester.tap(find.byType(Checkbox));
+    // 区块内 TaskTile 的完成复选框（今日概览常驻后区块在首屏外，先滚动）。
+    final checkbox = find.byType(Checkbox);
+    await tester.ensureVisible(checkbox);
+    await tester.pumpAndSettle();
+    await tester.tap(checkbox);
     await tester.pumpAndSettle();
 
     expect(find.text('过期任务'), findsNothing);
@@ -221,7 +224,11 @@ void main() {
 
     await pumpApp(tester);
 
-    await tester.tap(find.byTooltip('任务操作'));
+    // 区块在首屏外（今日概览常驻后），先滚动再打开任务菜单。
+    final more = find.byTooltip('任务操作');
+    await tester.ensureVisible(more);
+    await tester.pumpAndSettle();
+    await tester.tap(more);
     await tester.pumpAndSettle();
     // 菜单项与红条按钮同名，用 PopupMenuItem 精确匹配菜单项。
     await tester.tap(find.widgetWithText(PopupMenuItem<String>, '延期至下一可用日'));
@@ -409,5 +416,34 @@ void main() {
 
     // 修复前：invalidate 早于数据写入，新任务不会出现在列表中。
     expect(find.text('空态新增任务'), findsOneWidget);
+  });
+
+  testWidgets('有活跃目标无任务时：今日概览显示 -- 数据 + 空态引导 + 无重复入口', (tester) async {
+    await goals.create(title: '考研', deadlineDate: '2026-12-31');
+
+    await pumpApp(tester);
+
+    // 今日概览常驻（有活跃目标即显示）：无任务用 `--` 无数据语义。
+    expect(find.text('今日任务总计 -- 分'), findsOneWidget);
+    expect(find.textContaining('完成 -- / --'), findsOneWidget);
+    expect(find.textContaining('目标剩余 -- 分'), findsOneWidget);
+
+    // 空态 + 引导小字；标题行不再出现重复的右上角「添加任务」。
+    expect(find.text('今天没有安排'), findsOneWidget);
+    expect(find.text('小提示：可以在「计划」页按周批量添加学习任务'), findsOneWidget);
+    expect(find.text('添加任务'), findsOneWidget); // 仅空态大按钮一个入口
+  });
+
+  testWidgets('目标卡片展示时间进度条与「约 N 个学习日」', (tester) async {
+    await goals.create(title: '考研', deadlineDate: '2026-12-31');
+
+    await pumpApp(tester);
+
+    // 学习日剩余（固定时钟 2026-08-05 周三，默认每周 7 天全可用）。
+    expect(find.textContaining('约 '), findsOneWidget);
+    expect(find.textContaining('个学习日'), findsOneWidget);
+
+    // 时间进度条（LinearProgressIndicator）已渲染。
+    expect(find.byType(LinearProgressIndicator), findsWidgets);
   });
 }

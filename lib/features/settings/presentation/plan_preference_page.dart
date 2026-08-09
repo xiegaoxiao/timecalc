@@ -29,6 +29,27 @@ class _PlanPreferencePageState extends ConsumerState<PlanPreferencePage> {
     final settingsAsync = ref.watch(settingsProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('计划偏好')),
+      // 保存按钮固定在页面底部（内容短时不留下方大片空白），
+      // 上方细分割线明确与配置区界限。
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            child: Row(
+              children: [
+                const Spacer(),
+                FilledButton.icon(
+                  onPressed: _saving ? null : _save,
+                  icon: const Icon(Icons.save_outlined, size: 18),
+                  label: const Text('保存'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
       body: settingsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => AppErrorView(
@@ -45,7 +66,7 @@ class _PlanPreferencePageState extends ConsumerState<PlanPreferencePage> {
             padding: const EdgeInsets.all(16),
             children: [
               Text(
-                '用于计算每日负载与「超出」提示；默认每天 2 小时、每周 7 天（PRD §5.1）。',
+                '用于计算每日负载与「超出」提示。默认为每天 2 小时、每周 7 天。',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 16),
@@ -61,7 +82,33 @@ class _PlanPreferencePageState extends ConsumerState<PlanPreferencePage> {
                 minuteFieldKey: const Key('minuteStepField'),
               ),
               const SizedBox(height: 16),
-              Text('每周可用日', style: Theme.of(context).textTheme.bodyMedium),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '每周可用日',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                  // 快捷操作：一次点按全选/全取消，免去逐个切换（如只休
+                  // 周五/周六时需要点掉周一至周四）。
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: () =>
+                        setState(() => _weekdays!.addAll(const [1, 2, 3, 4, 5, 6, 7])),
+                    child: const Text('全部选中'),
+                  ),
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: () => setState(_weekdays!.clear),
+                    child: const Text('全部取消'),
+                  ),
+                ],
+              ),
               const SizedBox(height: 4),
               Wrap(
                 spacing: 8,
@@ -81,15 +128,6 @@ class _PlanPreferencePageState extends ConsumerState<PlanPreferencePage> {
                       },
                     ),
                 ],
-              ),
-              const SizedBox(height: 16),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.icon(
-                  onPressed: _saving ? null : _save,
-                  icon: const Icon(Icons.save_outlined, size: 18),
-                  label: const Text('保存'),
-                ),
               ),
             ],
           );
