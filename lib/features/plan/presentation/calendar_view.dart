@@ -158,17 +158,19 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
               dateLabel: DateFormat('yyyy-MM-dd EEEE', 'zh_CN')
                   .format(parseLocalDate(_selectedDate)),
               selectedTasksAsync: selectedTasksAsync,
-              addGoals: addGoals,
               goalsById: goalsById,
               onChanged: onChanged,
-              onAddTask: () async {
-                await QuickTaskFormDialog.show(
-                  context,
-                  date: parseLocalDate(_selectedDate),
-                  goals: addGoals,
-                );
-                onChanged();
-              },
+              // 无可归属目标时不提供「添加任务」（头部按钮 + 空态 CTA 共用）。
+              onAddTask: addGoals.isEmpty
+                  ? null
+                  : () async {
+                      await QuickTaskFormDialog.show(
+                        context,
+                        date: parseLocalDate(_selectedDate),
+                        goals: addGoals,
+                      );
+                      onChanged();
+                    },
               onRetryTasks: () => ref.invalidate(tasksByDateProvider),
             ),
           ),
@@ -219,7 +221,6 @@ class _DayPanel extends StatelessWidget {
     super.key,
     required this.dateLabel,
     required this.selectedTasksAsync,
-    required this.addGoals,
     required this.goalsById,
     required this.onChanged,
     required this.onAddTask,
@@ -228,10 +229,11 @@ class _DayPanel extends StatelessWidget {
 
   final String dateLabel;
   final AsyncValue<List<Task>> selectedTasksAsync;
-  final List<Goal> addGoals;
   final Map<int, Goal> goalsById;
   final VoidCallback onChanged;
-  final Future<void> Function() onAddTask;
+
+  /// 「添加任务」回调（无可归属目标时为 null：头部按钮禁用、空态无 CTA）。
+  final Future<void> Function()? onAddTask;
   final VoidCallback onRetryTasks;
 
   @override
@@ -250,7 +252,7 @@ class _DayPanel extends StatelessWidget {
               ),
             ),
             TextButton.icon(
-              onPressed: addGoals.isEmpty ? null : onAddTask,
+              onPressed: onAddTask,
               icon: const Icon(Icons.add, size: 18),
               label: const Text('添加任务'),
             ),
@@ -269,9 +271,16 @@ class _DayPanel extends StatelessWidget {
               child: LinearProgressIndicator(minHeight: 2),
             )
           else
-            const ChartEmptyState(
-              icon: Icons.event_outlined,
-              title: '这一天没有任务',
+            // 空态内容横向居中（本列 start 对齐需给全宽）+ 引导 CTA：
+            // 「去添加任务」直接点开所选日期的快速添加。
+            SizedBox(
+              width: double.infinity,
+              child: ChartEmptyState(
+                icon: Icons.event_outlined,
+                title: '这一天没有任务',
+                actionLabel: onAddTask == null ? null : '去添加任务',
+                onAction: onAddTask,
+              ),
             )
         else
           for (final task in selectedTasks)
@@ -489,11 +498,26 @@ class _MonthGrid extends StatelessWidget {
     final isAvailable = weekdays.contains(date.weekday);
     final isToday = dateStr == todayStr;
     final isSelected = dateStr == selectedDate;
+    final hasTask = agg.totalCount > 0;
 
-    final textColor = isAvailable ? scheme.onSurface : scheme.outlineVariant;
+    // 三态视觉优先级（选中 > 今天 > 有任务；NFR-4 不只依赖颜色，多重表达）：
+    // - 选中：最深最饱满的主色实心块（onPrimary 白字），表意优先级最高；
+    // - 今天（未选中）：与普通格同底 + 主色描边 + 主色粗体日号，不占大块
+    //   填充，避免「今天」抢过「选中」的风头；
+    // - 有任务：日期数字旁主色小圆点（选中时用 onPrimary 保证对比度）。
+    final baseTextColor =
+        isAvailable ? scheme.onSurface : scheme.outlineVariant;
+    final textColor = isSelected
+        ? scheme.onPrimary
+        : (isToday ? scheme.primary : baseTextColor);
     final background = isSelected
-        ? scheme.secondaryContainer
-        : (isToday ? scheme.primaryContainer : scheme.surfaceContainerLow);
+        ? scheme.primary
+        : scheme.surfaceContainerLow;
+    // 今天描边：仅未选中时渲染——选中已是主色实块，叠加同色描边无意义。
+    final border = isToday && !isSelected
+        ? Border.all(color: scheme.primary, width: 1.5)
+        : null;
+    final dotColor = isSelected ? scheme.onPrimary : scheme.primary;
 
     // 屏幕阅读器可读的单元格描述（NFR-4）：日期 + 完成数/总数 + 时长，
     // 超载时带「超出」文本，状态不只依赖颜色。
@@ -518,17 +542,36 @@ class _MonthGrid extends StatelessWidget {
           decoration: BoxDecoration(
             color: background,
             borderRadius: BorderRadius.circular(8),
+            border: border,
           ),
           padding: const EdgeInsets.all(4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '$day',
-                style: TextStyle(
-                  color: isToday ? scheme.primary : textColor,
-                  fontWeight: isToday ? FontWeight.bold : null,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '$day',
+                    style: TextStyle(
+                      color: textColor,
+                      fontWeight: isToday ? FontWeight.bold : null,
+                    ),
+                  ),
+                  // 有任务圆点：日期数字右侧的主色小点，一眼可辨「这天有安排」
+                  // （占用同行空间，不挤压格子下方计数内容）。
+                  if (hasTask) ...[
+                    const SizedBox(width: 4),
+                    Container(
+                      width: 5,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: dotColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ],
+                ],
               ),
               if (agg.totalCount > 0) ...[
                 Text(

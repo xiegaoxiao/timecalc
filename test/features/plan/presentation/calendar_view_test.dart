@@ -130,6 +130,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('八六任务'), findsOneWidget);
     expect(find.text('八五任务'), findsNothing);
+    // 回归：面板标题与网格高亮绑定同一选中日（08-06 为周四），
+    // 防止「高亮 9 号却显示 18 号」的错位。
+    expect(find.text('2026-08-06 星期四'), findsOneWidget);
 
     // 在选日面板完成任务，聚合同步更新（1/1）。
     await tester.ensureVisible(find.byType(Checkbox));
@@ -294,5 +297,28 @@ void main() {
     expect(fetched?.originalPlannedDate, '2026-08-05');
     expect(fetched?.title, '拖动任务');
     expect(fetched?.estimatedMinutes, 30);
+  });
+
+  testWidgets('空选日空态提供「去添加任务」CTA 并可打开快速表单（引导态）', (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    // 默认选中今天（08-05）但没有任务：空态展示引导按钮。
+    await pumpApp(tester);
+    await openCalendar(tester);
+
+    expect(find.text('这一天没有任务'), findsOneWidget);
+    expect(find.text('去添加任务'), findsOneWidget);
+
+    // 点击 CTA：打开所选日期（今天）的快速添加表单（先滚动到可视区）。
+    final cta = find.text('去添加任务');
+    await tester.ensureVisible(cta);
+    await tester.pumpAndSettle();
+    await tester.tap(cta);
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(Dialog, '添加任务'), findsOneWidget);
+
+    // 取消关闭（不落库）。
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(goal.id, greaterThan(0));
   });
 }
