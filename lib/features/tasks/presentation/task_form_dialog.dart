@@ -204,8 +204,9 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
         },
       );
       if (!ok) return;
-      // 跨页刷新（FR-3 验收）：任务日期/状态变更影响今天页、日历、逾期横幅。
-      invalidateTaskForms(ref, goalId: widget.goalId);
+      // 跨页刷新（FR-3 验收）：创建/编辑影响今日页（列表与「目标剩余」）、
+      // 进度页（剩余工作量/燃尽/耗时图）、日历与逾期横幅，走全量集合。
+      invalidateAppData(ref);
       if (mounted) Navigator.of(context).pop(true);
     } finally {
       if (mounted) setState(() => _saving = false);

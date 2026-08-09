@@ -2,6 +2,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 
 import 'package:timecalc/app.dart';
 import 'package:timecalc/core/database/database.dart';
@@ -32,7 +33,26 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Future<void> pumpApp(WidgetTester tester) async {
+  /// 从底部导航切换到指定主页面（限定 NavigationBar 内，避免 offstage
+  /// 保活分支的同名文本歧义——IndexedStack 隐藏分支不参与匹配）。
+  Future<void> goTab(WidgetTester tester, String label) async {
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text(label),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  /// 返回上一页（应用 locale 为 zh_CN，BackButton tooltip 是「返回」，
+  /// tester.pageBack 找「Back」会失败，故按类型定位）。
+  Future<void> goBack(WidgetTester tester) async {
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> pumpApp(WidgetTester tester, {DateTime? now}) async {
     // 目标详情页含里程碑区（FR-2）后页面变长，放大视口避免任务区按钮
     // 落在 600px 默认视口外（ListView 惰性构建，视口外 find 不到）。
     tester.view.physicalSize = const Size(800, 1800);
@@ -42,7 +62,9 @@ void main() {
       ProviderScope(
         overrides: [
           databaseProvider.overrideWithValue(db),
-          clockProvider.overrideWithValue(() => DateTime(2026, 8, 5, 12)),
+          clockProvider.overrideWithValue(
+            () => now ?? DateTime(2026, 8, 5, 12),
+          ),
         ],
         child: const TimeCalcApp(),
       ),
@@ -149,6 +171,59 @@ void main() {
     // 数据库中状态同步。
     final list = await tasks.byGoal(goalId);
     expect(list.single.status, 'done');
+  });
+
+  testWidgets('目标详情页完成任务后进度页立即更新（回归：完成操作全量失效）', (tester) async {
+    // 注入时钟取稍晚于当前时刻：checkbox 完成的 completedAt 写
+    // DateTime.now()（真实时钟，pump 之后才发生），必须落在
+    // completedTasksProvider 的查询窗口（[now-183d, now]）内——
+    // now 取「未来 5 分钟」保证完成时刻必然早于窗口上界。
+    final now = DateTime.now().add(const Duration(minutes: 5));
+    final todayStr = DateFormat('yyyy-MM-dd').format(now);
+    await tasks.create(
+      goalId: goalId,
+      title: '完成第一章',
+      plannedDate: todayStr,
+      estimatedMinutes: 120,
+    );
+    await pumpApp(tester, now: now);
+
+    // 先访问进度页：completedTasksProvider/allTodoTasksProvider 被缓存
+    // （尚未完成，燃尽结论句「还剩 2 小时」）。
+    await goTab(tester, '进度');
+    final burnCardBefore = find.widgetWithText(Card, '剩余工作量趋势');
+    expect(
+      find.descendant(
+        of: burnCardBefore,
+        matching: find.text('过去 30 天还没有完成任务，还剩 2 小时'),
+      ),
+      findsOneWidget,
+    );
+
+    // 到目标详情页勾选完成该任务。
+    await goTab(tester, '计划');
+    await tester.tap(find.text('考研数学'));
+    await tester.pumpAndSettle();
+    final checkbox = find.byType(Checkbox);
+    expect(checkbox, findsOneWidget);
+    await tester.tap(checkbox);
+    await tester.pumpAndSettle();
+    // 目标详情页自身已刷新为完成态。
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
+
+    // 返回并切到进度页：燃尽图结论句立即变为「已消化 2 小时」。
+    // 修复前 completedTasksProvider/allTodoTasksProvider 缓存未失效，
+    // 仍显示「还没有完成任务，还剩 2 小时」。
+    await goBack(tester);
+    await goTab(tester, '进度');
+    final burnCardAfter = find.widgetWithText(Card, '剩余工作量趋势');
+    expect(
+      find.descendant(
+        of: burnCardAfter,
+        matching: find.text('过去 30 天消化了 2 小时，带时长的任务已全部完成'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('删除任务（FR-3.2）', (tester) async {
@@ -337,6 +412,53 @@ void main() {
     expect(goalTasks.map((t) => t.title).toSet(), {'旧任务A', '新任务'});
     expect(await tasks.archivedByGoal(goalId), isEmpty);
     expect(find.text('合并导入 1 个任务'), findsOneWidget);
+  });
+
+  testWidgets('JSON 导入后今日页与进度页概览立即刷新（回归：导入后全量失效）', (tester) async {
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    // 导入前：应用无任务，今日页「目标剩余」显示 `-- 分`。
+    await goBack(tester);
+    await goTab(tester, '今天');
+    expect(find.textContaining('目标剩余 -- 分'), findsOneWidget);
+
+    // 回到目标详情，JSON 导入一个 180 分钟任务（固定时钟 2026-08-05，
+    // 日期用明天，满足「不得早于今天」校验）。
+    await goTab(tester, '计划');
+    await tester.tap(find.text('考研数学'));
+    await tester.pumpAndSettle();
+    await openMoreActions(tester);
+    await tester.tap(find.text('JSON 导入'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byType(TextField).last,
+      '{"unclassified":[{"title":"真题","date":"2026-08-06","minutes":180}]}',
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('导入'));
+    await tester.pumpAndSettle();
+
+    // 导入完成后无需任何额外操作：今日页「目标剩余」立即变为 3 小时
+    // （修复前缓存陈旧，须完成一个任务后才会出现）。
+    await goBack(tester);
+    await goTab(tester, '今天');
+    expect(find.textContaining('目标剩余 3 小时'), findsOneWidget);
+
+    // 进度页「目标剩余工作量」同步为 3 小时（修复前停留在陈旧 `-- 分`）。
+    await goTab(tester, '进度');
+    expect(find.text('目标剩余工作量'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.ancestor(
+          of: find.text('目标剩余工作量'),
+          matching: find.byType(Card),
+        ),
+        matching: find.text('3 小时'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('科目增删与任务归属科目显示（FR-1.5）', (tester) async {

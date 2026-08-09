@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/providers/app_refresh.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/date_text.dart';
@@ -136,7 +137,10 @@ class GoalDetailBody extends ConsumerWidget {
                   title: '未分类任务',
                   description: '不归属特定科目的安排，如科目复习/复盘、考研报名等',
                   emptyText: '还没有此类任务。可点「添加任务」或「批量添加」创建',
-                  onChanged: () => ref.invalidate(taskListProvider(goal.id)),
+                  // 全量跨页刷新（FR-3 验收）：完成/编辑/删除任务影响今日页、
+                  // 日历与进度页（completedTasksProvider/allTodoTasksProvider
+                  // 若不失效，进度页热力图与剩余工作量停留陈旧，回归教训）。
+                  onChanged: () => invalidateAppData(ref),
                 ),
               ];
             },

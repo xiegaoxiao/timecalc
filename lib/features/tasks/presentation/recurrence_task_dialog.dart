@@ -337,10 +337,10 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
     }
   }
 
-  /// 变更后刷新：模板、目标任务列表、今日/日历/未完成缓存。
+  /// 变更后刷新：模板与跨页全量缓存（今日页/日历/进度页，FR-3 验收）。
   void _refresh() {
     ref.invalidate(recurrenceTemplatesProvider(widget.goalId));
-    invalidateTaskForms(ref, goalId: widget.goalId);
+    invalidateAppData(ref);
   }
 
   @override

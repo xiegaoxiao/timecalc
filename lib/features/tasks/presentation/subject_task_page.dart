@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/providers/app_refresh.dart';
 import '../../../services/duration_format.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../goals/data/subject_repository_provider.dart';
@@ -72,7 +73,10 @@ class SubjectTaskPage extends ConsumerWidget {
                     tasks: subjectTasks,
                     title: '任务',
                     defaultSubjectId: subjectId,
-                    onChanged: () => ref.invalidate(taskListProvider(goalId)),
+                    // 全量跨页刷新（FR-3 验收）：完成/编辑/删除任务影响今日页、
+                    // 日历与进度页（completedTasksProvider/allTodoTasksProvider
+                    // 若不失效，进度页热力图与剩余工作量停留陈旧，回归教训）。
+                    onChanged: () => invalidateAppData(ref),
                   ),
                 ],
               );
