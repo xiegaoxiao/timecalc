@@ -52,9 +52,13 @@ class MilestoneSection extends ConsumerWidget {
           error: (error, _) => AppErrorView(error: error),
           data: (milestones) {
             if (milestones.isEmpty) {
-              return const ChartEmptyState(
-                icon: Icons.flag_outlined,
-                title: '还没有里程碑，点击「添加里程碑」设定阶段性节点',
+              // 空态内容横向居中：本列 start 对齐，需给全宽内部才能居中。
+              return const SizedBox(
+                width: double.infinity,
+                child: ChartEmptyState(
+                  icon: Icons.flag_outlined,
+                  title: '还没有里程碑，点击「添加里程碑」设定阶段性节点',
+                ),
               );
             }
             return Column(

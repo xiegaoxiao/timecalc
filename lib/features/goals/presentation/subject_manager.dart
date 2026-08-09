@@ -51,9 +51,13 @@ class SubjectManager extends ConsumerWidget {
               }
             }
             if (subjects.isEmpty) {
-              return const ChartEmptyState(
-                icon: Icons.label_outline,
-                title: '还没有科目，点击「添加科目」按科目组织任务',
+              // 空态内容横向居中：本列 start 对齐，需给全宽内部才能居中。
+              return const SizedBox(
+                width: double.infinity,
+                child: ChartEmptyState(
+                  icon: Icons.label_outline,
+                  title: '还没有科目，点击「添加科目」按科目组织任务',
+                ),
               );
             }
             return Column(
@@ -82,30 +86,12 @@ class SubjectManager extends ConsumerWidget {
   }
 
   Future<void> _addSubject(BuildContext context, WidgetRef ref) async {
-    final controller = TextEditingController();
     final name = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('添加科目'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: '科目名称',
-            hintText: '例如：政治',
-          ),
-          maxLength: 100,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
-            child: const Text('添加'),
-          ),
-        ],
+      builder: (_) => const _SubjectNameDialog(
+        title: '添加科目',
+        hintText: '例如：政治',
+        confirmLabel: '添加',
       ),
     );
     if (name == null || name.isEmpty) return;
@@ -129,30 +115,13 @@ class SubjectManager extends ConsumerWidget {
     WidgetRef ref,
     Subject subject,
   ) async {
-    final controller = TextEditingController(text: subject.name);
     final name = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('重命名科目「${subject.name}」'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: '科目名称',
-            hintText: '例如：高等数学',
-          ),
-          maxLength: 100,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
-            child: const Text('保存'),
-          ),
-        ],
+      builder: (_) => _SubjectNameDialog(
+        title: '重命名科目「${subject.name}」',
+        initialValue: subject.name,
+        hintText: '例如：高等数学',
+        confirmLabel: '保存',
       ),
     );
     if (name == null || name.isEmpty || name == subject.name) return;
@@ -254,6 +223,119 @@ class _SubjectCard extends StatelessWidget {
         ),
         onTap: onTap,
       ),
+    );
+  }
+}
+
+/// 科目名称输入对话框（添加/重命名共用，桌面端交互标准）。
+///
+/// - 回车提交：`onFieldSubmitted` + `TextInputAction.done`，无需鼠标点按钮；
+/// - 空内容防呆：validator 校验失败显示「科目名称不能为空」红字 + 红边框，
+///   用户继续输入后自动清除（AutovalidateMode.onUserInteraction）；
+/// - 字数计数（N/100）移到输入框外部下方右对齐，不再挤在边框内右下角
+///   与输入文字/光标重叠；
+/// - 点遮罩关闭由 AlertDialog 默认提供（barrierDismissible: true）。
+class _SubjectNameDialog extends StatefulWidget {
+  const _SubjectNameDialog({
+    required this.title,
+    required this.hintText,
+    required this.confirmLabel,
+    this.initialValue,
+  });
+
+  final String title;
+  final String hintText;
+  final String confirmLabel;
+  final String? initialValue;
+
+  @override
+  State<_SubjectNameDialog> createState() => _SubjectNameDialogState();
+}
+
+class _SubjectNameDialogState extends State<_SubjectNameDialog> {
+  static const _maxLength = 100;
+
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue ?? '');
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  /// 校验通过后提交（确认按钮与回车共用同一入口）。
+  void _submit() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    Navigator.of(context).pop(_controller.text.trim());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return AlertDialog(
+      title: Text(widget.title),
+      content: Form(
+        key: _formKey,
+        // 用户继续输入时即时重校验，错误提示随之清除（而非停留在已修正的
+        // 错误上）。
+        autovalidateMode: AutovalidateMode.onUserInteraction,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextFormField(
+              controller: _controller,
+              autofocus: true,
+              maxLength: _maxLength,
+              textInputAction: TextInputAction.done,
+              decoration: InputDecoration(
+                labelText: '科目名称',
+                hintText: widget.hintText,
+                // 关闭内置右下角计数器（会与输入文字/光标拥挤），
+                // 计数改在输入框外部下方单独右对齐展示。
+                counterText: '',
+              ),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return '科目名称不能为空';
+                }
+                return null;
+              },
+              onFieldSubmitted: (_) => _submit(),
+            ),
+            // 字数计数：输入框外部下方右对齐，不与输入内容重叠。
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _controller,
+              builder: (context, value, _) => Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  '${value.text.length}/$_maxLength',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: scheme.outline),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: Text(widget.confirmLabel),
+        ),
+      ],
     );
   }
 }

@@ -82,7 +82,7 @@ void main() {
     await openGoalDetail(tester, '考研');
 
     expect(find.text('剩余任务时长：6 小时'), findsOneWidget);
-    expect(find.text('剩余可用天数：4 天'), findsOneWidget);
+    expect(find.text('剩余可用天数（学习日）：4 天'), findsOneWidget);
     expect(find.text('建议日均时长：1 小时 30 分 · 可用 2 小时/天'), findsOneWidget);
     // 建议日均未超可用时长，不显示计划风险。
     expect(find.textContaining('计划风险'), findsNothing);
@@ -129,10 +129,24 @@ void main() {
     await pumpApp(tester);
     await openGoalDetail(tester, '论文');
 
-    expect(find.text('剩余可用天数：5 天'), findsOneWidget);
+    expect(find.text('剩余可用天数（学习日）：5 天'), findsOneWidget);
     // 500 / 5 = 100 分钟/天，未超可用时长，无风险。
     expect(find.text('建议日均时长：1 小时 40 分 · 可用 2 小时/天'), findsOneWidget);
     expect(find.textContaining('计划风险'), findsNothing);
+  });
+
+  testWidgets('无任务时负载区显示 -- 分（区分「还没计划」与「已全部完成」）', (tester) async {
+    // 目标下没有任何任务。
+    await goals.create(title: '考研', deadlineDate: '2026-12-31');
+
+    await pumpApp(tester);
+    await openGoalDetail(tester, '考研');
+
+    // 无任务状态：时长与建议日均显示 -- 分，而非误导性的 0 分。
+    expect(find.text('剩余任务时长：-- 分'), findsOneWidget);
+    expect(find.text('建议日均时长：-- 分 · 可用 2 小时/天'), findsOneWidget);
+    // 学习日口径说明仍展示（有剩余学习日时）。
+    expect(find.textContaining('按计划偏好排除休息日后的学习日'), findsOneWidget);
   });
 
   testWidgets('设置计划偏好：修改每日可用时长后今天页负载提示随之变化', (tester) async {
@@ -319,5 +333,54 @@ void main() {
     expect(find.textContaining('历史任务'), findsNothing);
     // 归档任务不进入当前计划列表。
     expect(find.text('旧任务'), findsNothing);
+  });
+
+  testWidgets('分钟直接输入 60 自动进位到小时（避免「X 小时 60 分」矛盾）', (tester) async {
+    await pumpApp(tester);
+    await openPlanPreference(tester);
+
+    // 默认 2 小时 0 分；分钟字段输入 60 → 自动进位为 3 小时 0 分。
+    final minuteInput = find.descendant(
+      of: find.byKey(const Key('minuteStepField')),
+      matching: find.byType(TextField),
+    );
+    await tester.tap(minuteInput);
+    await tester.pumpAndSettle();
+    await tester.enterText(minuteInput, '60');
+    await tester.pumpAndSettle();
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(find.text('当前共 3 小时'), findsOneWidget);
+    expect(find.textContaining('60 分'), findsNothing);
+  });
+
+  testWidgets('每周可用日提供「全部选中/全部取消」快捷操作', (tester) async {
+    await pumpApp(tester);
+    await openPlanPreference(tester);
+
+    bool chipSelected(String label) => tester
+        .widget<FilterChip>(find.widgetWithText(FilterChip, label))
+        .selected;
+    const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+    // 默认 7 天全选。
+    for (final day in days) {
+      expect(chipSelected(day), isTrue);
+    }
+
+    // 全部取消：一键清空（如只休周五/周六时先全部取消）。
+    await tester.tap(find.text('全部取消'));
+    await tester.pumpAndSettle();
+    for (final day in days) {
+      expect(chipSelected(day), isFalse);
+    }
+
+    // 全部选中：一键恢复。
+    await tester.tap(find.text('全部选中'));
+    await tester.pumpAndSettle();
+    for (final day in days) {
+      expect(chipSelected(day), isTrue);
+    }
   });
 }

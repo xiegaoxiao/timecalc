@@ -188,6 +188,9 @@ class _LoadSection extends ConsumerWidget {
         );
 
         final scheme = Theme.of(context).colorScheme;
+        // 无任何任务时数字用 `-- 分` 占位：区分「还没建立计划」与「计划
+        // 已全部完成（0 分）」两种状态，避免空目标下出现误导性的 0。
+        final hasAnyTask = tasks.isNotEmpty;
         return Card(
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -208,11 +211,25 @@ class _LoadSection extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text('剩余任务时长：${DurationFormat.minutes(remaining)}'),
-                Text('剩余可用天数：$remainingDays 天'),
                 Text(
-                  '建议日均时长：${DurationFormat.minutes(suggested)} · 可用 ${DurationFormat.minutes(settings.dailyAvailableMinutes)}/天',
+                  '剩余任务时长：${hasAnyTask ? DurationFormat.minutes(remaining) : '-- 分'}',
                 ),
+                // 学习日 = 按计划偏好 weekdays 过滤后的可学习星期（与顶部
+                // 倒计时的「日历天数」口径不同，显式标注避免两个数字混淆）。
+                Text('剩余可用天数（学习日）：$remainingDays 天'),
+                Text(
+                  '建议日均时长：${hasAnyTask ? DurationFormat.minutes(suggested) : '-- 分'} · 可用 ${DurationFormat.minutes(settings.dailyAvailableMinutes)}/天',
+                ),
+                if (remainingDays > 0) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '剩余可用天数为按计划偏好排除休息日后的学习日；'
+                    '日历总天数见顶部倒计时。',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.outline,
+                        ),
+                  ),
+                ],
                 if (risk) ...[
                   const SizedBox(height: 8),
                   Text(
