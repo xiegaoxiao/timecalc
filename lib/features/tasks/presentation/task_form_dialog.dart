@@ -214,6 +214,7 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return AlertDialog(
       title: Text(_isEdit ? '编辑任务' : '创建任务'),
       content: Form(
@@ -221,21 +222,38 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               TextFormField(
                 controller: _titleController,
                 autofocus: true,
+                maxLength: 200,
+                // 关闭内置右下角计数器（会与长输入文字/光标重叠），
+                // 计数改在输入框外部下方单独右对齐展示。
                 decoration: const InputDecoration(
                   labelText: '任务标题 *',
                   hintText: '例如：完成第一章复习',
+                  counterText: '',
                 ),
-                maxLength: 200,
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
                     return '请输入任务标题';
                   }
                   return null;
                 },
+              ),
+              // 字数计数：输入框外部下方右对齐，不与输入内容重叠。
+              ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _titleController,
+                builder: (context, value, _) => Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    '${value.text.length}/200',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: scheme.outline),
+                  ),
+                ),
               ),
               const SizedBox(height: 12),
               InkWell(
@@ -259,6 +277,8 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
                 label: '预估时长',
                 value: _estimatedMinutes,
                 allowEmpty: true,
+                // 完整弹窗提供快捷按钮：+15/30 分、+1 小时，免去点 150 次。
+                showQuickButtons: true,
                 onChanged: (minutes) => setState(() => _estimatedMinutes = minutes),
                 hourFieldKey: const Key('taskHourField'),
                 minuteFieldKey: const Key('taskMinuteField'),

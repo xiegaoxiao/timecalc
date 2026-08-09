@@ -26,6 +26,12 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// 展开任务区「更多操作」菜单（JSON 导入/重复任务已折叠其中）。
+  Future<void> openMoreActions(WidgetTester tester) async {
+    await tester.tap(find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
+  }
+
   Future<void> pumpApp(WidgetTester tester) async {
     // 目标详情页含里程碑区（FR-2）后页面变长，放大视口避免任务区按钮
     // 落在 600px 默认视口外（ListView 惰性构建，视口外 find 不到）。
@@ -185,6 +191,7 @@ void main() {
     await pumpApp(tester);
     await openGoalDetail(tester);
 
+    await openMoreActions(tester);
     await tester.tap(find.text('JSON 导入'));
     await tester.pumpAndSettle();
     expect(find.text('JSON 导入任务'), findsOneWidget);
@@ -215,6 +222,7 @@ void main() {
     await pumpApp(tester);
     await openGoalDetail(tester);
 
+    await openMoreActions(tester);
     await tester.tap(find.text('JSON 导入'));
     await tester.pumpAndSettle();
 
@@ -257,6 +265,7 @@ void main() {
     await pumpApp(tester);
     await openGoalDetail(tester);
 
+    await openMoreActions(tester);
     await tester.tap(find.text('JSON 导入'));
     await tester.pumpAndSettle();
 
@@ -298,6 +307,7 @@ void main() {
     await pumpApp(tester);
     await openGoalDetail(tester);
 
+    await openMoreActions(tester);
     await tester.tap(find.text('JSON 导入'));
     await tester.pumpAndSettle();
 
@@ -488,5 +498,122 @@ void main() {
         .toList();
     expect(all, hasLength(2));
     expect(all.every((t) => t.subjectId == subject.id), isTrue);
+  });
+
+  testWidgets('添加科目对话框：回车直接提交（桌面端键盘交互）', (tester) async {
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    await tester.tap(find.text('添加科目'));
+    await tester.pumpAndSettle();
+
+    // 输入名称后按回车（TextInputAction.done）直接提交，无需点「添加」。
+    await tester.enterText(find.byType(TextFormField), '数学');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    // 对话框关闭，科目已创建。
+    expect(find.widgetWithText(AlertDialog, '添加科目'), findsNothing);
+    expect(find.widgetWithText(Card, '数学'), findsOneWidget);
+    expect((await subjects.byGoal(goalId)).single.name, '数学');
+  });
+
+  testWidgets('添加科目对话框：空内容提交显示错误红字，输入后恢复', (tester) async {
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    await tester.tap(find.text('添加科目'));
+    await tester.pumpAndSettle();
+
+    // 什么都不填直接点「添加」：校验拦截并显示错误文案，对话框保持打开。
+    await tester.tap(find.text('添加'));
+    await tester.pumpAndSettle();
+    expect(find.text('科目名称不能为空'), findsOneWidget);
+    expect(find.widgetWithText(AlertDialog, '添加科目'), findsOneWidget);
+
+    // 继续输入后错误即时清除（AutovalidateMode.onUserInteraction）。
+    await tester.enterText(find.byType(TextFormField), '数学');
+    await tester.pumpAndSettle();
+    expect(find.text('科目名称不能为空'), findsNothing);
+
+    // 再点「添加」正常提交。
+    await tester.tap(find.text('添加'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(Card, '数学'), findsOneWidget);
+  });
+
+  testWidgets('添加科目对话框：字数计数显示在输入框外下方', (tester) async {
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    await tester.tap(find.text('添加科目'));
+    await tester.pumpAndSettle();
+
+    // 初始 0/100；输入后实时更新。
+    expect(find.text('0/100'), findsOneWidget);
+    await tester.enterText(find.byType(TextFormField), '高等数学');
+    await tester.pumpAndSettle();
+    expect(find.text('4/100'), findsOneWidget);
+  });
+
+  testWidgets('添加科目对话框：点击遮罩可关闭且不创建（AlertDialog 默认）', (tester) async {
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    await tester.tap(find.text('添加科目'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField), '数学');
+
+    // 点击对话框外的遮罩区域：对话框关闭，不创建科目。
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(AlertDialog, '添加科目'), findsNothing);
+    expect(await subjects.byGoal(goalId), isEmpty);
+  });
+
+  testWidgets('任务弹窗：快捷按钮一次点按设定常用时长（+30分/+1小时）', (tester) async {
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    await tester.tap(find.text('添加任务'));
+    await tester.pumpAndSettle();
+
+    // 快捷按钮：+30 分 → 30 分。
+    await tester.tap(find.text('+30分'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前共 30 分'), findsOneWidget);
+
+    // 再点 +1 小时 → 1 小时 30 分（分钟可进位到小时）。
+    await tester.tap(find.text('+1小时'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前共 1 小时 30 分'), findsOneWidget);
+  });
+
+  testWidgets('任务弹窗：无时长状态下点快捷按钮即从 0 起设定时长', (tester) async {
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    await tester.tap(find.text('添加任务'));
+    await tester.pumpAndSettle();
+
+    // 默认「未设置时长」（allowEmpty 空态）；点 +15 分直接设定为 15 分。
+    expect(find.text('未设置时长'), findsOneWidget);
+    await tester.tap(find.text('+15分'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前共 15 分'), findsOneWidget);
+  });
+
+  testWidgets('任务弹窗：标题字数计数显示在输入框外下方', (tester) async {
+    await pumpApp(tester);
+    await openGoalDetail(tester);
+
+    await tester.tap(find.text('添加任务'));
+    await tester.pumpAndSettle();
+
+    // 初始 0/200；输入后实时更新。
+    expect(find.text('0/200'), findsOneWidget);
+    await tester.enterText(find.byType(TextFormField).first, '完成第一章');
+    await tester.pumpAndSettle();
+    expect(find.text('5/200'), findsOneWidget);
   });
 }

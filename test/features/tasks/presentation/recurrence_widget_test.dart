@@ -51,6 +51,12 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// 展开任务区「更多操作」菜单（重复任务已折叠其中）。
+  Future<void> openMoreActions(WidgetTester tester) async {
+    await tester.tap(find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
+  }
+
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
     goals = GoalRepository(db);
@@ -68,6 +74,8 @@ void main() {
     await pumpApp(tester);
     await openGoalDetail(tester);
 
+    // 「重复任务」已折叠进「更多操作」菜单（FR-4 空态收敛按钮）。
+    await openMoreActions(tester);
     await tester.tap(find.text('重复任务'));
     await tester.pumpAndSettle();
     expect(find.text('重复任务'), findsWidgets);

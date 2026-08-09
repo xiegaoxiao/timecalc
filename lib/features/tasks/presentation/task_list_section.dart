@@ -150,26 +150,41 @@ class _TaskListSectionState extends ConsumerState<TaskListSection> {
             icon: const Icon(Icons.playlist_add, size: 18),
             label: const Text('批量添加'),
           ),
-          TextButton.icon(
-            onPressed: () => TaskImportDialog.show(
-              context,
-              goalId: widget.goalId,
-              subjects: widget.subjects,
-              // JSON 导入为「替换」语义：传入将被替换并保留为历史的
-              // 目标当前任务清单。
-              currentTasks: widget.currentTasks ?? widget.tasks,
-            ),
-            icon: const Icon(Icons.upload_file, size: 18),
-            label: const Text('JSON 导入'),
-          ),
-          TextButton.icon(
-            onPressed: () => RecurrenceTaskDialog.show(
-              context,
-              goalId: widget.goalId,
-              subjects: widget.subjects,
-            ),
-            icon: const Icon(Icons.autorenew, size: 18),
-            label: const Text('重复任务'),
+          // 高级操作（JSON 导入/重复任务）折叠进「更多操作」：空态下主操作
+          // 已覆盖绝大多数场景，避免一行四个按钮的视觉噪音与小屏溢出。
+          PopupMenuButton<String>(
+            tooltip: '更多操作',
+            onSelected: (action) {
+              switch (action) {
+                case 'import':
+                  TaskImportDialog.show(
+                    context,
+                    goalId: widget.goalId,
+                    subjects: widget.subjects,
+                    // JSON 导入为「替换」语义：传入将被替换并保留为历史的
+                    // 目标当前任务清单。
+                    currentTasks: widget.currentTasks ?? widget.tasks,
+                  );
+                  break;
+                case 'recurrence':
+                  RecurrenceTaskDialog.show(
+                    context,
+                    goalId: widget.goalId,
+                    subjects: widget.subjects,
+                  );
+                  break;
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'import',
+                child: Text('JSON 导入'),
+              ),
+              PopupMenuItem(
+                value: 'recurrence',
+                child: Text('重复任务'),
+              ),
+            ],
           ),
         ],
       ],

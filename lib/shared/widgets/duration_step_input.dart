@@ -23,6 +23,7 @@ class DurationStepInput extends StatefulWidget {
     required this.onChanged,
     this.allowEmpty = false,
     this.maxMinutes = 1440,
+    this.showQuickButtons = false,
     this.hourFieldKey,
     this.minuteFieldKey,
   });
@@ -34,6 +35,11 @@ class DurationStepInput extends StatefulWidget {
   /// 是否允许「无时长」（[value] 可为 null）。
   final bool allowEmpty;
   final int maxMinutes;
+
+  /// 是否显示快捷按钮（`+15分`/`+30分`/`+1小时`）。步进器本身支持点击
+  /// 数字直接键盘输入，快捷按钮是对「点 150 次加号」痛点的折中方案；
+  /// 默认关闭避免撑大精简弹窗，任务表单按需开启。
+  final bool showQuickButtons;
   final Key? hourFieldKey;
   final Key? minuteFieldKey;
 
@@ -135,47 +141,75 @@ class _DurationStepInputState extends State<DurationStepInput> {
       children: [
         Text(widget.label, style: Theme.of(context).textTheme.bodyMedium),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _StepField(
-                key: widget.hourFieldKey,
-                label: '小时',
-                value: _hours,
-                min: 0,
-                max: 24,
-                enabled: !_empty,
-                onChanged: (v) {
-                  setState(() => _hours = v);
-                  _notify();
-                },
-                // 小时步进 ±1 小时。
-                onStep: (d) => _stepBy(d * 60),
-                onStartAutoStep: (d) => _startAutoStep(d * 60),
-                onStopAutoStep: _stopAutoStep,
+        // 无时长（_empty）时整组步进弱化（半透明）：按钮/输入虽已禁用，
+        // 整体变灰更能让用户明确「当前没有设置时长」。
+        Opacity(
+          opacity: _empty ? 0.5 : 1,
+          child: Row(
+            children: [
+              Expanded(
+                child: _StepField(
+                  key: widget.hourFieldKey,
+                  label: '小时',
+                  value: _hours,
+                  min: 0,
+                  max: 24,
+                  enabled: !_empty,
+                  onChanged: (v) {
+                    setState(() => _hours = v);
+                    _notify();
+                  },
+                  // 小时步进 ±1 小时。
+                  onStep: (d) => _stepBy(d * 60),
+                  onStartAutoStep: (d) => _startAutoStep(d * 60),
+                  onStopAutoStep: _stopAutoStep,
+                ),
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _StepField(
-                key: widget.minuteFieldKey,
-                label: '分钟',
-                value: _minutes,
-                min: 0,
-                max: 59,
-                enabled: !_empty,
-                onChanged: (v) {
-                  setState(() => _minutes = v);
-                  _notify();
-                },
-                // 分钟步进 ±5 分钟。
-                onStep: (d) => _stepBy(d * 5),
-                onStartAutoStep: (d) => _startAutoStep(d * 5),
-                onStopAutoStep: _stopAutoStep,
+              const SizedBox(width: 16),
+              Expanded(
+                child: _StepField(
+                  key: widget.minuteFieldKey,
+                  label: '分钟',
+                  value: _minutes,
+                  min: 0,
+                  // max 60 允许「直接输入 60」：onChanged 收到 60 时自动进位
+                  // 到小时（_applyTotal 归一化，钳制小时 ≤24），避免出现
+                  // 「10 小时 60 分」这种矛盾展示。
+                  max: 60,
+                  enabled: !_empty,
+                  onChanged: (v) => _applyTotal(_hours * 60 + v),
+                  // 分钟步进 ±5 分钟（到 60 同样走 _applyTotal 进位）。
+                  onStep: (d) => _stepBy(d * 5),
+                  onStartAutoStep: (d) => _startAutoStep(d * 5),
+                  onStopAutoStep: _stopAutoStep,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
+        if (widget.showQuickButtons) ...[
+          const SizedBox(height: 8),
+          // 快捷设定：一次点按 +15/30 分、+1 小时（步进器点 150 次才能
+          // 到 2h30 的痛点折中；空态点击即从 0 起算设定时长）。
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              for (final (label, delta) in const [
+                ('+15分', 15),
+                ('+30分', 30),
+                ('+1小时', 60),
+              ])
+                ActionChip(
+                  label: Text(label),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: _empty
+                      ? () => _applyTotal(delta)
+                      : () => _stepBy(delta),
+                ),
+            ],
+          ),
+        ],
         const SizedBox(height: 8),
         Row(
           children: [
