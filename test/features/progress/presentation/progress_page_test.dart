@@ -45,6 +45,14 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// 展开底部折叠的「数据统计说明」（默认折叠，断言说明文本前先点开）。
+  Future<void> expandNote(WidgetTester tester) async {
+    final toggle = find.text('数据统计说明');
+    await tester.ensureVisible(toggle);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+  }
+
   /// 在指定 UTC 时刻完成一项带时长的任务（供热力图/任务耗时图断言）。
   Future<void> completeTask({
     required int goalId,
@@ -199,7 +207,8 @@ void main() {
 
     expect(find.text('还没有完成记录'), findsOneWidget);
     expect(find.text('还没有带预估时长的任务安排'), findsOneWidget);
-    // FR-7.4 说明文本。
+    // FR-7.4 说明折叠在「数据统计说明」下，展开后断言。
+    await expandNote(tester);
     expect(
       find.textContaining('无预估时长的任务只计入任务数'),
       findsOneWidget,
@@ -292,7 +301,8 @@ void main() {
     expect(find.byType(BarChart), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    // 整页纵向滚动可达底部说明文字（图表未被固定/截断）。
+    // 整页纵向滚动可达底部说明（图表未被固定/截断）：先展开折叠说明。
+    await expandNote(tester);
     final caption = find.textContaining('无预估时长的任务只计入任务数');
     await tester.ensureVisible(caption);
     await tester.pumpAndSettle();
@@ -366,7 +376,8 @@ void main() {
 
     // fl_chart 折线图已渲染（数据正确性由 statistics_service_test 保证）。
     expect(find.byType(LineChart), findsOneWidget);
-    // FR-7.4 说明文本仍展示。
+    // FR-7.4 说明折叠在「数据统计说明」下，展开后断言。
+    await expandNote(tester);
     expect(find.textContaining('无预估时长的任务只计入任务数'), findsOneWidget);
   });
 
@@ -385,6 +396,14 @@ void main() {
     expect(find.text('剩余工作量趋势'), findsOneWidget);
     // 燃尽空态文案与甘特图空态区分，避免歧义。
     expect(find.text('还没有可展示的剩余工作量数据'), findsOneWidget);
+
+    // 无带时长数据时 Header「当前剩余」显示灰 `-- 分`（与今日概览无数据
+    // 语义一致），而不是绿色「0 分」（那是「全部完成」才有的状态）。
+    final burnCard = find.widgetWithText(Card, '剩余工作量趋势');
+    expect(
+      find.descendant(of: burnCard, matching: find.text('-- 分')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('燃尽图 X 轴最右端标注「今天」，结论句含窗口消化时长', (tester) async {
@@ -420,5 +439,58 @@ void main() {
       find.descendant(of: burnCard, matching: find.text('今天')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('无任务时今日概览显示 -- 而非 0（区分「没计划」与「已完成」）', (tester) async {
+    await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    // 无任何任务：今日概览三项均显示「无数据」占位。
+    await pumpApp(tester);
+    await openProgress(tester);
+
+    final overviewCard = find.widgetWithText(Card, '今日概览');
+    expect(
+      find.descendant(of: overviewCard, matching: find.text('-- / --')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: overviewCard, matching: find.text('-- 分')),
+      findsNWidgets(2), // 已完成时长 + 目标剩余工作量
+    );
+  });
+
+  testWidgets('有进行中目标时空态卡片显示引导按钮（语义区分）', (tester) async {
+    await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    // 无任务数据：三张图均为空态。
+    await pumpApp(tester);
+    await openProgress(tester);
+
+    // 热力图：完成普通任务即可 → 「去添加任务」；
+    // 燃尽/耗时图：需要带预估时长的数据 → 「去设置预估时长」。
+    expect(find.text('去添加任务'), findsOneWidget);
+    expect(find.text('去设置预估时长'), findsNWidgets(2));
+
+    // 点击热力图空态的 CTA：打开「添加任务」表单（归属于进行中目标）。
+    // 按钮可能在首屏之外，先滚动到可视区再点。
+    final cta = find.text('去添加任务');
+    await tester.ensureVisible(cta);
+    await tester.pumpAndSettle();
+    await tester.tap(cta);
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(Dialog, '添加任务'), findsOneWidget);
+
+    // 取消关闭（不落库）。
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsNothing);
+  });
+
+  testWidgets('无目标时空态卡片不显示「去添加任务」按钮', (tester) async {
+    // 没有任何目标（也没有任务）。
+    await pumpApp(tester);
+    await openProgress(tester);
+
+    expect(find.text('还没有完成记录'), findsOneWidget);
+    expect(find.text('还没有带预估时长的任务安排'), findsOneWidget);
+    expect(find.text('去添加任务'), findsNothing);
   });
 }

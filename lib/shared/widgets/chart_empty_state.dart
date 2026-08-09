@@ -40,7 +40,8 @@ class ChartEmptyState extends StatelessWidget {
           ],
           if (actionLabel != null && onAction != null) ...[
             const SizedBox(height: 12),
-            FilledButton.tonalIcon(
+            // 低关注度引导按钮（主色通明描边），引导用户去有数据而不是干等。
+            OutlinedButton.icon(
               onPressed: onAction,
               icon: const Icon(Icons.add, size: 18),
               label: Text(actionLabel!),

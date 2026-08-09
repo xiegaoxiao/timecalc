@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/tables.dart';
 import '../../../core/providers/clock_provider.dart';
+import '../../../core/providers/app_refresh.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../services/duration_format.dart';
 import '../../../services/statistics_service.dart';
@@ -19,6 +20,7 @@ import '../../goals/data/goal_repository_provider.dart';
 import '../../settings/data/settings_repository.dart';
 import '../../settings/data/settings_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
+import '../../tasks/presentation/quick_task_form_dialog.dart';
 
 /// 进度图表主绿（最深绿）：燃尽剩余线 / 热力图最深档 / 耗时图完成段共用。
 const _progressGreen = Color(0xFF216E39);
@@ -106,6 +108,7 @@ class ProgressPage extends ConsumerWidget {
               ),
               data: (todo) => _buildBody(
                 context,
+                ref,
                 goals: goals,
                 today: today,
                 todayTasks: todayTasks,
@@ -120,7 +123,8 @@ class ProgressPage extends ConsumerWidget {
   }
 
   Widget _buildBody(
-    BuildContext context, {
+    BuildContext context,
+    WidgetRef ref, {
     required List<Goal> goals,
     required DateTime today,
     required List<Task> todayTasks,
@@ -134,7 +138,9 @@ class ProgressPage extends ConsumerWidget {
     // 任务耗时图窗口：过去 12 周 + 当前周 + 未来 13 周，能看到未来计划。
     final ganttStarts = StatisticsService.ganttWeekStarts(today);
 
-    final style = Theme.of(context).textTheme.bodySmall;
+    // 应用是否有任何任务（未完成 + 已完成）：决定今日概览「目标剩余工作量」
+    // 显示 `-- 分`（没计划）还是实际数值（计划饱和但已全部完成）。
+    final hasAnyTask = todo.isNotEmpty || completed.isNotEmpty;
 
     // 任务耗时图数据：按目标×周聚合（跨目标总览时在图表区合并）。
     final ganttData = _stats.goalGanttData(
@@ -144,6 +150,16 @@ class ProgressPage extends ConsumerWidget {
     );
     final ganttRows = goals
         .where((g) => ganttData[g.id]?.hasData ?? false)
+        .toList();
+
+    // 进行中目标（空态「去添加任务」的归属目标列表）。
+    final activeGoals = goals
+        .where(
+          (g) =>
+              g.status != GoalStatus.completed &&
+              g.status != GoalStatus.abandoned &&
+              g.status != GoalStatus.archived,
+        )
         .toList();
 
     // 整页纵向滚动（概览 + 燃尽 + 热力图 + 任务耗时图 + 说明统一滚动）。
@@ -165,43 +181,128 @@ class ProgressPage extends ConsumerWidget {
               _TodayOverviewCard(
                 stats: todayStats,
                 remainingMinutes: remainingMinutes,
+                hasAnyTask: hasAnyTask,
               ),
               const SizedBox(height: 8),
+              // 空态 CTA（无可归属目标时不显示按钮）：
+              // - 热力图：完成普通任务即可，直接「去添加任务」（快速加今天）；
+              // - 燃尽/耗时图：需要「带预估时长」的数据，点「去设置预估时长」
+              //   跳转到计划页排期，语义比「随便加个任务」更贴合图表。
               _BurndownSection(
                 todoTasks: todo,
                 completedTasks: completed,
                 today: today,
                 endDate: _latestDeadline(goals) ?? today,
+                onAddTask: activeGoals.isEmpty
+                    ? null
+                    : () => context.go('/plan'),
+                ctaLabel: '去设置预估时长',
               ),
               const SizedBox(height: 8),
               _HeatmapSection(
                 today: today,
                 weekStarts: weekStarts,
                 completedCounts: completedCounts,
+                onAddTask: activeGoals.isEmpty
+                    ? null
+                    : () async {
+                        await QuickTaskFormDialog.show(
+                          context,
+                          date: today,
+                          goals: activeGoals,
+                        );
+                        invalidateAppData(ref);
+                      },
+                ctaLabel: '去添加任务',
               ),
               const SizedBox(height: 8),
               _GanttSection(
                 rows: ganttRows,
                 data: ganttData,
                 weekStarts: ganttStarts,
+                onAddTask: activeGoals.isEmpty
+                    ? null
+                    : () => context.go('/plan'),
+                ctaLabel: '去设置预估时长',
               ),
               const SizedBox(height: 8),
-              // 说明文本：左对齐，不随 stretch 拉伸；随整页滚动。
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  '说明：无预估时长的任务只计入任务数，不计入时长（FR-7.4）。'
-                  '剩余工作量图展示还没做完的工作量随日期的变化（最右端=今天，'
-                  '对应当前剩余），灰色虚线为按最晚截止日匀速消化的参考线；'
-                  '热力图按任务完成日期统计；任务耗时图按周展示未来计划（浅色）'
-                  '与已完成时长（深色）。',
-                  style: style,
-                ),
-              ),
+              // 数据统计说明：默认折叠，点击展开（不霸占底部留白）。
+              const _StatNote(),
             ],
           ),
         );
       },
+    );
+  }
+}
+
+/// 折叠的数据统计说明（底部信息默认收起，避免大段低对比文字喧宾夺主）。
+///
+/// 一行「数据统计说明」+ 展开/收起 chevron，点击用 [AnimatedSize] 平滑
+/// 展开全文；默认折叠。文案沿用原 FR-7.4 说明，不丢失信息。
+class _StatNote extends StatefulWidget {
+  const _StatNote();
+
+  @override
+  State<_StatNote> createState() => _StatNoteState();
+}
+
+class _StatNoteState extends State<_StatNote> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _expanded = !_expanded),
+          borderRadius: BorderRadius.circular(6),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.info_outline, size: 16, color: scheme.outline),
+                const SizedBox(width: 6),
+                Text(
+                  '数据统计说明',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: scheme.outline),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  _expanded
+                      ? Icons.expand_less
+                      : Icons.expand_more,
+                  size: 16,
+                  color: scheme.outline,
+                ),
+              ],
+            ),
+          ),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          alignment: Alignment.topCenter,
+          child: _expanded
+              ? Padding(
+                  padding: const EdgeInsets.only(left: 2, right: 2, top: 4),
+                  child: Text(
+                    '无预估时长的任务只计入任务数，不计入时长（FR-7.4）。'
+                    '剩余工作量图展示还没做完的工作量随日期的变化（最右端=今天，'
+                    '对应当前剩余），灰色虚线为按最晚截止日匀速消化的参考线；'
+                    '热力图按任务完成日期统计；任务耗时图按周展示未来计划（浅色）'
+                    '与已完成时长（深色）。',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+      ],
     );
   }
 }
@@ -291,17 +392,26 @@ class _PlanPreferenceEntryCard extends ConsumerWidget {
 /// 展示今日完成数/总数、今日已完成预估时长与目标剩余工作量，
 /// 数字 + 图标文本表达，不只依赖颜色。三项数据用 Wrap 排布：
 /// 宽屏下三列并排撑满卡片宽度，窄屏下自动换行不挤压。
+///
+/// 无数据语义（与「计划已满但全部完成」区分，避免 0 误导）：
+/// - 今日没有任务（totalCount==0）：已完成任务 → `-- / --`、已完成时长
+///   → `-- 分`；
+/// - 应用完全没有任务（[hasAnyTask] 为 false）：目标剩余工作量 → `-- 分`
+///   （「今天本来就没有计划」而非「完美完成」）。
 class _TodayOverviewCard extends StatelessWidget {
   const _TodayOverviewCard({
     required this.stats,
     required this.remainingMinutes,
+    required this.hasAnyTask,
   });
 
   final DayCompletionStats stats;
   final int remainingMinutes;
+  final bool hasAnyTask;
 
   @override
   Widget build(BuildContext context) {
+    final hasTodayTask = stats.totalCount > 0;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -324,7 +434,9 @@ class _TodayOverviewCard extends StatelessWidget {
                       child: _StatItem(
                         icon: Icons.check_circle_outline,
                         label: '已完成任务',
-                        value: '${stats.doneCount}/${stats.totalCount}',
+                        value: hasTodayTask
+                            ? '${stats.doneCount}/${stats.totalCount}'
+                            : '-- / --',
                       ),
                     ),
                     SizedBox(
@@ -332,7 +444,9 @@ class _TodayOverviewCard extends StatelessWidget {
                       child: _StatItem(
                         icon: Icons.timer_outlined,
                         label: '已完成时长',
-                        value: DurationFormat.minutes(stats.doneMinutes),
+                        value: hasTodayTask
+                            ? DurationFormat.minutes(stats.doneMinutes)
+                            : '-- 分',
                       ),
                     ),
                     SizedBox(
@@ -340,7 +454,9 @@ class _TodayOverviewCard extends StatelessWidget {
                       child: _StatItem(
                         icon: Icons.flag_outlined,
                         label: '目标剩余工作量',
-                        value: DurationFormat.minutes(remainingMinutes),
+                        value: hasAnyTask
+                            ? DurationFormat.minutes(remainingMinutes)
+                            : '-- 分',
                       ),
                     ),
                   ],
@@ -407,12 +523,20 @@ class _BurndownSection extends StatelessWidget {
     required this.completedTasks,
     required this.today,
     required this.endDate,
+    this.onAddTask,
+    this.ctaLabel = '去添加任务',
   });
 
   final List<Task> todoTasks;
   final List<Task> completedTasks;
   final DateTime today;
   final DateTime endDate;
+
+  /// 空态「去添加任务」回调（无可归属目标时为 null，不显示按钮）。
+  final VoidCallback? onAddTask;
+
+  /// 空态按钮文案（默认「去添加任务」；燃尽/耗时图用「去设置预估时长」）。
+  final String ctaLabel;
 
   /// 实际剩余线颜色（与热力图最深档 / 耗时图完成段共用主绿）。
   static const _remainingColor = _progressGreen;
@@ -440,6 +564,8 @@ class _BurndownSection extends StatelessWidget {
         completedTasks.any((t) => t.estimatedMinutes != null);
 
     // 燃尽序列：Header 的「当前剩余」与图表共用一次计算。
+    // currentRemaining 为 null 表示「无带时长数据」（无任务/未设预估时长），
+    // 与「有数据但剩余 0（已全部完成）」区分开。
     final points = hasMinutes
         ? StatisticsService.burndownSeries(
             todoTasks: todoTasks,
@@ -448,7 +574,7 @@ class _BurndownSection extends StatelessWidget {
             endDate: endDate,
           )
         : const <BurndownPoint>[];
-    final currentRemaining = points.isEmpty ? 0 : points.last.remaining;
+    final currentRemaining = points.isEmpty ? null : points.last.remaining;
 
     // 结论句（白话，取代原 FR 术语副标题）：一句话说清这张图讲什么。
     // 拆成「消化了 X」（窗口内完成时长）+「还剩 Y」（当前剩余）两个数字，
@@ -460,18 +586,18 @@ class _BurndownSection extends StatelessWidget {
           )
         : 0;
     final String summary;
-    if (doneMinutes > 0 && currentRemaining > 0) {
+    if (doneMinutes > 0 && (currentRemaining ?? 0) > 0) {
       summary =
           '过去 30 天消化了 ${DurationFormat.minutes(doneMinutes)}，'
-          '还剩 ${DurationFormat.minutes(currentRemaining)}';
+          '还剩 ${DurationFormat.minutes(currentRemaining!)}';
     } else if (doneMinutes > 0) {
       summary =
           '过去 30 天消化了 ${DurationFormat.minutes(doneMinutes)}，'
           '带时长的任务已全部完成';
-    } else if (currentRemaining > 0) {
+    } else if ((currentRemaining ?? 0) > 0) {
       summary =
           '过去 30 天还没有完成任务，'
-          '还剩 ${DurationFormat.minutes(currentRemaining)}';
+          '还剩 ${DurationFormat.minutes(currentRemaining!)}';
     } else {
       summary = '当前没有剩余工作量';
     }
@@ -489,15 +615,25 @@ class _BurndownSection extends StatelessWidget {
               title: '剩余工作量趋势',
               subtitle: summary,
               // Header 右侧：当前剩余大字（燃尽核心信息直接呈现）。
+              // 无带时长数据时显示灰色 `-- 分`（与顶部今日概览无数据语义一致），
+              // 只有真有任务且剩余为 0（全部完成）才显示绿色完成状态。
               trailing: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text('当前剩余', style: Theme.of(context).textTheme.bodySmall),
                   Text(
-                    DurationFormat.minutes(currentRemaining),
+                    currentRemaining == null
+                        ? '-- 分'
+                        : DurationFormat.minutes(currentRemaining),
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: scheme.primary,
-                      fontWeight: FontWeight.w700,
+                      color: currentRemaining == null
+                          ? scheme.outline
+                          : currentRemaining == 0
+                          ? scheme.primary
+                          : scheme.onSurface,
+                      fontWeight: currentRemaining == null
+                          ? FontWeight.w400
+                          : FontWeight.w700,
                     ),
                   ),
                 ],
@@ -505,28 +641,31 @@ class _BurndownSection extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             if (!hasMinutes)
-              const ChartEmptyState(
+              ChartEmptyState(
                 icon: Icons.trending_down,
                 title: '还没有可展示的剩余工作量数据',
                 caption:
                     '给任务设置预估时长并开始完成后，'
                     '这里会展示剩余工作量随时间的变化',
+                actionLabel: onAddTask == null ? null : ctaLabel,
+                onAction: onAddTask,
               )
-            else
+            else ...[
               _BurndownChart(points: points, today: today),
-            const SizedBox(height: 16),
-            // Footer 图例：色块 + 文字（与其它图表统一）。
-            Row(
-              children: [
-                _LegendDot(color: _remainingColor, borderColor: dotBorder),
-                const SizedBox(width: 8),
-                const Text('剩余工作量', style: TextStyle(fontSize: 10)),
-                const SizedBox(width: 16),
-                _LegendDot(color: idealColor),
-                const SizedBox(width: 8),
-                const Text('匀速参考线', style: TextStyle(fontSize: 10)),
-              ],
-            ),
+              const SizedBox(height: 16),
+              // Footer 图例：色块 + 文字（与其它图表统一；无数据时不渲染）。
+              Row(
+                children: [
+                  _LegendDot(color: _remainingColor, borderColor: dotBorder),
+                  const SizedBox(width: 8),
+                  const Text('剩余工作量', style: TextStyle(fontSize: 10)),
+                  const SizedBox(width: 16),
+                  _LegendDot(color: idealColor),
+                  const SizedBox(width: 8),
+                  const Text('匀速参考线', style: TextStyle(fontSize: 10)),
+                ],
+              ),
+            ],
           ],
         ),
       ),
@@ -821,11 +960,19 @@ class _HeatmapSection extends StatelessWidget {
     required this.today,
     required this.weekStarts,
     required this.completedCounts,
+    this.onAddTask,
+    this.ctaLabel = '去添加任务',
   });
 
   final DateTime today;
   final List<DateTime> weekStarts;
   final Map<String, int> completedCounts;
+
+  /// 空态「去添加任务」回调（无可归属目标时为 null，不显示按钮）。
+  final VoidCallback? onAddTask;
+
+  /// 空态按钮文案（默认「去添加任务」；燃尽/耗时图用「去设置预估时长」）。
+  final String ctaLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -846,24 +993,34 @@ class _HeatmapSection extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             if (!hasAny)
-              const ChartEmptyState(
-                icon: Icons.local_fire_department_outlined,
-                title: '还没有完成记录',
-                caption: '完成任务后，这里会按日期点亮格子',
+              // 空态内容横向居中（与燃尽/耗时图一致）：本卡片 Column 为
+              // start 对齐，需显式给全宽，内部 Column 才能居中。
+              SizedBox(
+                width: double.infinity,
+                child: ChartEmptyState(
+                  icon: Icons.local_fire_department_outlined,
+                  title: '还没有完成记录',
+                  caption: '完成任务后，这里会按日期点亮格子',
+                  actionLabel: onAddTask == null ? null : ctaLabel,
+                  onAction: onAddTask,
+                ),
               )
-            else
+            else ...[
               _HeatmapGrid(
                 todayStr: todayStr,
                 weekStarts: weekStarts,
                 completedCounts: completedCounts,
                 dark: dark,
               ),
-            const SizedBox(height: 12),
-            _CompactLegend(
-              colors: _heatColors,
-              labels: const ['0', '1-3', '4-6', '7-9', '10+'],
-              dark: dark,
-            ),
+              const SizedBox(height: 12),
+              // 图例只在有数据时渲染：无数据时空态已说明「完成任务后点亮」，
+              // 且「0」对应浅色块会让用户误以为「我已经完成了 0 个」。
+              _CompactLegend(
+                colors: _heatColors,
+                labels: const ['0', '1-3', '4-6', '7-9', '10+'],
+                dark: dark,
+              ),
+            ],
           ],
         ),
       ),
@@ -1077,11 +1234,19 @@ class _GanttSection extends StatelessWidget {
     required this.rows,
     required this.data,
     required this.weekStarts,
+    this.onAddTask,
+    this.ctaLabel = '去添加任务',
   });
 
   final List<Goal> rows;
   final Map<int, GoalGanttRow> data;
   final List<DateTime> weekStarts;
+
+  /// 空态「去添加任务」回调（无可归属目标时为 null，不显示按钮）。
+  final VoidCallback? onAddTask;
+
+  /// 空态按钮文案（默认「去添加任务」；燃尽/耗时图用「去设置预估时长」）。
+  final String ctaLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -1112,30 +1277,33 @@ class _GanttSection extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             if (rows.isEmpty)
-              const ChartEmptyState(
+              ChartEmptyState(
                 icon: Icons.bar_chart_outlined,
                 title: '还没有带预估时长的任务安排',
                 caption: '给任务设置预估时长后，这里会按周展示计划与完成进度',
+                actionLabel: onAddTask == null ? null : ctaLabel,
+                onAction: onAddTask,
               )
-            else
+            else ...[
               _BarChart(
                 plannedPerWeek: plannedPerWeek,
                 completedPerWeek: completedPerWeek,
                 weekStarts: weekStarts,
               ),
-            const SizedBox(height: 12),
-            // 图例固定在卡片底部，不随图表横向滚动而移动。
-            const Row(
-              children: [
-                _LegendDot(color: _progressGreenLight),
-                SizedBox(width: 8),
-                Text('计划', style: TextStyle(fontSize: 10)),
-                SizedBox(width: 16),
-                _LegendDot(color: _progressGreen),
-                SizedBox(width: 8),
-                Text('完成', style: TextStyle(fontSize: 10)),
-              ],
-            ),
+              const SizedBox(height: 12),
+              // 图例固定在卡片底部，不随图表横向滚动而移动；无数据时不渲染。
+              const Row(
+                children: [
+                  _LegendDot(color: _progressGreenLight),
+                  SizedBox(width: 8),
+                  Text('计划', style: TextStyle(fontSize: 10)),
+                  SizedBox(width: 16),
+                  _LegendDot(color: _progressGreen),
+                  SizedBox(width: 8),
+                  Text('完成', style: TextStyle(fontSize: 10)),
+                ],
+              ),
+            ],
           ],
         ),
       ),
