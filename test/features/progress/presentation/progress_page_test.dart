@@ -574,4 +574,138 @@ void main() {
     await tester.tap(find.text('关闭'));
     await tester.pumpAndSettle();
   });
+
+  testWidgets('新增任务后剩余工作量趋势与任务耗时图及时刷新（回归）', (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    // 初始剩余工作量 120 分钟。
+    await tasks.create(
+      goalId: goal.id,
+      title: '原有任务',
+      plannedDate: '2026-08-10',
+      estimatedMinutes: 120,
+    );
+
+    await pumpApp(tester);
+    await openProgress(tester);
+
+    // 燃尽卡「当前剩余」= 2 小时；任务耗时图已有计划数据。
+    final burnCard = find.widgetWithText(Card, '剩余工作量趋势');
+    expect(
+      find.descendant(of: burnCard, matching: find.text('2 小时')),
+      findsOneWidget,
+    );
+    expect(find.byType(BarChart), findsOneWidget);
+
+    // 切到「今天」页，经真实 UI 路径快速添加一个 90 分钟任务
+    // （保存后今日页走 invalidateAppData 全量刷新）。
+    // 限定在底部导航内定位：燃尽图 X 轴也标注「今天」，直接 find.text 歧义。
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('今天'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('添加任务').first);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField).first, '新增任务');
+    // 时长默认「未设置」禁用输入，先点「无时长」启用，再步进到 1 小时 30 分。
+    await tester.tap(find.text('无时长'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('小时加'));
+    await tester.pump();
+    for (var i = 0; i < 6; i++) {
+      await tester.tap(find.byTooltip('分钟加'));
+      await tester.pump();
+    }
+    expect(find.text('当前共 1 小时 30 分'), findsOneWidget);
+    await tester.tap(find.text('创建'));
+    await tester.pumpAndSettle();
+
+    // 今日页自身已刷新（任务出现在今日列表，证明 invalidate 已触发）。
+    expect(find.text('新增任务'), findsOneWidget);
+
+    // 切回「进度」页：剩余工作量应变为 120+90=210 分钟（3 小时 30 分）。
+    await tester.tap(find.text('进度'));
+    await tester.pumpAndSettle();
+
+    final refreshedBurnCard = find.widgetWithText(Card, '剩余工作量趋势');
+    expect(
+      find.descendant(
+        of: refreshedBurnCard,
+        matching: find.text('3 小时 30 分'),
+      ),
+      findsWidgets,
+    );
+    // 结论句同步更新（白话文案走「还没完成 + 还剩」分支）。
+    expect(
+      find.textContaining('还剩 3 小时 30 分'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('编辑任务（改预估时长）后剩余工作量趋势与任务耗时图及时刷新（回归）', (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    // 初始剩余工作量 120 分钟（今天，便于今日页直接编辑）。
+    await tasks.create(
+      goalId: goal.id,
+      title: '待编辑任务',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 120,
+    );
+
+    await pumpApp(tester);
+    await openProgress(tester);
+
+    // 燃尽卡「当前剩余」= 2 小时。
+    final burnCard = find.widgetWithText(Card, '剩余工作量趋势');
+    expect(
+      find.descendant(of: burnCard, matching: find.text('2 小时')),
+      findsWidgets,
+    );
+
+    // 切到「今天」页，经真实 UI 路径编辑该任务：时长 +30 分钟。
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('今天'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // 任务条目 trailing 的「任务操作」菜单 → 编辑。
+    await tester.tap(find.byTooltip('任务操作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('编辑'));
+    await tester.pumpAndSettle();
+    // 任务表单时长快捷按钮 +30 分（showQuickButtons 开启）。
+    await tester.tap(find.text('+30分'));
+    await tester.pump();
+    expect(find.text('当前共 2 小时 30 分'), findsOneWidget);
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    // 切回「进度」页：剩余工作量应变为 150 分钟（2 小时 30 分）。
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('进度'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final refreshedBurnCard = find.widgetWithText(Card, '剩余工作量趋势');
+    expect(
+      find.descendant(
+        of: refreshedBurnCard,
+        matching: find.text('2 小时 30 分'),
+      ),
+      findsWidgets,
+    );
+    // 结论句同步更新（还没完成 + 还剩分支）。
+    expect(
+      find.textContaining('还剩 2 小时 30 分'),
+      findsOneWidget,
+    );
+  });
 }
