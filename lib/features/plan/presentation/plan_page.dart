@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../goals/presentation/goal_form_dialog.dart';
 import '../../goals/presentation/goal_list_page.dart';
+import '../../plan_import/presentation/plan_import_dialog.dart';
 import 'calendar_view.dart';
 
 /// 计划页（M2）：日历 / 目标 分段视图。
@@ -23,10 +24,28 @@ class _PlanPageState extends ConsumerState<PlanPage> {
 
   int _segment = _goalsIndex;
 
+  /// 打开「导入完整计划」对话框；导入成功（返回新建目标 id）后跳转详情。
+  Future<void> _importPlan(BuildContext context) async {
+    final createdId = await PlanImportDialog.show(context);
+    if (createdId != null && context.mounted) {
+      context.push('/goals/$createdId');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('计划')),
+      appBar: AppBar(
+        title: const Text('计划'),
+        actions: [
+          if (_segment == _goalsIndex)
+            IconButton(
+              tooltip: '导入完整计划',
+              onPressed: () => _importPlan(context),
+              icon: const Icon(Icons.upload_file_outlined),
+            ),
+        ],
+      ),
       body: Column(
         children: [
           Padding(
