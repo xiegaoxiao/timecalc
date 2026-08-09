@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="440" viewBox="0 0 860 440" role="img" aria-label="⭐ xiegaoxiao/timecalc · Star History">
+  <rect width="860" height="440" fill="#ffffff"/>
+  <text x="60" y="30" font-family="Segoe UI, Arial, sans-serif" font-size="19" font-weight="600" fill="#444444">⭐ xiegaoxiao/timecalc · Star History</text>
+  <text x="60" y="48" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#888888">更新于 2026-08-09 · 共 1 颗星</text>
+  <line x1="60" y1="384.0" x2="836" y2="384.0" stroke="#e5e5e5" stroke-width="1"/>
+  <text x="52" y="388.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#888888" text-anchor="end">0</text>
+  <line x1="60" y1="46.0" x2="836" y2="46.0" stroke="#e5e5e5" stroke-width="1"/>
+  <text x="52" y="50.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#888888" text-anchor="end">1</text>
+  <line x1="60.0" y1="384" x2="60.0" y2="389" stroke="#bbbbbb" stroke-width="1"/>
+  <text x="60.0" y="404" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#888888" text-anchor="middle">08-05</text>
+  <line x1="836.0" y1="384" x2="836.0" y2="389" stroke="#bbbbbb" stroke-width="1"/>
+  <text x="836.0" y="404" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#888888" text-anchor="middle">08-06</text>
+  <polygon points="60.0,384 60.0,46.0 60.0,384" fill="#2ea44f" fill-opacity="0.08"/>
+  <polyline points="60.0,46.0" fill="none" stroke="#2ea44f" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="60.0" cy="46.0" r="5" fill="#2ea44f" stroke="#ffffff" stroke-width="2"/>
+  <text x="60.0" y="68.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#2ea44f" text-anchor="middle">1 ⭐</text>
+</svg>

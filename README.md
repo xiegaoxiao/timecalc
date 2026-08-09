@@ -110,9 +110,9 @@ bash tool/release.sh
 
 ## ⭐ Star History
 
-<a href="https://star-history.com/#xiegaoxiao/timecalc&Date">
-  <img src="https://api.star-history.com/svg?repos=xiegaoxiao/timecalc&type=Date" alt="Star History Chart" width="100%">
-</a>
+![Star History](docs/star-history.svg)
+
+> 图表由 [GitHub Actions 工作流](.github/workflows/star-history.yml) 每日自动更新，基于公开 stargazers 数据，不依赖第三方服务。
 
 ## 📂 项目文档
 
