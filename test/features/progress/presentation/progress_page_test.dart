@@ -16,7 +16,7 @@ import 'package:timecalc/features/tasks/data/task_repository.dart';
 ///
 /// 固定时钟 2026-08-05（周三），验证：
 /// - 今日概览：完成数/总数、已完成时长、目标剩余工作量（FR-7.1）
-/// - 热力图：LeetCode 图例文本、tooltip、空态
+/// - 热力图：LeetCode 图例文本、tooltip、无完成记录时全灰网格（无空态）
 /// - 任务耗时图：按周堆叠条形（M7 迭代，fl_chart 重构）
 /// - 燃尽趋势：剩余预估时长曲线（FR-7.3）
 /// - FR-7.4 说明文本
@@ -192,7 +192,7 @@ void main() {
     );
   });
 
-  testWidgets('无完成记录时热力图与任务耗时图展示空态与说明（FR-7.2 / PRD §8）',
+  testWidgets('无完成记录时热力图仍渲染全灰网格，耗时图展示空态（FR-7.2 / PRD §8）',
       (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
     // 无预估时长的任务不计入任务耗时图（FR-7.4），展示空态。
@@ -205,7 +205,18 @@ void main() {
     await pumpApp(tester);
     await openProgress(tester);
 
-    expect(find.text('还没有完成记录'), findsOneWidget);
+    // 热力图不再展示空态：网格（含 0 档工具提示）与图例始终渲染。
+    expect(find.text('还没有完成记录'), findsNothing);
+    final heatCard = find.widgetWithText(Card, '完成热力图');
+    expect(
+      find.descendant(of: heatCard, matching: find.byTooltip('2026-08-05：完成 0 项')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: heatCard, matching: find.text('0')),
+      findsOneWidget,
+    );
+    // 任务耗时图空态保留（带预估时长数据缺失，引导排期）。
     expect(find.text('还没有带预估时长的任务安排'), findsOneWidget);
     // FR-7.4 说明折叠在「数据统计说明」下，展开后断言。
     await expandNote(tester);
@@ -458,39 +469,109 @@ void main() {
     );
   });
 
-  testWidgets('有进行中目标时空态卡片显示引导按钮（语义区分）', (tester) async {
+  testWidgets('有进行中目标时燃尽/耗时图空态显示引导按钮', (tester) async {
     await goals.create(title: '考研', deadlineDate: '2026-12-31');
-    // 无任务数据：三张图均为空态。
+    // 无带时长数据：燃尽/耗时图展示空态与 CTA（热力图无完成记录时
+    // 渲染全灰网格，不放引导按钮）。
     await pumpApp(tester);
     await openProgress(tester);
 
-    // 热力图：完成普通任务即可 → 「去添加任务」；
     // 燃尽/耗时图：需要带预估时长的数据 → 「去设置预估时长」。
-    expect(find.text('去添加任务'), findsOneWidget);
     expect(find.text('去设置预估时长'), findsNWidgets(2));
+    expect(find.text('去添加任务'), findsNothing);
 
-    // 点击热力图空态的 CTA：打开「添加任务」表单（归属于进行中目标）。
-    // 按钮可能在首屏之外，先滚动到可视区再点。
-    final cta = find.text('去添加任务');
+    // 点击燃尽图空态的 CTA：跳转计划页排期（归属于进行中目标）。
+    final cta = find.text('去设置预估时长').first;
     await tester.ensureVisible(cta);
     await tester.pumpAndSettle();
     await tester.tap(cta);
     await tester.pumpAndSettle();
-    expect(find.widgetWithText(Dialog, '添加任务'), findsOneWidget);
-
-    // 取消关闭（不落库）。
-    await tester.tap(find.text('取消'));
-    await tester.pumpAndSettle();
-    expect(find.byType(Dialog), findsNothing);
+    // 已切到计划页：其独有的「日历/目标」分段按钮出现。
+    expect(find.text('日历'), findsOneWidget);
   });
 
-  testWidgets('无目标时空态卡片不显示「去添加任务」按钮', (tester) async {
-    // 没有任何目标（也没有任务）。
+  testWidgets('无目标时燃尽/耗时图空态不显示引导按钮', (tester) async {
+    // 没有任何目标（也没有任务）：热力图渲染全灰网格，燃尽/耗时图空态
+    // 无可归属目标，CTA 不显示。
     await pumpApp(tester);
     await openProgress(tester);
 
-    expect(find.text('还没有完成记录'), findsOneWidget);
     expect(find.text('还没有带预估时长的任务安排'), findsOneWidget);
     expect(find.text('去添加任务'), findsNothing);
+    expect(find.text('去设置预估时长'), findsNothing);
+  });
+
+  testWidgets('点击热力图方块查看当天完成任务（FR-7.2 交互）', (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    // 科目：让任务行展示科目名（subjectListProvider 经 UI 查询）。
+    final subject = await db.into(db.subjects).insert(SubjectsCompanion.insert(
+          goalId: goal.id,
+          name: '数学',
+          color: '#3F6C51',
+          createdAt: fixedNow.toUtc(),
+          updatedAt: fixedNow.toUtc(),
+        ));
+    // 固定时钟 2026-08-05 当天完成两个任务（completedAt UTC → 本地同一天）。
+    await db.into(db.tasks).insert(TasksCompanion.insert(
+          goalId: goal.id,
+          subjectId: Value(subject),
+          title: '背单词',
+          plannedDate: '2026-08-05',
+          estimatedMinutes: const Value(30),
+          status: const Value('done'),
+          completedAt: Value(fixedNow.toUtc()),
+          createdAt: fixedNow.toUtc(),
+          updatedAt: fixedNow.toUtc(),
+        ));
+    await db.into(db.tasks).insert(TasksCompanion.insert(
+          goalId: goal.id,
+          title: '复盘错题',
+          plannedDate: '2026-08-05',
+          estimatedMinutes: const Value(60),
+          status: const Value('done'),
+          completedAt: Value(fixedNow.toUtc()),
+          createdAt: fixedNow.toUtc(),
+          updatedAt: fixedNow.toUtc(),
+        ));
+
+    await pumpApp(tester);
+    await openProgress(tester);
+
+    // 热力图今天格子（2026-08-05，含「完成 2 项」工具提示）可点击。
+    final cell = find.byTooltip('2026-08-05：完成 2 项');
+    expect(cell, findsOneWidget);
+    await tester.ensureVisible(cell);
+    await tester.pumpAndSettle();
+    await tester.tap(cell);
+    await tester.pumpAndSettle();
+
+    // 弹窗标题 + 当天完成的任务清单（标题、目标、科目、时长、完成时刻）。
+    expect(find.text('2026-08-05 完成的任务'), findsOneWidget);
+    expect(find.text('背单词'), findsOneWidget);
+    expect(find.text('复盘错题'), findsOneWidget);
+    expect(find.textContaining('考研 · 数学 · 30 分 · 完成于'), findsOneWidget);
+    expect(find.textContaining('复盘错题'), findsOneWidget);
+    // 关闭弹窗。
+    await tester.tap(find.text('关闭'));
+    await tester.pumpAndSettle();
+    expect(find.text('2026-08-05 完成的任务'), findsNothing);
+  });
+
+  testWidgets('点击无完成记录的灰色热力图方块提示当日无任务', (tester) async {
+    // 没有任何完成任务：热力图全灰（0 档）。
+    await pumpApp(tester);
+    await openProgress(tester);
+
+    // 点今天的灰格：弹窗显示「这一天没有完成任务」。
+    final cell = find.byTooltip('2026-08-05：完成 0 项');
+    await tester.ensureVisible(cell);
+    await tester.pumpAndSettle();
+    await tester.tap(cell);
+    await tester.pumpAndSettle();
+    expect(find.text('2026-08-05 完成的任务'), findsOneWidget);
+    expect(find.text('这一天没有完成任务'), findsOneWidget);
+
+    await tester.tap(find.text('关闭'));
+    await tester.pumpAndSettle();
   });
 }

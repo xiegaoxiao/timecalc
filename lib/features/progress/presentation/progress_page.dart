@@ -9,7 +9,6 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/tables.dart';
 import '../../../core/providers/clock_provider.dart';
-import '../../../core/providers/app_refresh.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../services/duration_format.dart';
 import '../../../services/statistics_service.dart';
@@ -17,10 +16,10 @@ import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/chart_empty_state.dart';
 import '../../../shared/widgets/section_header.dart';
 import '../../goals/data/goal_repository_provider.dart';
+import '../../goals/data/subject_repository_provider.dart';
 import '../../settings/data/settings_repository.dart';
 import '../../settings/data/settings_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
-import '../../tasks/presentation/quick_task_form_dialog.dart';
 
 /// 进度图表主绿（最深绿）：燃尽剩余线 / 热力图最深档 / 耗时图完成段共用。
 const _progressGreen = Color(0xFF216E39);
@@ -152,7 +151,7 @@ class ProgressPage extends ConsumerWidget {
         .where((g) => ganttData[g.id]?.hasData ?? false)
         .toList();
 
-    // 进行中目标（空态「去添加任务」的归属目标列表）。
+    // 进行中目标（燃尽/耗时图空态 CTA 的归属目标列表）。
     final activeGoals = goals
         .where(
           (g) =>
@@ -184,10 +183,10 @@ class ProgressPage extends ConsumerWidget {
                 hasAnyTask: hasAnyTask,
               ),
               const SizedBox(height: 8),
-              // 空态 CTA（无可归属目标时不显示按钮）：
-              // - 热力图：完成普通任务即可，直接「去添加任务」（快速加今天）；
-              // - 燃尽/耗时图：需要「带预估时长」的数据，点「去设置预估时长」
-              //   跳转到计划页排期，语义比「随便加个任务」更贴合图表。
+              // 空态 CTA（无可归属目标时不显示按钮）：燃尽/耗时图需要
+              // 「带预估时长」的数据，点「去设置预估时长」跳转到计划页排期，
+              // 语义比「随便加个任务」更贴合图表；热力图无完成记录时
+              // 渲染全灰网格，不放引导按钮。
               _BurndownSection(
                 todoTasks: todo,
                 completedTasks: completed,
@@ -203,17 +202,8 @@ class ProgressPage extends ConsumerWidget {
                 today: today,
                 weekStarts: weekStarts,
                 completedCounts: completedCounts,
-                onAddTask: activeGoals.isEmpty
-                    ? null
-                    : () async {
-                        await QuickTaskFormDialog.show(
-                          context,
-                          date: today,
-                          goals: activeGoals,
-                        );
-                        invalidateAppData(ref);
-                      },
-                ctaLabel: '去添加任务',
+                completedTasks: completed,
+                goalsById: {for (final g in goals) g.id: g},
               ),
               const SizedBox(height: 8),
               _GanttSection(
@@ -955,29 +945,33 @@ class _BurndownChart extends StatelessWidget {
 ///
 /// 配色使用 [LeetCode 官方色板]（_heatColors）；小圆角（3px）+ 色块间
 /// 白色间距；悬停展示「yyyy-MM-dd：完成 N 项」；底部紧凑图例对应色块。
+/// 无完成记录时网格照常渲染（全灰 0 档），把「还没开始」当作真实状态
+/// 直观呈现，不放空态引导（与燃尽/耗时图的「去添加任务」空态区分）。
 class _HeatmapSection extends StatelessWidget {
   const _HeatmapSection({
     required this.today,
     required this.weekStarts,
     required this.completedCounts,
-    this.onAddTask,
-    this.ctaLabel = '去添加任务',
+    required this.completedTasks,
+    required this.goalsById,
   });
 
   final DateTime today;
   final List<DateTime> weekStarts;
+
+  /// 按日期聚合的完成任务数量（key：yyyy-MM-dd）；空 map 表示无完成记录。
   final Map<String, int> completedCounts;
 
-  /// 空态「去添加任务」回调（无可归属目标时为 null，不显示按钮）。
-  final VoidCallback? onAddTask;
+  /// 最近 26 周内完成的任务（与热力图窗口一致，供热力图格子点击查看
+  /// 某天完成的具体任务）。
+  final List<Task> completedTasks;
 
-  /// 空态按钮文案（默认「去添加任务」；燃尽/耗时图用「去设置预估时长」）。
-  final String ctaLabel;
+  /// 目标 id → 目标（任务行展示目标名）。
+  final Map<int, Goal> goalsById;
 
   @override
   Widget build(BuildContext context) {
     final todayStr = DateFormat('yyyy-MM-dd').format(today);
-    final hasAny = completedCounts.isNotEmpty;
     final dark = Theme.of(context).brightness == Brightness.dark;
 
     return Card(
@@ -992,35 +986,22 @@ class _HeatmapSection extends StatelessWidget {
               subtitle: '最近 26 周，按完成日期统计完成任务数量',
             ),
             const SizedBox(height: 12),
-            if (!hasAny)
-              // 空态内容横向居中（与燃尽/耗时图一致）：本卡片 Column 为
-              // start 对齐，需显式给全宽，内部 Column 才能居中。
-              SizedBox(
-                width: double.infinity,
-                child: ChartEmptyState(
-                  icon: Icons.local_fire_department_outlined,
-                  title: '还没有完成记录',
-                  caption: '完成任务后，这里会按日期点亮格子',
-                  actionLabel: onAddTask == null ? null : ctaLabel,
-                  onAction: onAddTask,
-                ),
-              )
-            else ...[
-              _HeatmapGrid(
-                todayStr: todayStr,
-                weekStarts: weekStarts,
-                completedCounts: completedCounts,
-                dark: dark,
-              ),
-              const SizedBox(height: 12),
-              // 图例只在有数据时渲染：无数据时空态已说明「完成任务后点亮」，
-              // 且「0」对应浅色块会让用户误以为「我已经完成了 0 个」。
-              _CompactLegend(
-                colors: _heatColors,
-                labels: const ['0', '1-3', '4-6', '7-9', '10+'],
-                dark: dark,
-              ),
-            ],
+            _HeatmapGrid(
+              todayStr: todayStr,
+              weekStarts: weekStarts,
+              completedCounts: completedCounts,
+              completedTasks: completedTasks,
+              goalsById: goalsById,
+              dark: dark,
+            ),
+            const SizedBox(height: 12),
+            // 图例始终渲染：全灰网格需要「0」档色块解释（与有数据时一致，
+            // 不再只在有数据时出现）。
+            _CompactLegend(
+              colors: _heatColors,
+              labels: const ['0', '1-3', '4-6', '7-9', '10+'],
+              dark: dark,
+            ),
           ],
         ),
       ),
@@ -1058,7 +1039,8 @@ class _CompactLegend extends StatelessWidget {
   }
 }
 
-/// LeetCode 风格热力图网格：小圆角 + 色块间白色间距 + 悬停 tooltip。
+/// LeetCode 风格热力图网格：小圆角 + 色块间白色间距 + 悬停 tooltip，
+/// 点击色块查看当天完成的具体任务。
 ///
 /// 用 LayoutBuilder 按父级宽度动态计算色块尺寸：26 周横向铺满卡片内容区
 /// （宽屏下色块自动放大，消除右侧留白），窄窗口自动收缩并出现横向滚动。
@@ -1067,12 +1049,16 @@ class _HeatmapGrid extends StatelessWidget {
     required this.todayStr,
     required this.weekStarts,
     required this.completedCounts,
+    required this.completedTasks,
+    required this.goalsById,
     required this.dark,
   });
 
   final String todayStr;
   final List<DateTime> weekStarts;
   final Map<String, int> completedCounts;
+  final List<Task> completedTasks;
+  final Map<int, Goal> goalsById;
   final bool dark;
 
   static const _weekdayLabels = ['一', '二', '三', '四', '五', '六', '日'];
@@ -1201,24 +1187,138 @@ class _HeatmapGrid extends StatelessWidget {
         ? const Color(0xFF3C4043)
         : _heatColors[level];
 
+    // 点击色块：查看当天完成的具体任务（含 0 档：弹窗内展示空提示）。
+    final dayTasks = completedTasks
+        .where(
+          (t) =>
+              t.status == TaskStatus.done &&
+              t.completedAt != null &&
+              DateFormat('yyyy-MM-dd').format(t.completedAt!.toLocal()) ==
+                  dateStr,
+        )
+        .toList();
+
     return Tooltip(
       message: '$dateStr：完成 $count 项',
       child: Semantics(
         // 屏幕阅读器可读（NFR-4）：日期 + 完成项数，状态不只依赖颜色。
         label: '$dateStr：完成 $count 项',
-        child: Container(
-          width: size,
-          height: size,
-          margin: const EdgeInsets.only(top: _cellVTopGap),
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(3),
-            border: isToday
-                ? Border.all(color: scheme.onSurface, width: 1.5)
-                : null,
+        child: InkWell(
+          onTap: () => _showDayTasks(context, dateStr: dateStr, tasks: dayTasks),
+          borderRadius: BorderRadius.circular(3),
+          child: Container(
+            width: size,
+            height: size,
+            margin: const EdgeInsets.only(top: _cellVTopGap),
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(3),
+              border: isToday
+                  ? Border.all(color: scheme.onSurface, width: 1.5)
+                  : null,
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  /// 弹窗展示 [dateStr] 当天完成的任务清单。
+  void _showDayTasks(
+    BuildContext context, {
+    required String dateStr,
+    required List<Task> tasks,
+  }) {
+    showDialog<void>(
+      context: context,
+      builder: (_) => _DayTasksDialog(
+        dateStr: dateStr,
+        tasks: tasks,
+        goalsById: goalsById,
+      ),
+    );
+  }
+}
+
+/// 热力图某天完成任务的查看对话框：当天完成的任务清单（标题、目标、
+/// 科目、时长、完成时刻），以及完成数量的汇总文案。
+class _DayTasksDialog extends ConsumerWidget {
+  const _DayTasksDialog({
+    required this.dateStr,
+    required this.tasks,
+    required this.goalsById,
+  });
+
+  /// 当天日期（yyyy-MM-dd）。
+  final String dateStr;
+
+  /// 当天完成的任务（已完成且 completedAt 落于当天）。
+  final List<Task> tasks;
+
+  /// 目标 id → 目标（任务行展示目标名）。
+  final Map<int, Goal> goalsById;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    return AlertDialog(
+      title: Text('$dateStr 完成的任务'),
+      content: SizedBox(
+        width: 420,
+        child: tasks.isEmpty
+            ? Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Text(
+                    '这一天没有完成任务',
+                    style: TextStyle(color: scheme.outline),
+                  ),
+                ),
+              )
+            : ListView.separated(
+                shrinkWrap: true,
+                itemCount: tasks.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (context, index) => _buildTaskTile(context, ref, tasks[index]),
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('关闭'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTaskTile(BuildContext context, WidgetRef ref, Task task) {
+    final scheme = Theme.of(context).colorScheme;
+    final goal = goalsById[task.goalId];
+    // 科目名经 subjectListProvider 自查（避免父级传参）。
+    final subjectName = task.subjectId == null
+        ? null
+        : ref
+            .watch(subjectListProvider(task.goalId))
+            .valueOrNull
+            ?.where((s) => s.id == task.subjectId)
+            .map((s) => s.name)
+            .firstOrNull;
+
+    final completedAt = task.completedAt?.toLocal();
+    final parts = <String>[
+      ?goal?.title,
+      ?subjectName,
+      if (task.estimatedMinutes != null)
+        DurationFormat.minutes(task.estimatedMinutes!),
+      if (completedAt != null)
+        '完成于 ${DateFormat('HH:mm').format(completedAt)}',
+    ];
+
+    return ListTile(
+      dense: true,
+      leading: Icon(Icons.check_circle, size: 20, color: scheme.primary),
+      title: Text(task.title),
+      subtitle: parts.isEmpty ? null : Text(parts.join(' · ')),
     );
   }
 }
