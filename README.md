@@ -17,6 +17,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-529%20passing-brightgreen)]()
 [![Privacy](https://img.shields.io/badge/privacy-local--first-important)]()
+[![Stars](https://img.shields.io/github/stars/xiegaoxiao/timecalc?color=yellow)](https://github.com/xiegaoxiao/timecalc/stargazers)
 
 </div>
 
@@ -106,6 +107,12 @@ bash tool/release.sh
 
 - **v1.9.0 已发布**（2026-08-09）：全链路 UI 交互打磨，529 项测试通过。
 - 里程碑演进（M1~M13）与完整变更记录见 [CHANGELOG.md](CHANGELOG.md) 与 [里程碑记录](docs/milestone-records/)。
+
+## ⭐ Star History
+
+<a href="https://star-history.com/#xiegaoxiao/timecalc&Date">
+  <img src="https://api.star-history.com/svg?repos=xiegaoxiao/timecalc&type=Date" alt="Star History Chart" width="100%">
+</a>
 
 ## 📂 项目文档
 
