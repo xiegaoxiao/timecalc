@@ -66,8 +66,16 @@ class GoalListBody extends ConsumerWidget {
         if (goals.isEmpty) {
           return _EmptyView(onCreateGoal: onCreateGoal);
         }
-        return ListView.builder(
+        // 宽屏双列网格、窄窗自动回落单列（maxCrossAxisExtent）：
+        // 消除单列列表在目标较少时的下方大片空白，视觉更紧凑。
+        return GridView.builder(
           padding: const EdgeInsets.all(16),
+          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: 560,
+            mainAxisExtent: 108,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+          ),
           itemCount: goals.length,
           itemBuilder: (context, index) {
             return _GoalCard(goal: goals[index]);
@@ -145,8 +153,11 @@ class _GoalCard extends ConsumerWidget {
     };
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      // 网格间距由 GridView delegate 控制，卡片自身不带 margin。
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
       child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         title: Text(goal.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

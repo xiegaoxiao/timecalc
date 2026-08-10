@@ -108,7 +108,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 恢复后子页回到空态。
-    expect(find.text('还没有归档任务'), findsOneWidget);
+    expect(find.text('暂无归档任务'), findsOneWidget);
     final active = await tasks.byGoal(goal.id);
     expect(active.map((t) => t.title), contains('已完成旧任务'));
     expect((await tasks.archivedByGoal(goal.id)), isEmpty);
@@ -120,7 +120,7 @@ void main() {
     await pumpApp(tester);
     await openArchivedPage(tester);
 
-    expect(find.text('还没有归档任务'), findsOneWidget);
+    expect(find.text('暂无归档任务'), findsOneWidget);
     expect(find.text('恢复'), findsNothing);
   });
 
@@ -149,7 +149,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 归档已清空：空态展示、数据库确认。
-    expect(find.text('还没有归档任务'), findsOneWidget);
+    expect(find.text('暂无归档任务'), findsOneWidget);
     expect(find.text('恢复'), findsNothing);
     expect(await tasks.allArchived(), isEmpty);
     // 删除后退出选择模式。

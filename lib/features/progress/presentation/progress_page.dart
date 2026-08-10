@@ -732,9 +732,9 @@ class _BurndownChart extends StatelessWidget {
         child: LayoutBuilder(
           builder: (context, constraints) {
             // 旋转 45° 的日期标签水平投影约 30px；按图表实际宽度动态放大
-            // 标签间隔，保证相邻标签中心距 ≥ 40px，窄窗不再互相覆盖。
+            // 标签间隔，保证相邻标签中心距 ≥ 48px，窄窗不再互相覆盖。
             final perDayPx = constraints.maxWidth / (points.length - 1);
-            const minLabelSpacing = 40.0;
+            const minLabelSpacing = 48.0;
             var labelInterval = 5;
             while (perDayPx * labelInterval < minLabelSpacing &&
                 labelInterval < points.length) {
@@ -1361,6 +1361,15 @@ class _GanttSection extends StatelessWidget {
         completedPerWeek[i] += row.completed[i];
       }
     }
+    // 兜底：rows 非空但窗口内实际没有周数据（如数据在窗口外）时，
+    // 渲染空态而非空白图表。
+    var hasAnyWeek = false;
+    for (var i = 0; i < weekStarts.length; i++) {
+      if (plannedPerWeek[i] > 0 || completedPerWeek[i] > 0) {
+        hasAnyWeek = true;
+        break;
+      }
+    }
 
     return Card(
       // 顶部加大留白：容纳 Y 轴 maxY 刻度的长文本（如「74 小时 10 分」），
@@ -1376,7 +1385,7 @@ class _GanttSection extends StatelessWidget {
               subtitle: '按周展示未来计划与已完成时长（分钟）',
             ),
             const SizedBox(height: 12),
-            if (rows.isEmpty)
+            if (!hasAnyWeek)
               ChartEmptyState(
                 icon: Icons.bar_chart_outlined,
                 title: '还没有带预估时长的任务安排',

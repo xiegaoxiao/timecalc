@@ -411,18 +411,21 @@ class _UnfinishedBanner extends StatelessWidget {
               style: TextStyle(color: scheme.onErrorContainer),
             ),
             const SizedBox(height: 8),
+            // 三个按钮统一为 FilledButton 家族（实心主操作 + tonal 次操作），
+            // 避免混用 FilledButton/Outlined/TextButton 造成高度与视觉宽度不齐。
             Wrap(
               spacing: 8,
+              runSpacing: 8,
               children: [
-                FilledButton.tonal(
+                FilledButton(
                   onPressed: onDeferNext,
                   child: const Text('延期至下一可用日'),
                 ),
-                OutlinedButton(
+                FilledButton.tonal(
                   onPressed: onDeferPickDate,
                   child: const Text('选择日期…'),
                 ),
-                TextButton(
+                FilledButton.tonal(
                   onPressed: onKeepOriginal,
                   child: const Text('保留原日期'),
                 ),
@@ -682,16 +685,21 @@ class _CountdownCard extends ConsumerWidget {
                 const SizedBox(height: 2),
                 Text(
                   '截止 ${DateFormat('yyyy-MM-dd').format(parseLocalDate(goal.deadlineDate))}',
-                  style: TextStyle(color: onHeroSoft, fontSize: 13),
+                  style: TextStyle(color: onHeroSoft, fontSize: 12),
                 ),
-                const SizedBox(height: 6),
+                // 倒计时是 hero 的视觉焦点：大号数字 + 阶段图标，一眼抓住剩余量。
+                const SizedBox(height: 8),
                 Row(
                   children: [
-                    Icon(phaseIcon, size: 14, color: onHero),
-                    const SizedBox(width: 4),
+                    Icon(phaseIcon, size: 18, color: onHero),
+                    const SizedBox(width: 6),
                     Text(
                       CountdownService.label(phase, days),
-                      style: TextStyle(color: onHero, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        color: onHero,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 22,
+                      ),
                     ),
                   ],
                 ),

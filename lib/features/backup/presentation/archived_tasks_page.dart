@@ -205,12 +205,13 @@ class _EmptyView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.history, size: 48, color: scheme.outline),
+            Icon(Icons.archive_outlined, size: 48, color: scheme.outline),
             const SizedBox(height: 12),
-            const Text('还没有归档任务'),
+            const Text('暂无归档任务'),
             const SizedBox(height: 4),
             Text(
-              '替换导入时归档保留的已完成旧任务会出现在这里',
+              '导入计划时保留的已完成旧任务会存放在这里，可随时恢复',
+              textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
