@@ -19,6 +19,7 @@ import '../../../services/statistics_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/celebration_overlay.dart';
 import '../../../shared/widgets/page_skeletons.dart';
+import '../../../shared/widgets/section_header.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../../goals/data/milestone_repository_provider.dart';
 import '../../goals/data/subject_repository_provider.dart';
@@ -379,38 +380,66 @@ class _LoadOverviewCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final semantics = AppSemanticColors.of(context);
+    final scheme = Theme.of(context).colorScheme;
     // 无数据语义：今日无任务时「总计/完成」用 `--`，避免 0/0 误导；
     // 应用完全无任务时「目标剩余」也用 `--`（区分「没计划」与「已排完」）。
     final hasTodayTask = stats.totalCount > 0;
     return Card(
-      child: ListTile(
-        leading: Icon(
-          over > 0 ? Icons.warning_amber_rounded : Icons.balance,
-          color: over > 0 ? semantics.warning : null,
-        ),
-        title: Text(
-          '今日任务总计 ${hasTodayTask ? DurationFormat.minutes(load) : '-- 分'}',
-        ),
-        subtitle: Column(
-          mainAxisSize: MainAxisSize.min,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('可用 ${DurationFormat.minutes(available)}'),
-            if (over > 0)
-              Text(
-                '超出 ${DurationFormat.minutes(over)}，请调整任务或可用时间',
-                style: TextStyle(color: semantics.warning),
-              ),
+            // 区块标题：与进度页统计卡同一视觉语言（SectionHeader）。
+            SectionHeader(
+              icon: over > 0 ? Icons.warning_amber_rounded : Icons.balance,
+              title: '今日负载',
+            ),
+            const SizedBox(height: 12),
+            // 核心信息：今日任务总计（大字）。
+            Text(
+              '今日任务总计 ${hasTodayTask ? DurationFormat.minutes(load) : '-- 分'}',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            // 可用时长 + 超时警告（状态不只依赖颜色）。
+            Row(
+              children: [
+                Icon(Icons.schedule, size: 14, color: scheme.outline),
+                const SizedBox(width: 4),
+                Text(
+                  '可用 ${DurationFormat.minutes(available)}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                if (over > 0) ...[
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      '超出 ${DurationFormat.minutes(over)}，请调整任务或可用时间',
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(
+                        color: semantics.warning,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 8),
             Text(
               '完成 ${hasTodayTask ? '${stats.doneCount}/${stats.totalCount}' : '-- / --'} · '
               '已完成 ${hasTodayTask ? DurationFormat.minutes(stats.doneMinutes) : '-- 分'} · '
               '目标剩余 ${hasAnyTask ? DurationFormat.minutes(remainingMinutes) : '-- 分'}',
+              style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
         ),
-        trailing: over > 0
-            ? Icon(Icons.error_outline, color: semantics.warning)
-            : null,
       ),
     );
   }
@@ -590,12 +619,22 @@ class _TodayEmptyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 32),
       child: Column(
         children: [
-          const Icon(Icons.event_available, size: 48),
-          const SizedBox(height: 8),
+          // 圆底图标语言与图表空态/今天页全页空态统一（v1.11 空态规范）。
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: scheme.primary.withValues(alpha: 0.08),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.event_available, size: 26, color: scheme.primary),
+          ),
+          const SizedBox(height: 12),
           const Text('今天没有安排'),
           const SizedBox(height: 12),
           if (onAddTask != null) ...[
@@ -826,15 +865,31 @@ class _EmptyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.today_outlined, size: 64),
-          const SizedBox(height: 12),
-          const Text('今天没有安排'),
+          // 主色通明圆底图标（与 ChartEmptyState 同一空态语言）。
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: scheme.primary.withValues(alpha: 0.08),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.today_outlined, size: 32, color: scheme.primary),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '今天没有安排',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 4),
-          Text(hasAnyGoal ? '所有目标已结束或归档' : '创建一个目标，开始倒计时'),
+          Text(
+            hasAnyGoal ? '所有目标已结束或归档' : '创建一个目标，开始倒计时',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
           const SizedBox(height: 16),
           if (!hasAnyGoal)
             FilledButton.icon(

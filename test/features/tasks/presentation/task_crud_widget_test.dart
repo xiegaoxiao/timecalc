@@ -12,6 +12,8 @@ import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/goals/data/subject_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 
+import '../../../shared/nav_helper.dart';
+
 /// 任务与科目 CRUD 用户流程 Widget 测试（checklists §5.3）。
 void main() {
   late AppDatabase db;
@@ -33,16 +35,11 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// 从底部导航切换到指定主页面（限定 NavigationBar 内，避免 offstage
-  /// 保活分支的同名文本歧义——IndexedStack 隐藏分支不参与匹配）。
+  /// 切换到指定主页面（宽窗 NavigationRail / 窄窗 NavigationBar 通用；
+  /// 限定导航组件内，避免 offstage 保活分支的同名文本歧义——
+  /// IndexedStack 隐藏分支不参与匹配）。
   Future<void> goTab(WidgetTester tester, String label) async {
-    await tester.tap(
-      find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text(label),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await tapNavDestination(tester, label);
   }
 
   /// 返回上一页（应用 locale 为 zh_CN，BackButton tooltip 是「返回」，
