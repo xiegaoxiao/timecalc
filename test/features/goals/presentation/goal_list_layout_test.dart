@@ -12,12 +12,12 @@ import 'package:timecalc/features/tasks/data/task_repository.dart';
 
 import '../../../shared/nav_helper.dart';
 
-/// 目标页 Dashboard 卡片布局 Widget 测试（v1.13）。
+/// 目标页 Dashboard 卡片布局 Widget 测试（v1.13 + 信息层级重构）。
 ///
 /// 固定时钟 2026-08-05。验证：
-/// - 区块头「我的目标 / 新建目标」；
+/// - 区块头「我的目标 / 新建目标」+ 顶部统计胶囊（进行中/已完成/全部）；
 /// - 单目标通栏大卡（占满内容宽度，消除孤卡小角）；
-/// - 大号完成度 %、彩色进度条、统计行（已完成 x/y / 已完成时长 / 剩余时长）；
+/// - 大号完成度 %、彩色进度条、统计块（已完成 x/y / 学习时长 / 剩余时间）；
 /// - 无任务时 `0%` 与 `--` 占位（区分「没计划」与「0 完成」）；
 /// - 多目标双列网格。
 void main() {
@@ -110,17 +110,26 @@ void main() {
     // 卡片上也不应出现描述文本。
     expect(find.text('零基础冲 140+'), findsNothing);
 
-    // 统计行：已完成 x/y · 已完成时长 · 剩余时长。
-    expect(find.text('已完成 1/2'), findsOneWidget);
-    expect(find.text('已完成 1 小时'), findsOneWidget);
-    expect(find.text('剩余 1 小时'), findsOneWidget);
+    // 统计块（标题 + 数值结构）：已完成 / 学习时长 / 剩余时间。
+    // 「已完成」出现两处：顶部统计胶囊标签 + 卡片统计块标题。
+    expect(find.text('已完成'), findsNWidgets(2));
+    expect(find.text('1 / 2'), findsOneWidget);
+    expect(find.text('学习时长'), findsOneWidget);
+    expect(find.text('剩余时间'), findsOneWidget);
+    // 学习时长与剩余时间均为 1 小时（2 任务各 60 分钟，1 个完成）。
+    expect(find.text('1 小时'), findsNWidgets(2));
 
     // 截止区间（创建日 → 截止日）+ 倒计时徽标。
     expect(find.textContaining('→ 2026.12.20'), findsOneWidget);
     expect(find.text('剩余 137 天'), findsOneWidget);
 
     // 「查看详情 →」主操作。
-    expect(find.text('查看详情'), findsOneWidget);
+    expect(find.text('查看详情 →'), findsOneWidget);
+
+    // 顶部统计胶囊：进行中 1 / 已完成 0 / 全部 1。
+    expect(find.text('进行中'), findsOneWidget);
+    expect(find.text('全部'), findsOneWidget);
+    expect(find.text('0'), findsOneWidget);
   });
 
   testWidgets('无任务目标：0% 灰色占位与统计行 -- 占位（区分「没计划」）', (tester) async {
@@ -129,11 +138,10 @@ void main() {
 
     await tapNavDestination(tester, '目标');
 
-    // 无任务：完成度 0% 灰色占位，统计行用 `--`（同今日页口径）。
+    // 无任务：完成度 0% 灰色占位，统计块用 `--`（同今日页口径）。
     expect(find.text('0%'), findsOneWidget);
-    expect(find.text('已完成 -- / --'), findsOneWidget);
-    expect(find.text('已完成 -- 分'), findsOneWidget);
-    expect(find.text('剩余 -- 分'), findsOneWidget);
+    expect(find.text('-- / --'), findsOneWidget); // 已完成
+    expect(find.text('--'), findsNWidgets(2)); // 学习时长 / 剩余时间
   });
 
   testWidgets('多目标：自适应双列网格（左右各一卡）', (tester) async {
