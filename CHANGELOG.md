@@ -58,6 +58,11 @@
   详情页首帧即真实内容；② 详情路由改 150ms 淡入轻过渡（替代默认
   300ms 位移动画）；③ 详情页兜底骨架改静态灰块（去掉 shimmer 动画与
   过渡叠加造成的掉帧）。实测点击到详情首帧 2 帧（1000 条任务 ~105ms）。
+- **全局路由过渡改纯淡入**（页面切换掉帧修复）：`pageTransitionsTheme`
+  由 `FadeForwardsPageTransitionsBuilder`（带位移 + 缩放，Flutter 3.27
+  新过渡，主壳切页与所有子页 push 均触发）改为本地轻量
+  `_FadePageTransitionsBuilder`（150ms 纯透明度，无 transform/几何变化），
+  消除页面切换时的位移/缩放合成掉帧。
 
 ### 技术
 

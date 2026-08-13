@@ -171,17 +171,48 @@ abstract final class AppTheme {
           ),
         ),
       ),
-      // 统一路由过渡（页面入场动画）：淡入淡出，克制不抢戏。
+      // 统一路由过渡（页面入场动画）：纯淡入，无位移无缩放。
+      //
+      // 此前用 FadeForwardsPageTransitionsBuilder（带位移 + 缩放，Flutter
+      // 3.27+ 新过渡），覆盖了主壳切页 + 所有子页 push，桌面端位移/缩放
+      // 合成叠加是「页面切换掉帧」的实测主因。换成本地轻量淡入
+      // （_FadePageTransitionsBuilder，150ms，仅透明度，无 transform），
+      // UI 线程负担最小，观感同样顺滑克制。
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
-          TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
-          TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
-          TargetPlatform.iOS: FadeForwardsPageTransitionsBuilder(),
-          TargetPlatform.macOS: FadeForwardsPageTransitionsBuilder(),
-          TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),
-          TargetPlatform.fuchsia: FadeForwardsPageTransitionsBuilder(),
+          TargetPlatform.windows: _FadePageTransitionsBuilder(),
+          TargetPlatform.linux: _FadePageTransitionsBuilder(),
+          TargetPlatform.macOS: _FadePageTransitionsBuilder(),
         },
       ),
+    );
+  }
+}
+
+/// 轻量淡入路由过渡（150ms 纯透明度，无位移/缩放）。
+///
+/// 替代默认 MaterialPage 的位移 + FadeForwards 的位移/缩放：桌面端
+/// 位移动画在 push/切页时触发整页 raster 合成，是掉帧的主要来源；
+/// 纯 Opacity 动画不改变布局/几何，绘制成本最低。
+class _FadePageTransitionsBuilder extends PageTransitionsBuilder {
+  const _FadePageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    // 首帧直接给出内容（CurvedAnimation 从 0 起，150ms 淡入到位）。
+    return FadeTransition(
+      opacity: CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOut,
+        reverseCurve: Curves.easeIn,
+      ),
+      child: child,
     );
   }
 }
