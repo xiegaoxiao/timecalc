@@ -332,14 +332,7 @@ class _GoalCard extends ConsumerWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         // push 压入导航栈，详情页 AppBar 自动出现返回箭头。
-        onTap: () {
-          // 预热详情页数据源（后台 isolate 并行查询，不阻塞 UI）：进入
-          // 详情页时数据多已就绪，首帧不再等待 spinner/骨架（P3.5 卡顿
-          // 排查：详情页目标/任务/科目/里程碑各一次独立查询，逐项填充
-          // 造成首载观感慢）。
-          _prefetchDetail(ref, goal.id);
-          context.push('/goals/${goal.id}');
-        },
+        onTap: () => _openDetail(context, ref),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 8, 10),
           child: Column(
@@ -490,10 +483,7 @@ class _GoalCard extends ConsumerWidget {
                     visualDensity: VisualDensity.compact,
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                   ),
-                  onPressed: () {
-                    _prefetchDetail(ref, goal.id);
-                    context.push('/goals/${goal.id}');
-                  },
+                  onPressed: () => _openDetail(context, ref),
                   child: const Text('查看详情 →'),
                 ),
               ),
@@ -509,17 +499,39 @@ class _GoalCard extends ConsumerWidget {
     final mm = date.month.toString().padLeft(2, '0');
     final dd = date.day.toString().padLeft(2, '0');
     return '${date.year}.$mm.$dd';
-  }  /// 预热详情页数据源（P3.5 卡顿排查）。
+  }  /// 打开详情页：**数据先到再导航**（带超时兜底）。
+  ///
+  /// 等详情页关键数据（目标/任务/科目/里程碑）就绪后再 push——详情页
+  /// 首帧即渲染真实内容，跳过「骨架屏 + 过渡动画叠加」造成的进入卡顿
+  /// （用户实测：点击卡片明显卡一下才进详情）。查询超慢（超大库）时
+  /// 最多等 250ms 照常进入，详情页骨架兜底。
+  Future<void> _openDetail(BuildContext context, WidgetRef ref) async {
+    await _prefetchDetail(ref, goal.id);
+    if (!context.mounted) return;
+    context.push('/goals/${goal.id}');
+  }
+
+  /// 预热详情页数据源（P3.5 卡顿排查）。
   ///
   /// 详情页首载同时 watch 目标详情/任务列表/科目列表/里程碑列表四个
   /// provider，各自独立查询库（后台 isolate 不阻塞 UI，但逐项填充的
-  /// 时间窗会造成「点卡片 → 详情页首帧空/慢」的观感）。在点击瞬间
+  /// 时间窗会造成「点卡片 → 详情页首帧空/慢」的观感）。点击瞬间
   /// 提前触发查询，页面进入时数据多已缓存，首帧直接渲染内容。
-  void _prefetchDetail(WidgetRef ref, int goalId) {
-    ref.read(goalDetailProvider(goalId).future);
-    ref.read(taskListProvider(goalId).future);
-    ref.read(subjectListProvider(goalId).future);
-    ref.read(milestoneListProvider(goalId).future);
+  Future<void> _prefetchDetail(WidgetRef ref, int goalId) async {
+    final futures = <Future<Object?>>[
+      ref.read(goalDetailProvider(goalId).future),
+      ref.read(taskListProvider(goalId).future),
+      ref.read(subjectListProvider(goalId).future),
+      ref.read(milestoneListProvider(goalId).future),
+    ];
+    // 带超时兜底：查询慢（超大库）时最多等 250ms 就进入，不阻塞点击；
+    // 已发出的查询继续在后台完成，详情页骨架屏兜底显示。
+    // 用 Future.timeout 而非 Future.any：timeout 在完成时取消内部 Timer，
+    // 不会在测试/退出时残留 pending timer。
+    await Future.wait(futures).timeout(
+      const Duration(milliseconds: 250),
+      onTimeout: () => <Object?>[],
+    );
   }
 
   Future<void> _handleAction(

@@ -95,24 +95,48 @@ abstract final class PageSkeletons {
   /// 目标详情页骨架：渐变 hero 头卡 + 负载卡 + 里程碑/科目/任务行。
   ///
   /// 匹配详情页纵向结构（头部 hero → 负载 → 里程碑 → 科目 → 任务区），
-  /// 点击卡片进入详情页的首载窗口用骨架占位替代 spinner 白屏，过渡期间
-  /// 观感「立即有内容」，数据到达后自然过渡（消除 spinner 动画与页面
-  /// 过渡动画叠加造成的闪烁/掉帧）。
+  /// 点击卡片进入详情页的首载窗口用骨架占位替代纯转圈，数据到达后自然
+  /// 过渡。
+  ///
+  /// 注意：**不用 Skeletonizer 流动动画**——shimmer 动画与页面过渡动画
+  /// 叠加是 Windows 桌面进入卡顿的实测元凶（详情页已改为「数据先到再
+  /// 导航」+ 150ms 轻过渡，骨架仅作超慢库的兜底，静态灰块足够）。
   static Widget goalDetailPage() {
-    return Skeletonizer(
-      child: ListView(
-        padding: const EdgeInsets.all(AppTokens.pagePadding),
-        children: const [
-          _SkeletonCard(height: 140, radius: AppTokens.radiusXl),
-          SizedBox(height: 16),
-          _SkeletonCard(height: 96),
-          SizedBox(height: 8),
-          _SkeletonCard(height: 56),
-          SizedBox(height: 8),
-          _SkeletonCard(height: 56),
-          SizedBox(height: 8),
-          _SkeletonCard(height: 56),
-        ],
+    return ListView(
+      padding: const EdgeInsets.all(AppTokens.pagePadding),
+      children: const [
+        _SkeletonBlock(height: 140, radius: AppTokens.radiusXl),
+        SizedBox(height: 16),
+        _SkeletonBlock(height: 96),
+        SizedBox(height: 8),
+        _SkeletonBlock(height: 56),
+        SizedBox(height: 8),
+        _SkeletonBlock(height: 56),
+        SizedBox(height: 8),
+        _SkeletonBlock(height: 56),
+      ],
+    );
+  }
+}
+
+/// 静态骨架块：固定高度圆角灰块，**无动画**（区别于 shimmer 骨架）。
+///
+/// 用于「过渡动画进行中」的首载兜底：动画叠加是桌面端掉帧/卡顿的元凶，
+/// 静态灰块让 UI 线程专注过渡本身。
+class _SkeletonBlock extends StatelessWidget {
+  const _SkeletonBlock({required this.height, this.radius});
+
+  final double height;
+  final double? radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(radius ?? AppTokens.radiusXl),
       ),
     );
   }

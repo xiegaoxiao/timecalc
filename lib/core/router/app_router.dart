@@ -108,16 +108,32 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         // 防御外部深链/拼写错误：非数字参数重定向到首页，避免 build 中
         // 抛 FormatException 红屏（P2-8）。
         redirect: _redirectOnInvalidInt(['goalId']),
-        builder: (context, state) =>
-            GoalDetailPage(goalId: state.pathParameters['goalId']!),
+        // 详情页用 150ms 淡入轻过渡（默认 MaterialPage 过渡 300ms 且带
+        // 位移动画，桌面端叠加骨架屏时观感明显卡顿）；配合卡片点击侧
+        // 「数据先到再导航」，进入即内容。
+        pageBuilder: (context, state) => CustomTransitionPage(
+          transitionDuration: const Duration(milliseconds: 150),
+          reverseTransitionDuration: const Duration(milliseconds: 120),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+          child: GoalDetailPage(goalId: state.pathParameters['goalId']!),
+        ),
       ),
       GoRoute(
         path: '/goals/:goalId/subjects/:subjectId',
         name: 'subjectTasks',
         redirect: _redirectOnInvalidInt(['goalId', 'subjectId']),
-        builder: (context, state) => SubjectTaskPage(
-          goalId: int.parse(state.pathParameters['goalId']!),
-          subjectId: int.parse(state.pathParameters['subjectId']!),
+        pageBuilder: (context, state) => CustomTransitionPage(
+          transitionDuration: const Duration(milliseconds: 150),
+          reverseTransitionDuration: const Duration(milliseconds: 120),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+          child: SubjectTaskPage(
+            goalId: int.parse(state.pathParameters['goalId']!),
+            subjectId: int.parse(state.pathParameters['subjectId']!),
+          ),
         ),
       ),
       // 计划偏好独立页（进度页入口卡 push 进入，设置页移除该区块）。
