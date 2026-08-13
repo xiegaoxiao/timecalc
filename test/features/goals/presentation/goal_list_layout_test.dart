@@ -97,9 +97,8 @@ void main() {
     final cardSize = tester.getSize(goalCardFinder());
     expect(cardSize.width, greaterThan(500));
 
-    // 大号完成度数字（视觉焦点）+ 描述 + 进度条。
+    // 大号完成度数字（视觉焦点）+ 进度条。
     expect(find.text('50%'), findsOneWidget);
-    expect(find.text('零基础冲 140+'), findsOneWidget);
     expect(
       find.descendant(
         of: goalCardFinder(),
@@ -107,6 +106,9 @@ void main() {
       ),
       findsOneWidget,
     );
+    // 描述刻意不在卡片展示（信息密度优先，详情页可见）——目标带描述时
+    // 卡片上也不应出现描述文本。
+    expect(find.text('零基础冲 140+'), findsNothing);
 
     // 统计行：已完成 x/y · 已完成时长 · 剩余时长。
     expect(find.text('已完成 1/2'), findsOneWidget);

@@ -231,14 +231,16 @@ class _EmptyView extends StatelessWidget {
 /// 结构（自上而下）：
 /// 1. 上段：目标专属色圆点 + 标题（2 行）｜右侧大号完成度 %（无任务时
 ///    `0%` 灰色占位，弱化圆环改为数字 + 粗进度条，视觉权重更高）；
-/// 2. 描述（可空，2 行省略）；
-/// 3. 细分隔线（fitness 统计卡的分段手法）；
-/// 4. 截止区间：起止日期 `yyyy.MM.dd → yyyy.MM.dd` + 倒计时徽标
+/// 2. 细分隔线（fitness 统计卡的分段手法）；
+/// 3. 截止区间：起止日期 `yyyy.MM.dd → yyyy.MM.dd` + 倒计时徽标
 ///    （剩余/今天/逾期，文字不只依赖颜色 NFR-4）；
-/// 5. 彩色粗进度条（8px，目标专属色，mhabit 式）；
-/// 6. 下段统计行：已完成 X/Y · 已完成 Xh · 剩余 Yh ｜查看详情 →。
+/// 4. 彩色粗进度条（8px，目标专属色，mhabit 式）；
+/// 5. 下段统计行：已完成 X/Y · 已完成 Xh · 剩余 Yh ｜查看详情 →。
+///
 /// 状态颜色跟随倒计时阶段（进行中=目标色/今天=琥珀/逾期=红/已结束=灰），
 /// 每张卡以目标专属稳定色板区分，双列网格中靠色块快速定位目标。
+/// 描述刻意不在卡片展示（卡片信息密度优先，详情页可见），避免卡片
+/// 中部出现大段空白/冗余文本。
 class _GoalCard extends ConsumerWidget {
   const _GoalCard({required this.goal, this.completion});
 
@@ -350,18 +352,6 @@ class _GoalCard extends ConsumerWidget {
                   ),
                 ],
               ),
-              // —— 描述（可空，2 行省略）——
-              if (goal.description?.isNotEmpty ?? false) ...[
-                const SizedBox(height: 6),
-                Text(
-                  goal.description!,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(height: 1.4),
-                ),
-              ],
               const Spacer(),
               // —— 细分隔线：截止区与进度区切分（fitness 手法）——
               Divider(
