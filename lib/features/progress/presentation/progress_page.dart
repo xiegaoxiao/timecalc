@@ -229,7 +229,7 @@ class ProgressPage extends ConsumerWidget {
     final tasksAsync = ref.watch(progressTasksProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('进度')),
+      // 无 AppBar（与今天页一致，左上角干净）。
       body: goalsAsync.when(
         loading: () => PageSkeletons.progressPage(),
         error: (error, _) => AppErrorView(

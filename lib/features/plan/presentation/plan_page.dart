@@ -14,9 +14,9 @@ class PlanPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('计划')),
-      body: const CalendarView(),
+    // 无 AppBar（与今天页一致，左上角干净）：纯日历视图自带月份头部。
+    return const Scaffold(
+      body: CalendarView(),
     );
   }
 }

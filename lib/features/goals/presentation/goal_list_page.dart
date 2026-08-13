@@ -36,8 +36,9 @@ final goalCompletionProvider = FutureProvider<
 /// 目标页：目标列表（FR-1 目标 CRUD 入口）。
 ///
 /// v1.12 起从计划页拆分为独立一级导航：底部导航「目标」进入本页，
-/// 计划页退化为纯日历。AppBar 承载「导入完整计划」入口（原计划页
-/// 目标段 AppBar 迁移至此），FAB 创建目标。
+/// 计划页退化为纯日历。无 AppBar（与今天页一致，左上角干净）；
+/// 「导入完整计划」入口在区块头（原 AppBar actions 迁入），「新建目标」
+/// 按钮同为区块头主操作。
 class GoalListPage extends ConsumerWidget {
   const GoalListPage({super.key});
 
@@ -60,19 +61,10 @@ class GoalListPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('目标'),
-        actions: [
-          IconButton(
-            tooltip: '导入完整计划',
-            onPressed: () => _importPlan(context),
-            icon: const Icon(Icons.upload_file_outlined),
-          ),
-        ],
+      body: GoalListBody(
+        onCreateGoal: () => _createGoal(context),
+        onImportPlan: () => _importPlan(context),
       ),
-      // v1.13：创建入口从 FAB 迁到页面区块头「＋ 新建目标」（Dashboard 语言），
-      // 目标卡片主体让出更多垂直空间，单目标通栏 / 多目标双列网格。
-      body: GoalListBody(onCreateGoal: () => _createGoal(context)),
     );
   }
 }
@@ -81,9 +73,12 @@ class GoalListPage extends ConsumerWidget {
 ///
 /// [onCreateGoal] 为空时，空态按钮回退为内置的创建流程。
 class GoalListBody extends ConsumerWidget {
-  const GoalListBody({super.key, this.onCreateGoal});
+  const GoalListBody({super.key, this.onCreateGoal, this.onImportPlan});
 
   final Future<void> Function()? onCreateGoal;
+
+  /// 打开「导入完整计划」对话框（区块头入口，原 AppBar actions 迁入）。
+  final Future<void> Function()? onImportPlan;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -95,13 +90,13 @@ class GoalListBody extends ConsumerWidget {
         onRetry: () => ref.invalidate(goalListProvider),
       ),
       data: (goals) {
-        if (goals.isEmpty) {
-          return _EmptyView(onCreateGoal: onCreateGoal);
-        }
         // 各目标任务完成统计：父级一次性预取（批量 SQL，避免逐卡 N+1），
         // 供卡片进度条与统计行使用；数据未就绪时显示 0% 占位。
-        final completion =
-            ref.watch(goalCompletionProvider).valueOrNull ?? const {};
+        // 空态不发起查询（goals 为空时 provider 本就返回空 map）。
+        final completion = goals.isEmpty
+            ? const <int,
+                ({int total, int done, int totalMinutes, int doneMinutes})>{}
+            : ref.watch(goalCompletionProvider).valueOrNull ?? const {};
         // 顶部统计（进行中 / 已完成 / 全部）：把「目标页」从孤零零的
         // 卡片列表升级为 Dashboard——一眼看清目标池规模（Todoist 式）。
         final activeCount =
@@ -111,8 +106,10 @@ class GoalListBody extends ConsumerWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 区块头（Dashboard 语言）：页面主标题 + 新建目标入口
-            // （取代原 FAB，桌面宽窗下比悬浮按钮更醒目、更接近列表页惯例）。
+            // 区块头（Dashboard 语言）：页面主标题 + 导入完整计划 + 新建
+            // 目标入口（取代原 FAB 与 AppBar actions，桌面宽窗下比悬浮
+            // 按钮更醒目、更接近列表页惯例）。始终显示——空态也要能
+            // 导入完整计划/新建目标。
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
               child: Row(
@@ -120,61 +117,76 @@ class GoalListBody extends ConsumerWidget {
                   Text('我的目标',
                       style: Theme.of(context).textTheme.titleLarge),
                   const Spacer(),
-                  // tooltip 保留旧语义，兼容既有测试与无障碍。
-                  Tooltip(
-                    message: '创建目标',
-                    child: FilledButton.icon(
-                      onPressed: onCreateGoal ?? () => _defaultCreate(context),
-                      icon: const Icon(Icons.add),
-                      label: const Text('新建目标'),
+                  if (onImportPlan != null)
+                    IconButton(
+                      tooltip: '导入完整计划',
+                      onPressed: onImportPlan,
+                      icon: const Icon(Icons.upload_file_outlined),
                     ),
-                  ),
-                ],
-              ),
-            ),
-            // 顶部统计胶囊：进行中 / 已完成 / 全部。
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Row(
-                children: [
-                  _GoalCountPill(count: activeCount, label: '进行中'),
-                  const SizedBox(width: 8),
-                  _GoalCountPill(count: completedCount, label: '已完成'),
-                  const SizedBox(width: 8),
-                  _GoalCountPill(count: goals.length, label: '全部'),
-                ],
-              ),
-            ),
-            // 目标卡片网格：单目标时通栏大卡（避免孤卡占小角 + 大片留白，
-            // Dashboard 首页感）；多目标时按 maxCrossAxisExtent 自适应
-            // 双列（桌面内容区约 1200px → 每卡约 580px 宽），消除下方大留白。
-            // 用固定列数（单目标 1 列）而非 maxCrossAxisExtent 传超大值，
-            // 避免依赖 SDK 对极值的解析行为。
-            Expanded(
-              child: GridView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                gridDelegate: goals.length == 1
-                    ? const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 1,
-                        mainAxisExtent: 268,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                      )
-                    : const SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: 720,
-                        mainAxisExtent: 268,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
+                  // 空态时不重复放「新建目标」（空态大按钮是唯一主入口，
+                  // 避免两个『创建目标』tooltip 歧义）；非空态显示。
+                  if (goals.isNotEmpty) ...[
+                    const SizedBox(width: 4),
+                    // tooltip 保留旧语义，兼容既有测试与无障碍。
+                    Tooltip(
+                      message: '创建目标',
+                      child: FilledButton.icon(
+                        onPressed: onCreateGoal ?? () => _defaultCreate(context),
+                        icon: const Icon(Icons.add),
+                        label: const Text('新建目标'),
                       ),
-                itemCount: goals.length,
-                itemBuilder: (context, index) {
-                  return _GoalCard(
-                    goal: goals[index],
-                    completion: completion[goals[index].id],
-                  );
-                },
+                    ),
+                  ],
+                ],
               ),
             ),
+            if (goals.isEmpty)
+              Expanded(child: _EmptyView(onCreateGoal: onCreateGoal))
+            else ...[
+              // 顶部统计胶囊：进行中 / 已完成 / 全部。
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Row(
+                  children: [
+                    _GoalCountPill(count: activeCount, label: '进行中'),
+                    const SizedBox(width: 8),
+                    _GoalCountPill(count: completedCount, label: '已完成'),
+                    const SizedBox(width: 8),
+                    _GoalCountPill(count: goals.length, label: '全部'),
+                  ],
+                ),
+              ),
+              // 目标卡片网格：单目标时通栏大卡（避免孤卡占小角 + 大片留白，
+              // Dashboard 首页感）；多目标时按 maxCrossAxisExtent 自适应
+              // 双列（桌面内容区约 1200px → 每卡约 580px 宽），消除下方大留白。
+              // 用固定列数（单目标 1 列）而非 maxCrossAxisExtent 传超大值，
+              // 避免依赖 SDK 对极值的解析行为。
+              Expanded(
+                child: GridView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  gridDelegate: goals.length == 1
+                      ? const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 1,
+                          mainAxisExtent: 268,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                        )
+                      : const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 720,
+                          mainAxisExtent: 268,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                        ),
+                  itemCount: goals.length,
+                  itemBuilder: (context, index) {
+                    return _GoalCard(
+                      goal: goals[index],
+                      completion: completion[goals[index].id],
+                    );
+                  },
+                ),
+              ),
+            ],
           ],
         );
       },
