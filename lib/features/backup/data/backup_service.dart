@@ -164,6 +164,15 @@ class BackupService {
       if (validationError != null) {
         throw BackupException(validationError);
       }
+      // schema 版本守卫（M13）：备份由**更新版本**应用创建时拒绝恢复，
+      // 避免旧应用以缺列/未知字段语义读坏数据（同步路径已有同款守卫，
+      // 手动恢复此前缺失）。等版本或更旧版本的备份允许恢复。
+      if (payload.manifest.appSchemaVersion > _db.schemaVersion) {
+        throw BackupException(
+          '备份由更新版本的应用创建（schema ${payload.manifest.appSchemaVersion}），'
+          '请先升级应用再恢复',
+        );
+      }
 
       switch (mode) {
         case RestoreMode.merge:
@@ -189,7 +198,10 @@ class BackupService {
   /// 创建当前数据的安全副本（FR-9.3），返回副本文件。
   ///
   /// 副本保存到系统临时目录，命名 `safety-<时间戳>.timecalc`。
+  /// 每次创建前清扫 7 天前的 `timecalc-safety-*` 目录（M11）：覆盖恢复/
+  /// 同步拉取/重置数据都会在此留副本，若不清理会随使用持续累积。
   Future<File> exportSafetyCopy() async {
+    await _sweepStaleSafetyDirs();
     final dir = await Directory.systemTemp.createTemp('timecalc-safety');
     final now = DateTime.now();
     final stamp =
@@ -201,6 +213,30 @@ class BackupService {
     final file = File('${dir.path}${Platform.pathSeparator}safety-$stamp.timecalc');
     await exportBackup(file);
     return file;
+  }
+
+  /// 清扫系统临时目录中 7 天前创建的 `timecalc-safety-*` 目录。
+  ///
+  /// 尽力而为：目录已被删除/无权访问时静默跳过（不阻断安全副本创建）。
+  static Future<void> _sweepStaleSafetyDirs() async {
+    try {
+      final temp = Directory.systemTemp;
+      await for (final entity in temp.list()) {
+        if (entity is! Directory) continue;
+        if (!entity.uri.pathSegments.last.startsWith('timecalc-safety')) continue;
+        try {
+          final stat = await entity.stat();
+          final age = DateTime.now().difference(stat.modified);
+          if (age > const Duration(days: 7)) {
+            await entity.delete(recursive: true);
+          }
+        } catch (_) {
+          // 单个目录清理失败不影响其余。
+        }
+      }
+    } catch (_) {
+      // 系统临时目录不可枚举时跳过（尽力而为）。
+    }
   }
 
   /// 重置全部业务数据（设置页「重置数据」，FR-9 数据管理扩展）。
@@ -464,6 +500,32 @@ class BackupService {
                     previousThemeMode,
               ),
             );
+      } else {
+        // L7：备份 settings 段为空（手工构造/异常备份）时，不删除当前
+        // settings 行——避免计划偏好被静默重置为默认值。
+        final existing = await _db.select(_db.settings).getSingleOrNull();
+        if (existing != null) {
+          await _db.into(_db.settings).insert(
+                _codec.settingsFromJson(
+                  {
+                    'dailyAvailableMinutes': existing.dailyAvailableMinutes,
+                    'availableWeekdays': existing.availableWeekdays,
+                  },
+                  closeBehavior: existing.closeBehavior,
+                  autoBackupEnabled: existing.autoBackupEnabled,
+                  localBackupFolder: existing.localBackupFolder,
+                  webdavUrl: existing.webdavUrl,
+                  webdavUsername: existing.webdavUsername,
+                  webdavPasswordSaved: existing.webdavPasswordSaved,
+                  lastAutoBackupAt: existing.lastAutoBackupAt,
+                  webdavSyncEnabled: existing.webdavSyncEnabled,
+                  lastPushedSeq: existing.lastPushedSeq,
+                  lastSyncedAt: existing.lastSyncedAt,
+                  themeMode: existing.themeMode,
+                ),
+                mode: InsertMode.insertOrReplace,
+              );
+        }
       }
     });
   }

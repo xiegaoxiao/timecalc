@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -211,7 +212,9 @@ class WebDavClient {
 
     try {
       final streamed = await client.send(request).timeout(timeout);
-      final response = await http.Response.fromStream(streamed);
+      // L29：send 的超时只覆盖响应头，响应体读取不在其内——慢速服务器
+      // 大文件下载可能无限挂起；body 读取同样纳入超时。
+      final response = await http.Response.fromStream(streamed).timeout(timeout);
       // 认证失败统一抛 WebDavAuthException（UI/测试据此给出可读提示）。
       if (response.statusCode == 401) {
         throw const WebDavAuthException();
@@ -219,6 +222,8 @@ class WebDavClient {
       return response;
     } on WebDavException {
       rethrow;
+    } on TimeoutException {
+      throw const WebDavException('网络超时，请检查地址与网络');
     } catch (error) {
       throw WebDavException('网络错误：${error.runtimeType}，请检查地址与网络');
     }

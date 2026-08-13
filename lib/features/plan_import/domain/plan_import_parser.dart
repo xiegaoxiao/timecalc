@@ -354,7 +354,11 @@ class PlanImportParser {
     }
     if (stageName is String && stageName.trim().isNotEmpty) {
       final title = stageName.trim();
-      if (firstWeekStart != null) {
+      // 长度校验与 schema 约束一致（milestones.title ≤ 200）：超长写入会
+      // 触发 DB 约束异常而非干净校验错误（M10）。
+      if (title.length > 200) {
+        issues.add(ImportIssue('阶段名称不能超过 200 字'));
+      } else if (firstWeekStart != null) {
         final date = _format(firstWeekStart);
         if (_dateExceedsDeadline(date, deadlineDate)) {
           issues.add(ImportIssue('里程碑「$title」日期晚于目标截止日（$deadlineDate）'));
@@ -387,11 +391,18 @@ class PlanImportParser {
       if (weekStart != null && focus is String && focus.trim().isNotEmpty) {
         final weekLabel = weekNum is num ? '第 ${weekNum.toInt()} 周' : weekNum;
         final title = '$weekLabel：${focus.trim()}';
-        final date = _format(weekStart);
-        if (_dateExceedsDeadline(date, deadlineDate)) {
-          issues.add(ImportIssue('里程碑「$title」日期晚于目标截止日（$deadlineDate）', location: location));
+        // 长度校验（M10，milestones.title ≤ 200）。
+        if (title.length > 200) {
+          issues.add(ImportIssue('周里程碑标题不能超过 200 字', location: location));
         } else {
-          milestones.add(ImportedMilestone(title: title, date: date));
+          final date = _format(weekStart);
+          if (_dateExceedsDeadline(date, deadlineDate)) {
+            issues.add(
+              ImportIssue('里程碑「$title」日期晚于目标截止日（$deadlineDate）', location: location),
+            );
+          } else {
+            milestones.add(ImportedMilestone(title: title, date: date));
+          }
         }
       }
 
@@ -427,9 +438,15 @@ class PlanImportParser {
             onSkipTemplate();
             continue;
           }
+          // L34：当前周前半已过——起始日钳制到今天，避免生成历史日期
+          // 实例（如周一导入时周一起始的模板生成周一到今天的逾期任务）。
+          final startText = _format(weekStart);
+          final effectiveStart = startText.compareTo(todayStr) < 0
+              ? todayStr
+              : startText;
           templates.add(ImportedPlanTemplate(
             title: title,
-            startDate: _format(weekStart),
+            startDate: effectiveStart,
             endDate: endDate,
             minutes: minutes,
           ));
@@ -440,6 +457,16 @@ class PlanImportParser {
       for (final entry in subjects.entries) {
         final name = entry.key;
         if (name == 'daily_must_do') continue;
+        // 长度校验（M10，subjects.name ≤ 100）：空/超长科目名会静默写入
+        // 或触发 DB 约束异常（L11 曾因空科目名导致 subject_manager 崩溃）。
+        if (name.trim().isEmpty) {
+          issues.add(ImportIssue('科目名称不能为空', location: location));
+          continue;
+        }
+        if (name.length > 100) {
+          issues.add(ImportIssue('科目名称不能超过 100 字', location: location));
+          continue;
+        }
         if (entry.value is! Map<String, dynamic>) {
           issues.add(ImportIssue('科目「$name」的值必须是对象', location: location));
           continue;
@@ -491,15 +518,25 @@ class PlanImportParser {
   }
 
   /// 校验并解析 yyyy-MM-dd（格式 + 真实日历日期）；非法返回 null。
+  ///
+  /// 月份/日期允许非零填充（如 `2026-8-6`），解析后统一规范化输出。
   String? _readDate(Object? value) {
     if (value is! String) return null;
-    final match = RegExp(r'^\d{4}-\d{2}-\d{2}$').firstMatch(value);
+    final match = RegExp(r'^\d{4}-\d{1,2}-\d{1,2}$').firstMatch(value);
     if (match == null) return null;
     return _parseDate(value);
   }
 
   /// 解析 yyyy-MM-dd 并校验真实日历日期；非法返回 null。
+  ///
+  /// 先做格式正则校验再 `int.parse`（防畸形字符串抛 FormatException），
+  /// 且返回**规范化**的 `yyyy-MM-dd`（拒绝 `2026-8-6` 这类非零填充写法
+  /// 原样入库——会导致字典序比较错位、任务在按日/按月视图查询中消失，
+  /// S1）。月份/日期允许非零填充输入，统一规范化为两位。
+  static final RegExp _datePattern = RegExp(r'^\d{4}-\d{1,2}-\d{1,2}$');
+
   static String? _parseDate(String value) {
+    if (!_datePattern.hasMatch(value)) return null;
     final parts = value.split('-');
     final y = int.parse(parts[0]);
     final m = int.parse(parts[1]);
@@ -507,7 +544,8 @@ class PlanImportParser {
     final dt = DateTime(y, m, d);
     // DateTime 会溢出归一化（如 2026-02-30 -> 03-02），回读校验拦截非法日期。
     if (dt.year != y || dt.month != m || dt.day != d) return null;
-    return value;
+    // 规范化输出：非零填充输入（手工构造）统一为 yyyy-MM-dd。
+    return _format(dt);
   }
 
   /// 里程碑日期是否晚于目标截止日（FR-2.2 同款，导入侧校验）。
@@ -564,6 +602,7 @@ class PlanImportParser {
   /// - 对象：`{ "title": ..., "minutes": 30 }`（带预估时长，继承到每天实例）。
   ///
   /// 返回 (标题, 时长)；标题为 null 表示非法（错误已入 [issues]）。
+  /// 标题长度上限与 schema 一致（tasks.title ≤ 200，M10）。
   static (String?, int?) _readMustDoEntry(
     Object? value, {
     required String location,
@@ -573,6 +612,9 @@ class PlanImportParser {
       final title = _readTitle(value);
       if (title == null) {
         issues.add(ImportIssue('daily_must_do 条目必须是非空文本', location: location));
+      } else if (title.length > 200) {
+        issues.add(ImportIssue('daily_must_do 标题不能超过 200 字', location: location));
+        return (null, null);
       }
       return (title, null);
     }
@@ -580,6 +622,9 @@ class PlanImportParser {
       final title = _readTitle(value['title']);
       if (title == null) {
         issues.add(ImportIssue('daily_must_do 条目必须是非空文本', location: location));
+      } else if (title.length > 200) {
+        issues.add(ImportIssue('daily_must_do 标题不能超过 200 字', location: location));
+        return (null, null);
       }
       final minutes = _readMinutes(
         value['minutes'],
@@ -629,7 +674,8 @@ class PlanImportParser {
 
   static DateTime? _weekRangeDate(Object? range, {required bool first}) {
     if (range is! String) return null;
-    final matches = RegExp(r'\d{4}-\d{2}-\d{2}').allMatches(range).toList();
+    // 允许非零填充（S1）：\d{1,2} 兼容 `2026-8-9` 这类手工写法。
+    final matches = RegExp(r'\d{4}-\d{1,2}-\d{1,2}').allMatches(range).toList();
     if (matches.isEmpty) return null;
     final target = first ? matches.first : matches.last;
     final value = target.group(0)!;

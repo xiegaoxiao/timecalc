@@ -144,12 +144,16 @@ class SettingsRepository {
   }
 
   /// 解析每周可用日文本（逗号分隔 ISO 星期）。
+  ///
+  /// 过滤 1~7 范围外的脏值（L33）：DB 异常值（0/9 等）不流入负载/延期
+  /// 计算，也不回写。
   static Set<int> decodeWeekdays(String encoded) {
     if (encoded.trim().isEmpty) return {};
     return encoded
         .split(',')
         .map((s) => int.tryParse(s.trim()))
         .whereType<int>()
+        .where((d) => d >= 1 && d <= 7)
         .toSet();
   }
 

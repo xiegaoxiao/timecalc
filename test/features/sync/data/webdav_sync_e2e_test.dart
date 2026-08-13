@@ -208,8 +208,11 @@ void main() {
     expect(await goalTitles(b.db), {'A 的目标'});
     expect(await taskTitles(b.db), {'A 的任务'});
 
-    // 3) B 新增数据并推送。
+    // 3) B 新增数据并推送（模拟「本地变更待推送」：B 刚拉取完处于抑制
+    //    窗口内，watcher 入口 pushIfNeeded 会跳过；用 markLocalDirty +
+    //    syncOnce 等价于「有变更、立即同步」。S2/S3 起无变更不盲目上传）。
     await seedGoal(b.db, 'B 的目标', 'B 的任务');
+    b.sync.markLocalDirty();
     final pushB = await b.sync.syncOnce();
     expect(pushB.pushed, isTrue, reason: 'B 有新增，应推送');
 
@@ -242,8 +245,11 @@ void main() {
     expect(await goalTitles(b.db), {'目标一', '目标二'});
 
     // B 删除「目标一」并推送（覆盖语义：清空 + 重导，删除必须传播）。
+    // 同测试 1 第 3 步：拉取后的抑制窗口内用 markLocalDirty + syncOnce
+    // 模拟「有本地变更、立即同步」。
     await (b.db.delete(b.db.tasks)..where((t) => t.goalId.equals(goal1))).go();
     await (b.db.delete(b.db.goals)..where((g) => g.id.equals(goal1))).go();
+    b.sync.markLocalDirty();
     await b.sync.syncOnce();
 
     // A 再次同步：远端已无「目标一」→ A 应真实覆盖，目标一消失。

@@ -210,9 +210,11 @@ void main() {
     expect(goals.map((g) => g.title), ['远端目标']);
     expect(goals.map((g) => g.title), isNot(contains('本地目标')));
 
-    // 拉取后推送（nextSeq = remoteSeq + 1 = 4），本设备状态更新。
+    // 拉取后本地已与远端一致，**不再回推**（防双设备乒乓，S2）：
+    // lastPushedSeq 吸收远端 seq(3)，pushed=false。
+    expect(result.pushed, isFalse);
     final s = await settings.get();
-    expect(s.lastPushedSeq, 4);
+    expect(s.lastPushedSeq, 3);
     expect(s.webdavSyncEnabled, isTrue); // 同步开关不被拉取重置
     expect(s.webdavUrl, 'https://dav.example.com/dav'); // WebDAV 账号保留
   });
@@ -260,25 +262,131 @@ void main() {
     expect((await settings.get()).lastPushedSeq, isNull);
   });
 
-  test('拉取成功后 seq 已吸收，再次同步不重复拉取（幂等）', () async {
+  test('远端 meta 存在但损坏/格式不兼容：拒绝并停止，不盲推覆盖（M13）', () async {
+    await enableSync();
+    await seedGoal('本地目标');
+
+    var putCount = 0;
+    final client = MockClient((req) async {
+      final path = req.url.path;
+      if (req.method == 'MKCOL') return http.Response('', 201);
+      if (req.method == 'PUT') {
+        putCount++;
+        return http.Response('', 201);
+      }
+      if (req.method == 'GET' &&
+          path.endsWith('/webdav_sync/timecalc-sync.meta.json')) {
+        // meta 存在但是非法 JSON：必须与「404 无 meta」区分开，
+        // 不能当作首次同步盲推覆盖远端（旧实现会以 remoteSeq=0 覆盖）。
+        return http.Response('not-json{{{', 200);
+      }
+      return http.Response('', 404);
+    });
+
+    final result = await service(client: client).syncOnce();
+
+    expect(result.skipped, isFalse);
+    expect(result.pulled, isFalse);
+    expect(result.pushed, isFalse);
+    expect(result.error, contains('元数据'));
+    expect(putCount, 0); // 没有发生任何上传
+    // 本地数据与 seq 保持不变。
+    final goals = await db.select(db.goals).get();
+    expect(goals.map((g) => g.title), ['本地目标']);
+    expect((await settings.get()).lastPushedSeq, isNull);
+  });
+
+  test('meta 格式不兼容（未知 format/version）：同样拒绝推送（M13）', () async {
+    await enableSync();
+    await seedGoal('本地目标');
+
+    var putCount = 0;
+    final client = MockClient((req) async {
+      final path = req.url.path;
+      if (req.method == 'MKCOL') return http.Response('', 201);
+      if (req.method == 'PUT') {
+        putCount++;
+        return http.Response('', 201);
+      }
+      if (req.method == 'GET' &&
+          path.endsWith('/webdav_sync/timecalc-sync.meta.json')) {
+        return http.Response.bytes(
+          utf8.encode(jsonEncode({
+            'format': 'other-app-sync',
+            'version': 99,
+            'seq': 7,
+            'syncedAtUtc': '2026-08-07T03:00:00.000Z',
+            'appSchemaVersion': 99,
+          })),
+          200,
+        );
+      }
+      return http.Response('', 404);
+    });
+
+    final result = await service(client: client).syncOnce();
+
+    expect(result.pushed, isFalse);
+    expect(result.error, contains('元数据'));
+    expect(putCount, 0);
+  });
+
+  test('拉取成功后 seq 已吸收，空闲再次同步不重复上传（S2/S3）', () async {
     await enableSync();
     await seedGoal('本地目标');
 
     final snapshot = await remoteSnapshotBytes('远端目标');
+    var putCount = 0;
+    final client = MockClient((req) async {
+      final path = req.url.path;
+      if (req.method == 'MKCOL') return http.Response('', 201);
+      if (req.method == 'PUT') {
+        putCount++;
+        return http.Response('', 201);
+      }
+      if (req.method == 'GET' &&
+          path.endsWith('/webdav_sync/timecalc-sync.meta.json')) {
+        return http.Response.bytes(
+          utf8.encode(jsonEncode(meta(3))),
+          200,
+        );
+      }
+      if (req.method == 'GET' &&
+          path.endsWith('/webdav_sync/timecalc-sync.latest.timecalc')) {
+        return http.Response.bytes(snapshot, 200);
+      }
+      return http.Response('', 404);
+    });
+
     final service = WebDavSyncService(
       settingsRepository: settings,
       backupService: backup,
       credentialStore: credentials,
       schemaVersion: db.schemaVersion,
-      httpClient: okRemote(snapshot: snapshot),
+      httpClient: client,
     );
 
-    await service.syncOnce();
-    // 第二次：本地 seq(4) >= 远端 seq(3)，只推不拉。
+    // 第一次：远端较新 → 拉取（本地 seq 吸收为 3），不回推。
+    final first = await service.syncOnce();
+    expect(first.pulled, isTrue);
+    expect(first.pushed, isFalse);
+    expect((await settings.get()).lastPushedSeq, 3);
+
+    // 第二次（空闲、无本地变更）：远端不快、无脏标记 → 不再整库上传。
     final second = await service.syncOnce();
     expect(second.pulled, isFalse);
-    expect(second.pushed, isTrue);
-    expect((await settings.get()).lastPushedSeq, 5);
+    expect(second.pushed, isFalse);
+    expect((await settings.get()).lastPushedSeq, 3);
+    expect(putCount, 0); // 两次同步都没有上传
+
+    // 本地有变更时才推送，seq 递增。经 markLocalDirty + syncOnce 模拟
+    // 「有本地变更待推送」（pushIfNeeded 在拉取后的抑制窗口内会跳过，
+    // 那属于 watcher 回显抑制语义，非本用例目标）。
+    service.markLocalDirty();
+    final third = await service.syncOnce();
+    expect(third.pushed, isTrue);
+    expect((await settings.get()).lastPushedSeq, 4);
+    expect(putCount, 2); // 快照 + meta 两次 PUT
   });
 
   test('并发调用时互斥（一次同步进行中，另一次跳过）', () async {
@@ -313,7 +421,9 @@ void main() {
       httpClient: client,
     );
 
-    final first = service.syncOnce();
+    // 第一个经 pushIfNeeded（本地变更入口）触发推送并阻塞在 PUT 上，
+    // 制造并发窗口；第二个 syncOnce 应互斥跳过。
+    final first = service.pushIfNeeded();
     // 第一个仍在跑（推送被阻塞），第二个应跳过。
     final second = await service.syncOnce();
     expect(second.skipped, isTrue);

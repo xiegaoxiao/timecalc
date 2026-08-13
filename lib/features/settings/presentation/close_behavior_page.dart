@@ -67,48 +67,56 @@ class _CloseBehaviorPageState extends ConsumerState<CloseBehaviorPage> {
   @override
   Widget build(BuildContext context) {
     final settingsAsync = ref.watch(settingsProvider);
+    // valueOrNull 保留旧值（M15）：保存后 invalidate(settingsProvider) 使
+    // provider 短暂回到 loading，若用 .when(loading: spinner) 会整页闪烁。
+    final settings = settingsAsync.valueOrNull;
+    if (settings == null) {
+      if (settingsAsync.hasError) {
+        return Scaffold(
+          appBar: AppBar(title: const Text('关闭行为')),
+          body: AppErrorView(
+            error: settingsAsync.error!,
+            onRetry: () => ref.invalidate(settingsProvider),
+          ),
+        );
+      }
+      return Scaffold(
+        appBar: AppBar(title: const Text('关闭行为')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    // 首次加载到数据时初始化本地选择；provider 后续刷新不重置用户选择。
+    if (!_initialized) {
+      _behavior = settings.closeBehavior;
+      _initialized = true;
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('关闭行为')),
-      body: settingsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => AppErrorView(
-          error: error,
-          onRetry: () => ref.invalidate(settingsProvider),
-        ),
-        data: (settings) {
-          // 首次加载到数据时初始化本地选择；provider 后续刷新不重置用户选择。
-          if (!_initialized) {
-            _behavior = settings.closeBehavior;
-            _initialized = true;
-          }
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Text(
-                '点击窗口关闭按钮时的行为，点击即生效；最小化到托盘后可随时从托盘菜单恢复（FR-8.1/8.2）。',
-                style: Theme.of(context).textTheme.bodySmall,
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text(
+            '点击窗口关闭按钮时的行为，点击即生效；最小化到托盘后可随时从托盘菜单恢复（FR-8.1/8.2）。',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 16),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(
+                value: CloseBehavior.exit,
+                label: Text('直接退出'),
+                icon: Icon(Icons.close),
               ),
-              const SizedBox(height: 16),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(
-                    value: CloseBehavior.exit,
-                    label: Text('直接退出'),
-                    icon: Icon(Icons.close),
-                  ),
-                  ButtonSegment(
-                    value: CloseBehavior.minimizeToTray,
-                    label: Text('最小化到托盘'),
-                    icon: Icon(Icons.minimize),
-                  ),
-                ],
-                selected: {_behavior},
-                onSelectionChanged: (selection) =>
-                    _selectBehavior(selection.first),
+              ButtonSegment(
+                value: CloseBehavior.minimizeToTray,
+                label: Text('最小化到托盘'),
+                icon: Icon(Icons.minimize),
               ),
             ],
-          );
-        },
+            selected: {_behavior},
+            onSelectionChanged: (selection) => _selectBehavior(selection.first),
+          ),
+        ],
       ),
     );
   }

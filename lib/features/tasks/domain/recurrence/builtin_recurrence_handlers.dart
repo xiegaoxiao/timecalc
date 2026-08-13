@@ -1,3 +1,4 @@
+import '../../../../core/utils/date_text.dart';
 import 'recurrence_handler.dart';
 import 'rule_param.dart';
 
@@ -26,6 +27,8 @@ class DailyRecurrenceHandler extends RecurrenceRuleHandler {
     required String from,
     required String to,
   }) {
+    // 从 max(startDate, from) 起逐日生成：老模板（startDate 在数月/数年前）
+    // 滚动生成时不再空跑整个历史区间（M7）。
     return _dailyDates(startDate, from, to);
   }
 }
@@ -67,14 +70,15 @@ class WeeklyRecurrenceHandler extends RecurrenceRuleHandler {
   }) {
     final weekdays = (_asIntList(json['weekdays']) ?? const []).toSet();
     final out = <String>[];
-    var cursor = _parse(startDate);
     final fromD = _parse(from);
     final toD = _parse(to);
+    // 从 max(startDate, from) 起迭代（M7），避免历史区间空跑。
+    var cursor = _maxDate(_parse(startDate), fromD);
     while (!cursor.isAfter(toD)) {
-      if (!cursor.isBefore(fromD) && weekdays.contains(cursor.weekday)) {
+      if (weekdays.contains(cursor.weekday)) {
         out.add(_format(cursor));
       }
-      cursor = cursor.add(const Duration(days: 1));
+      cursor = addLocalDays(cursor, 1); // 纯日历加法（M2/DST）
     }
     return out;
   }
@@ -118,14 +122,25 @@ class IntervalRecurrenceHandler extends RecurrenceRuleHandler {
     final n = json['everyNDays'];
     if (n is! int) return const [];
     final out = <String>[];
-    var cursor = _parse(startDate);
+    final start = _parse(startDate);
     final fromD = _parse(from);
     final toD = _parse(to);
+    // 发生日是 startDate + k*N（相位锚定 startDate）：从 from 起跳到
+    // 第一个 ≥ from 的发生日，避免历史区间逐日空跑（M7）。
+    var cursor = _firstAtOrAfter(start, fromD, n);
     while (!cursor.isAfter(toD)) {
-      if (!cursor.isBefore(fromD)) out.add(_format(cursor));
-      cursor = cursor.add(Duration(days: n));
+      out.add(_format(cursor));
+      cursor = addLocalDays(cursor, n); // 纯日历加法（M2/DST）
     }
     return out;
+  }
+
+  /// 从 [start] 起每隔 [n] 天，返回第一个不早于 [from] 的发生日。
+  static DateTime _firstAtOrAfter(DateTime start, DateTime from, int n) {
+    if (!from.isAfter(start)) return start;
+    final diff = _utcDayDiff(from, start);
+    final k = (diff + n - 1) ~/ n; // ceil(diff / n)
+    return addLocalDays(start, k * n);
   }
 }
 
@@ -192,7 +207,7 @@ class SequenceRecurrenceHandler extends RecurrenceRuleHandler {
     // 同一复习日只保留一次）。
     final uniqueOffsets = offsets.toSet().toList()..sort();
     for (final offset in uniqueOffsets) {
-      final date = start.add(Duration(days: offset));
+      final date = addLocalDays(start, offset); // 纯日历加法（M2/DST）
       if (date.isBefore(fromD)) continue;
       if (date.isAfter(toD)) break;
       out.add(_format(date));
@@ -202,14 +217,16 @@ class SequenceRecurrenceHandler extends RecurrenceRuleHandler {
 }
 
 /// 从 [from] 起逐日生成到 [to]（含），供 daily 规则复用。
+///
+/// 起点取 max([startDate], [from])（M7）：老模板滚动生成不空跑历史区间。
 List<String> _dailyDates(String startDate, String from, String to) {
   final out = <String>[];
-  var cursor = _parse(startDate);
   final fromD = _parse(from);
   final toD = _parse(to);
+  var cursor = _maxDate(_parse(startDate), fromD);
   while (!cursor.isAfter(toD)) {
-    if (!cursor.isBefore(fromD)) out.add(_format(cursor));
-    cursor = cursor.add(const Duration(days: 1));
+    out.add(_format(cursor));
+    cursor = addLocalDays(cursor, 1); // 纯日历加法（M2/DST）
   }
   return out;
 }
@@ -235,4 +252,14 @@ String _format(DateTime date) {
   final mm = date.month.toString().padLeft(2, '0');
   final dd = date.day.toString().padLeft(2, '0');
   return '${date.year}-$mm-$dd';
+}
+
+/// 返回 [a] 与 [b] 中较晚者。
+DateTime _maxDate(DateTime a, DateTime b) => a.isAfter(b) ? a : b;
+
+/// 以「日历日」为单位计算 [a] - [b] 的天数（UTC 归一化，防 DST 偏差）。
+int _utcDayDiff(DateTime a, DateTime b) {
+  final aDay = DateTime.utc(a.year, a.month, a.day);
+  final bDay = DateTime.utc(b.year, b.month, b.day);
+  return aDay.difference(bDay).inDays;
 }

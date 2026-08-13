@@ -12,6 +12,9 @@ class GoalRepository {
   final AppDatabase _db;
 
   /// 返回全部目标，按创建时间倒序（新目标在前）；时间相同时按 id 倒序保证稳定。
+  ///
+  /// 注意：这是**一次性查询**（`get()`），不是响应式流（L25）；名称保留
+  /// watch 前缀仅为历史兼容，页面刷新依赖 Riverpod provider 失效机制。
   Future<List<Goal>> watchAll() {
     final query = _db.select(_db.goals)
       ..orderBy([

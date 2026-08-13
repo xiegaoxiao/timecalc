@@ -11,17 +11,29 @@ import 'diagnostics_service.dart';
 /// - 提示可重新安装应用后用既有备份恢复（备份文件不受本程序版本影响）；
 /// - 提供「导出诊断信息」入口，供用户提交排查。
 ///
-/// 此场景下没有可用的数据库连接，诊断导出跳过数据行数段落。
-class StartupErrorApp extends ConsumerWidget {
-  const StartupErrorApp({super.key, required this.error, this.dbPath});
+/// 此场景下没有可用的数据库连接，诊断导出跳过数据行数段落，但包含
+/// 启动时捕获的错误日志（[diagnostics] 由 main 传入共享实例，M2）。
+class StartupErrorApp extends ConsumerStatefulWidget {
+  const StartupErrorApp({super.key, required this.error, this.dbPath, this.diagnostics});
 
   final Object error;
 
   /// 数据库文件路径（无法确定时为 null）。
   final String? dbPath;
 
+  /// 共享诊断服务实例（main 中已 capture 启动错误）；null 时回退新建
+  /// 空实例（测试兼容路径，导出不含错误日志）。
+  final DiagnosticsService? diagnostics;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<StartupErrorApp> createState() => _StartupErrorAppState();
+}
+
+class _StartupErrorAppState extends ConsumerState<StartupErrorApp> {
+  @override
+  Widget build(BuildContext context) {
+    final error = widget.error;
+    final dbPath = widget.dbPath;
     return MaterialApp(
       title: 'TimeCalc 时间计算器',
       debugShowCheckedModeBanner: false,
@@ -77,7 +89,7 @@ class StartupErrorApp extends ConsumerWidget {
                         alignment: Alignment.centerRight,
                         child: FilledButton.icon(
                           onPressed: () async {
-                            await _exportDiagnostics(context, ref);
+                            await _exportDiagnostics(context);
                           },
                           icon: const Icon(
                             Icons.description_outlined,
@@ -97,17 +109,19 @@ class StartupErrorApp extends ConsumerWidget {
     );
   }
 
-  Future<void> _exportDiagnostics(BuildContext context, WidgetRef ref) async {
-    // 启动失败路径无共享诊断实例：直接用当前诊断服务（空库，跳过数据段落）。
+  Future<void> _exportDiagnostics(BuildContext context) async {
+    // 使用共享诊断实例（main 在开库失败时已 capture 启动错误）：导出文件
+    // 包含真正导致启动失败的错误日志（M2；此前新建空实例导不出错误）。
+    // diagnostics 为 null（测试未注入）时回退新建空实例。
     final messenger = ScaffoldMessenger.of(context);
     final picker = ref.read(diagnosticsFilePickerProvider);
-    final service = DiagnosticsService();
+    final service = widget.diagnostics ?? DiagnosticsService();
     final target = await picker.saveDiagnosticsFile();
     if (target == null) return; // 用户取消
     try {
       await service.exportDiagnostics(target);
       messenger.showSnackBar(SnackBar(content: Text('诊断信息已导出：${target.path}')));
-    } on Exception catch (e) {
+    } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('导出诊断失败：$e')));
     }
   }
@@ -122,11 +136,15 @@ class StartupErrorScope extends StatelessWidget {
     required this.error,
     this.dbPath,
     this.picker,
+    this.diagnostics,
   });
 
   final Object error;
   final String? dbPath;
   final DiagnosticsFilePicker? picker;
+
+  /// 共享诊断服务实例（main 传入，M2：导出含启动错误日志）。
+  final DiagnosticsService? diagnostics;
 
   @override
   Widget build(BuildContext context) {
@@ -135,7 +153,11 @@ class StartupErrorScope extends StatelessWidget {
         if (picker != null)
           diagnosticsFilePickerProvider.overrideWithValue(picker!),
       ],
-      child: StartupErrorApp(error: error, dbPath: dbPath),
+      child: StartupErrorApp(
+        error: error,
+        dbPath: dbPath,
+        diagnostics: diagnostics,
+      ),
     );
   }
 }

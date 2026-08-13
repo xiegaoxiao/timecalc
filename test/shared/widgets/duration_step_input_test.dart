@@ -78,4 +78,22 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     expect(values.last!, valueAtRelease);
   });
+
+  testWidgets('小时直输绕过总时长钳制修复（M12：24 小时 + 分钟 → 钳到 1440）', (tester) async {
+    final values = <int?>[];
+    await tester.pumpWidget(
+      await build(initial: 30, onChanged: values.add), // 初始 0 小时 30 分
+    );
+
+    // 把小时字段直接输入 24（此前 onChanged 直写 _hours，绕过 maxMinutes 钳制，
+    // 得 24×60+30=1470 分钟；修复后经 _applyTotal 钳制回 1440）。
+    final hourField = find.byKey(const Key('hourField'));
+    await tester.tap(hourField);
+    await tester.pump();
+    await tester.enterText(hourField, '24');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+
+    expect(values.last, 1440); // 钳制到 maxMinutes，不再越界
+  });
 }

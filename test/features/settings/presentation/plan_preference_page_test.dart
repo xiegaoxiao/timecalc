@@ -97,4 +97,23 @@ void main() {
     final settings = await db.select(db.settings).getSingle();
     expect(settings.dailyAvailableMinutes, 120);
   });
+
+  testWidgets('每周可用日全取消时保存被阻止（M5：口径矛盾修复）', (tester) async {
+    await pumpApp(tester);
+    await openPreference(tester);
+
+    // 点「全部取消」清空可用日（此前允许保存，导致日历全灰但负载按
+    // 全可用计算的自相矛盾）。
+    await tester.tap(find.text('全部取消'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(find.text('每周至少选择一个可用日'), findsOneWidget);
+    expect(find.text('计划偏好已保存'), findsNothing);
+
+    // 库内保持默认全选，未被空集合覆盖。
+    final settings = await db.select(db.settings).getSingle();
+    expect(settings.availableWeekdays, '1,2,3,4,5,6,7');
+  });
 }

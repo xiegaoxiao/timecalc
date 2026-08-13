@@ -428,6 +428,182 @@ void main() {
       );
     });
 
+    test('畸形日期文本不崩溃：start_date 非日期 → 校验错误而非异常（S1）', () {
+      const json = '''
+{
+  "plan_name": "计划",
+  "start_date": "abc",
+  "end_date": "2026-08-15",
+  "stages": []
+}''';
+      // 不抛异常（旧版 _parseDate 直接 int.parse 抛 FormatException）。
+      final result = parser.parse(json, today: today);
+      expect(result.isValid, isFalse);
+      expect(result.issues, isNotEmpty);
+    });
+
+    test('畸形日期文本不崩溃：daily_breakdown 键非日期 → 校验错误而非异常（S1）', () {
+      const json = '''
+{
+  "plan_name": "计划",
+  "start_date": "2026-08-09",
+  "end_date": "2026-08-15",
+  "stages": [
+    {
+      "stage": "阶段",
+      "weekly_plan": [
+        {
+          "week": 1,
+          "week_range": "2026-08-09 ~ 2026-08-15",
+          "subjects": {
+            "数学": {
+              "daily_breakdown": {
+                "abc": "任务"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}''';
+      final result = parser.parse(json, today: today);
+      expect(result.isValid, isFalse);
+      expect(
+        result.issues.map((i) => i.message),
+        anyElement(contains('abc 不是有效日期')),
+      );
+    });
+
+    test('非零填充日期被规范化（S1：2026-8-6 → 2026-08-06，字典序一致）', () {
+      const json = '''
+{
+  "plan_name": "计划",
+  "start_date": "2026-08-09",
+  "end_date": "2026-08-15",
+  "stages": [
+    {
+      "stage": "阶段",
+      "weekly_plan": [
+        {
+          "week": 1,
+          "week_range": "2026-08-09 ~ 2026-08-15",
+          "subjects": {
+            "数学": {
+              "daily_breakdown": {
+                "2026-8-10": "任务"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}''';
+      final result = parser.parse(json, today: today);
+      expect(result.isValid, isTrue);
+      final task = result.plan!.tasks.single;
+      // 规范化输出：入库日期与 byDate/byDateRange 查询格式一致，任务
+      // 不再因字典序错位在日期视图消失。
+      expect(task.date, '2026-08-10');
+    });
+
+    test('超长阶段/周里程碑标题被拦截（M10）', () {
+      final longName = '长' * 201;
+      final json = '''
+{
+  "plan_name": "计划",
+  "start_date": "2026-08-09",
+  "end_date": "2026-08-15",
+  "stages": [
+    {
+      "stage": "$longName",
+      "weekly_plan": [
+        {
+          "week": 1,
+          "week_range": "2026-08-09 ~ 2026-08-15",
+          "focus": "周焦点",
+          "subjects": {
+            "数学": {
+              "daily_breakdown": {
+                "2026-08-10": "任务"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}''';
+      final result = parser.parse(json, today: today);
+      expect(result.isValid, isFalse);
+      expect(
+        result.issues.map((i) => i.message),
+        anyElement(contains('阶段名称不能超过 200 字')),
+      );
+    });
+
+    test('空科目名被拦截（M10/L11：不再静默写入空名科目）', () {
+      const json = '''
+{
+  "plan_name": "计划",
+  "start_date": "2026-08-09",
+  "end_date": "2026-08-15",
+  "stages": [
+    {
+      "stage": "阶段",
+      "weekly_plan": [
+        {
+          "week": 1,
+          "week_range": "2026-08-09 ~ 2026-08-15",
+          "subjects": {
+            "": {
+              "daily_breakdown": {
+                "2026-08-10": "任务"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}''';
+      final result = parser.parse(json, today: today);
+      expect(result.isValid, isFalse);
+      expect(
+        result.issues.map((i) => i.message),
+        anyElement(contains('科目名称不能为空')),
+      );
+    });
+
+    test('当前周模板起始日钳制到今天（L34：不生成历史日期实例）', () {
+      final json = '''
+{
+  "plan_name": "计划",
+  "start_date": "2026-08-03",
+  "end_date": "2026-08-09",
+  "stages": [
+    {
+      "stage": "阶段",
+      "weekly_plan": [
+        {
+          "week": 1,
+          "week_range": "2026-08-03 ~ 2026-08-09",
+          "subjects": {
+            "daily_must_do": ["每日例行"]
+          }
+        }
+      ]
+    }
+  ]
+}''';
+      // today = 2026-08-05（周三），周一起始 08-03 已过半。
+      final result = parser.parse(json, today: today);
+      expect(result.isValid, isTrue);
+      expect(result.plan!.templates.single.startDate, '2026-08-05');
+      expect(result.plan!.templates.single.endDate, '2026-08-09');
+    });
+
     test('里程碑日期晚于截止日（FR-2.2 语义，导入侧校验）', () {
       const json = '''
 {

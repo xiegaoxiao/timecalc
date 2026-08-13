@@ -61,13 +61,23 @@ class LocalBackupTarget implements BackupTarget {
 
   final Directory folder;
 
+  /// 文件名净化（M14，防御性）：只接受纯文件名，拒绝路径分隔符与 `..`，
+  /// 防路径穿越写出目标目录之外。非法时抛 [ArgumentError]。
+  static String _baseName(String fileName) {
+    final base = fileName.split(RegExp(r'[\\/]')).last;
+    if (base.isEmpty || base == '..' || base.contains('..')) {
+      throw ArgumentError.value(fileName, 'fileName', '非法文件名');
+    }
+    return base;
+  }
+
   @override
   String get label => '本地目录';
 
   @override
   Future<void> upload(String fileName, List<int> bytes) async {
     await folder.create(recursive: true);
-    final file = File('${folder.path}${Platform.pathSeparator}$fileName');
+    final file = File('${folder.path}${Platform.pathSeparator}${_baseName(fileName)}');
     await file.writeAsBytes(bytes);
   }
 
@@ -93,13 +103,13 @@ class LocalBackupTarget implements BackupTarget {
 
   @override
   Future<List<int>> download(RemoteBackupFile file) async {
-    return File('${folder.path}${Platform.pathSeparator}${file.fileName}')
+    return File('${folder.path}${Platform.pathSeparator}${_baseName(file.fileName)}')
         .readAsBytes();
   }
 
   @override
   Future<void> delete(String fileName) async {
-    final file = File('${folder.path}${Platform.pathSeparator}$fileName');
+    final file = File('${folder.path}${Platform.pathSeparator}${_baseName(fileName)}');
     if (await file.exists()) await file.delete();
   }
 }

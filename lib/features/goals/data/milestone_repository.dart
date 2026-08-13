@@ -13,11 +13,15 @@ class MilestoneRepository {
 
   final AppDatabase _db;
 
-  /// 返回目标下的全部里程碑，按 sortOrder 升序。
+  /// 返回目标下的全部里程碑，按 sortOrder 升序（同 sortOrder 时按 id 稳定，
+  /// L17：避免同序值顺序不稳定）。
   Future<List<Milestone>> byGoal(int goalId) {
     final query = _db.select(_db.milestones)
       ..where((m) => m.goalId.equals(goalId))
-      ..orderBy([(m) => OrderingTerm.asc(m.sortOrder)]);
+      ..orderBy([
+        (m) => OrderingTerm.asc(m.sortOrder),
+        (m) => OrderingTerm.asc(m.id),
+      ]);
     return query.get();
   }
 

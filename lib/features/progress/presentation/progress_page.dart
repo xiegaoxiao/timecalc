@@ -72,8 +72,11 @@ final progressTasksProvider = FutureProvider<({
   List<Task> todo,
   List<Task> completed,
 })>((ref) async {
-  final todo = await ref.watch(allTodoTasksProvider.future);
-  final completed = await ref.watch(completedTasksProvider.future);
+  // 并行发起两个查询（L38）：drift 查询各自在后台执行，避免串行等待。
+  final todoFuture = ref.watch(allTodoTasksProvider.future);
+  final completedFuture = ref.watch(completedTasksProvider.future);
+  final todo = await todoFuture;
+  final completed = await completedFuture;
   return (todo: todo, completed: completed);
 });
 

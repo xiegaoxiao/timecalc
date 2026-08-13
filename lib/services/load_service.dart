@@ -73,7 +73,9 @@ class LoadService {
     final weekdays = availableWeekdays.isEmpty
         ? const {1, 2, 3, 4, 5, 6, 7}
         : availableWeekdays;
-    final totalDays = deadline.difference(start).inDays + 1; // 含首尾
+    // UTC 归一化天数差：本地 difference().inDays 在夏令时切换日可能差一天
+    // （M6/L3，与 statistics_service._dayDiff / countdown_service 同口径）。
+    final totalDays = _dayDiff(deadline, start) + 1; // 含首尾
     var count = (totalDays ~/ 7) * weekdays.length;
     final remainder = totalDays % 7;
     var wd = start.weekday;
@@ -165,5 +167,12 @@ class LoadService {
       }
     }
     return sum;
+  }
+
+  /// 以「日历日」为单位计算 [a] - [b] 的天数（UTC 归一化，防 DST 偏差）。
+  static int _dayDiff(DateTime a, DateTime b) {
+    final aDay = DateTime.utc(a.year, a.month, a.day);
+    final bDay = DateTime.utc(b.year, b.month, b.day);
+    return aDay.difference(bDay).inDays;
   }
 }

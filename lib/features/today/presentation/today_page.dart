@@ -130,6 +130,12 @@ class _TodayPageState extends ConsumerState<TodayPage> {
               g.status != 'archived',
         )
         .toList();
+    // L13：进行中目标 id 集合——「目标剩余工作量」只汇总进行中目标的
+    // 未完成任务，与倒计时（已结束/已归档停止计数）口径一致。
+    final activeGoalIds = {for (final g in activeGoals) g.id};
+    final activeTodoTasks = todoTasks
+        .where((t) => activeGoalIds.contains(t.goalId))
+        .toList();
 
     // 数据变更后的统一刷新（FR-3 验收：今日列表、日历、目标详情在同一
     // 操作周期内同步更新）。公共集合见 invalidateAppData（P3 收敛）。
@@ -164,8 +170,8 @@ class _TodayPageState extends ConsumerState<TodayPage> {
     );
     final addGoals = activeGoals.isNotEmpty ? activeGoals : goals;
     // 应用是否完全没有任务：决定「目标剩余工作量」显示 `-- 分`（没计划）
-    // 还是实际数值（计划已满但全部完成）。
-    final hasAnyTask = todoTasks.isNotEmpty || todayTasks.isNotEmpty;
+    // 还是实际数值（计划已满但全部完成）。只统计进行中目标的任务（L13）。
+    final hasAnyTask = activeTodoTasks.isNotEmpty || todayTasks.isNotEmpty;
     // 今日任务区空态（显示 _TodayEmptyView）：此时标题行右上角按钮隐藏，
     // 由空态大按钮承担唯一「添加任务」入口，避免两个相同入口。
     final todayEmpty = todayTasks.isEmpty && !tasksLoading && tasksError == null;
@@ -205,7 +211,7 @@ class _TodayPageState extends ConsumerState<TodayPage> {
                   available: availableMinutes,
                   over: over,
                   stats: _stats.completionStats(todayTasks),
-                  remainingMinutes: _stats.remainingMinutes(todoTasks),
+                  remainingMinutes: _stats.remainingMinutes(activeTodoTasks),
                   hasAnyTask: hasAnyTask,
                 ),
                 const SizedBox(height: 8),
@@ -232,12 +238,13 @@ class _TodayPageState extends ConsumerState<TodayPage> {
                     if (ok) onChanged();
                   },
                   onDeferPickDate: () async {
-                    final now = DateTime.now();
                     final picked = await showDatePicker(
                       context: context,
                       initialDate: today,
-                      firstDate: DateTime(now.year - 1),
-                      lastDate: DateTime(now.year + 10),
+                      // L40：延期语义——只允许选今天及之后，禁止改期到过去
+                      // （此前 firstDate 为去年，可把任务"延期"回过去再次逾期）。
+                      firstDate: today,
+                      lastDate: DateTime(today.year + 10),
                       helpText: '选择延期日期',
                     );
                     if (picked == null) return;
@@ -739,11 +746,13 @@ class _CountdownCard extends ConsumerWidget {
     );
 
     // 时间进度：已走过时长占（创建日 → 截止日）的比例，夹取 0~1。
+    // UTC 归一化天数差（L15）：本地 difference().inDays 在夏令时切换日
+    // 可能差一天，与 countdown_service 的 _dayDiff 口径一致。
     final deadline = parseLocalDate(goal.deadlineDate);
     final createdDay = DateUtils.dateOnly(goal.createdAt.toLocal());
     final todayDay = DateUtils.dateOnly(today);
-    final totalDays = deadline.difference(createdDay).inDays;
-    final elapsedDays = todayDay.difference(createdDay).inDays;
+    final totalDays = _utcDayDiff(deadline, createdDay);
+    final elapsedDays = _utcDayDiff(todayDay, createdDay);
     final progress = totalDays <= 0
         ? 1.0
         : (elapsedDays / totalDays).clamp(0.0, 1.0).toDouble();
@@ -906,7 +915,12 @@ class _EmptyView extends StatelessWidget {
 /// 任务逾期天数：计划日期距今经过的整天数（计划日期必早于 [today]）。
 int _overdueDays(DateTime today, String plannedDate) {
   final planned = parseLocalDate(plannedDate);
-  return DateUtils.dateOnly(
-    today,
-  ).difference(DateUtils.dateOnly(planned)).inDays;
+  return _utcDayDiff(DateUtils.dateOnly(today), planned);
+}
+
+/// 以「日历日」为单位计算 [a] - [b] 的天数（UTC 归一化，防 DST 偏差，L15）。
+int _utcDayDiff(DateTime a, DateTime b) {
+  final aDay = DateTime.utc(a.year, a.month, a.day);
+  final bDay = DateTime.utc(b.year, b.month, b.day);
+  return aDay.difference(bDay).inDays;
 }

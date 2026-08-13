@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/duration_step_input.dart';
@@ -27,6 +28,17 @@ class _PlanPreferencePageState extends ConsumerState<PlanPreferencePage> {
   @override
   Widget build(BuildContext context) {
     final settingsAsync = ref.watch(settingsProvider);
+    // valueOrNull 保留旧值（M15）：保存后 invalidate(settingsProvider) 使
+    // provider 短暂回到 loading，若用 .when(loading: spinner) 会整页闪烁。
+    final settings = settingsAsync.valueOrNull;
+    final body = settings == null
+        ? (settingsAsync.hasError
+              ? AppErrorView(
+                  error: settingsAsync.error!,
+                  onRetry: () => ref.invalidate(settingsProvider),
+                )
+              : const Center(child: CircularProgressIndicator()))
+        : _buildForm(settings);
     return Scaffold(
       appBar: AppBar(title: const Text('计划偏好')),
       // 保存按钮固定在页面底部（内容短时不留下方大片空白），
@@ -50,89 +62,84 @@ class _PlanPreferencePageState extends ConsumerState<PlanPreferencePage> {
           ),
         ],
       ),
-      body: settingsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => AppErrorView(
-          error: error,
-          onRetry: () => ref.invalidate(settingsProvider),
+      body: body,
+    );
+  }
+
+  Widget _buildForm(Setting settings) {
+    // 首次构建时从设置初始化本地编辑状态。
+    _dailyMinutes ??= settings.dailyAvailableMinutes;
+    _weekdays ??= SettingsRepository.decodeWeekdays(
+      settings.availableWeekdays,
+    );
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text(
+          '用于计算每日负载与「超出」提示。默认为每天 2 小时、每周 7 天。',
+          style: Theme.of(context).textTheme.bodySmall,
         ),
-        data: (settings) {
-          // 首次构建时从设置初始化本地编辑状态。
-          _dailyMinutes ??= settings.dailyAvailableMinutes;
-          _weekdays ??= SettingsRepository.decodeWeekdays(
-            settings.availableWeekdays,
-          );
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Text(
-                '用于计算每日负载与「超出」提示。默认为每天 2 小时、每周 7 天。',
-                style: Theme.of(context).textTheme.bodySmall,
+        const SizedBox(height: 16),
+        DurationStepInput(
+          label: '每日可用时长',
+          value: _dailyMinutes,
+          onChanged: (minutes) {
+            if (minutes != null) {
+              setState(() => _dailyMinutes = minutes);
+            }
+          },
+          hourFieldKey: const Key('hourStepField'),
+          minuteFieldKey: const Key('minuteStepField'),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '每周可用日',
+                style: Theme.of(context).textTheme.bodyMedium,
               ),
-              const SizedBox(height: 16),
-              DurationStepInput(
-                label: '每日可用时长',
-                value: _dailyMinutes,
-                onChanged: (minutes) {
-                  if (minutes != null) {
-                    setState(() => _dailyMinutes = minutes);
-                  }
+            ),
+            // 快捷操作：一次点按全选/全取消，免去逐个切换（如只休
+            // 周五/周六时需要点掉周一至周四）。
+            TextButton(
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+              ),
+              onPressed: () =>
+                  setState(() => _weekdays!.addAll(const [1, 2, 3, 4, 5, 6, 7])),
+              child: const Text('全部选中'),
+            ),
+            TextButton(
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+              ),
+              onPressed: () => setState(_weekdays!.clear),
+              child: const Text('全部取消'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Wrap(
+          spacing: 8,
+          children: [
+            for (final day in const [1, 2, 3, 4, 5, 6, 7])
+              FilterChip(
+                label: Text(_weekdayLabel(day)),
+                selected: _weekdays!.contains(day),
+                onSelected: (selected) {
+                  setState(() {
+                    if (selected) {
+                      _weekdays!.add(day);
+                    } else {
+                      _weekdays!.remove(day);
+                    }
+                  });
                 },
-                hourFieldKey: const Key('hourStepField'),
-                minuteFieldKey: const Key('minuteStepField'),
               ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '每周可用日',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ),
-                  // 快捷操作：一次点按全选/全取消，免去逐个切换（如只休
-                  // 周五/周六时需要点掉周一至周四）。
-                  TextButton(
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    onPressed: () =>
-                        setState(() => _weekdays!.addAll(const [1, 2, 3, 4, 5, 6, 7])),
-                    child: const Text('全部选中'),
-                  ),
-                  TextButton(
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    onPressed: () => setState(_weekdays!.clear),
-                    child: const Text('全部取消'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Wrap(
-                spacing: 8,
-                children: [
-                  for (final day in const [1, 2, 3, 4, 5, 6, 7])
-                    FilterChip(
-                      label: Text(_weekdayLabel(day)),
-                      selected: _weekdays!.contains(day),
-                      onSelected: (selected) {
-                        setState(() {
-                          if (selected) {
-                            _weekdays!.add(day);
-                          } else {
-                            _weekdays!.remove(day);
-                          }
-                        });
-                      },
-                    ),
-                ],
-              ),
-            ],
-          );
-        },
-      ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -146,6 +153,17 @@ class _PlanPreferencePageState extends ConsumerState<PlanPreferencePage> {
       }
       return;
     }
+    // M5：禁止「每周可用日全取消」——空集合在日历侧全部置灰、在负载侧
+    // 又按全可用计算，口径矛盾。至少保留一个可用日。
+    final weekdays = _weekdays;
+    if (weekdays == null || weekdays.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('每周至少选择一个可用日')));
+      }
+      return;
+    }
     setState(() => _saving = true);
     try {
       final ok = await runDbAction(
@@ -153,7 +171,7 @@ class _PlanPreferencePageState extends ConsumerState<PlanPreferencePage> {
         action: () async {
           final repo = ref.read(settingsRepositoryProvider);
           await repo.updateDailyAvailableMinutes(total);
-          await repo.updateAvailableWeekdays(_weekdays!);
+          await repo.updateAvailableWeekdays(weekdays);
         },
       );
       if (!ok) return;

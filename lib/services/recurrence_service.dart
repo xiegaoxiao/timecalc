@@ -1,3 +1,4 @@
+import '../core/utils/date_text.dart';
 import '../features/tasks/domain/recurrence/recurrence_rule.dart';
 import '../features/tasks/domain/recurrence/recurrence_registry.dart';
 
@@ -45,11 +46,8 @@ class RecurrenceService {
   }
 
   static String _plusDays(String yyyyMMdd, int days) {
-    final parts = yyyyMMdd.split('-');
-    final date = DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]))
-        .add(Duration(days: days));
-    final mm = date.month.toString().padLeft(2, '0');
-    final dd = date.day.toString().padLeft(2, '0');
-    return '${date.year}-$mm-$dd';
+    // 纯日历加法（L2，与全库 date_text.addLocalDays 口径一致）：
+    // Duration(days:) 在夏令时切换日偏移一小时。
+    return formatLocalDate(addLocalDays(parseLocalDate(yyyyMMdd), days));
   }
 }

@@ -212,6 +212,11 @@ class TaskRepository {
     if (dateIntervalDays < 0) {
       throw ArgumentError.value(dateIntervalDays, 'dateIntervalDays', '不能为负数');
     }
+    // L43：间隔天数无上界时，addLocalDays 的 DateTime(y, m, d + N) 可能
+    // RangeError；表单步进已限幅，此处防御。
+    if (dateIntervalDays > 36500) {
+      throw ArgumentError.value(dateIntervalDays, 'dateIntervalDays', '过大');
+    }
     final now = DateTime.now().toUtc();
     final start = parseLocalDate(startDate);
     final cleanTitles = titles.map((t) => t.trim()).where((t) => t.isNotEmpty).toList();
@@ -455,22 +460,45 @@ class TaskRepository {
   /// 快照当前计划日期，与旧版逐条「byId + update」语义一致，但把 N 次
   /// SELECT+N 次 UPDATE 收敛为一次 UPDATE。返回实际发生延期（计划日期被改变）
   /// 的任务数。
+  ///
+  /// id 过多时按 [kMaxInListSize] 分批执行（L1：SQLite 绑定变量数上限），
+  /// 各批仍在同一事务内。
+  static const int kMaxInListSize = 500;
+
   Future<int> deferMany(List<int> ids, String newPlannedDate) async {
     if (ids.isEmpty) return 0;
-    final placeholders = List.filled(ids.length, '?').join(',');
-    return _db.customUpdate(
-      'UPDATE tasks SET planned_date = ?, '
-      'original_planned_date = COALESCE(original_planned_date, planned_date), '
-      'updated_at = ? '
-      'WHERE id IN ($placeholders) AND planned_date != ?',
-      variables: [
-        Variable.withString(newPlannedDate),
-        Variable.withDateTime(DateTime.now().toUtc()),
-        ...ids.map(Variable.withInt),
-        Variable.withString(newPlannedDate),
-      ],
-      updates: {_db.tasks},
-    );
+    return _db.transaction(() async {
+      var affected = 0;
+      for (final batch in _chunkIds(ids)) {
+        final placeholders = List.filled(batch.length, '?').join(',');
+        affected += await _db.customUpdate(
+          'UPDATE tasks SET planned_date = ?, '
+          'original_planned_date = COALESCE(original_planned_date, planned_date), '
+          'updated_at = ? '
+          'WHERE id IN ($placeholders) AND planned_date != ?',
+          variables: [
+            Variable.withString(newPlannedDate),
+            Variable.withDateTime(DateTime.now().toUtc()),
+            ...batch.map(Variable.withInt),
+            Variable.withString(newPlannedDate),
+          ],
+          updates: {_db.tasks},
+        );
+      }
+      return affected;
+    });
+  }
+
+  /// 把 id 列表切成 ≤ [kMaxInListSize] 的批（SQLite 绑定变量数上限防护，L1）。
+  static List<List<int>> _chunkIds(List<int> ids) {
+    final chunks = <List<int>>[];
+    for (var i = 0; i < ids.length; i += kMaxInListSize) {
+      final end = (i + kMaxInListSize) < ids.length
+          ? i + kMaxInListSize
+          : ids.length;
+      chunks.add(ids.sublist(i, end));
+    }
+    return chunks;
   }
 
   /// 改期时计算应写入的 originalPlannedDate 字段。
@@ -521,21 +549,24 @@ class TaskRepository {
   Future<void> deleteMany(List<int> ids) {
     if (ids.isEmpty) return Future.value();
     return _db.transaction(() async {
-      final tasks = await (_db.select(_db.tasks)
-            ..where((t) => t.id.isIn(ids)))
-          .get();
-      await (_db.delete(_db.checklistItems)
-            ..where((c) => c.taskId.isIn(ids)))
-          .go();
-      await (_db.delete(_db.tasks)..where((t) => t.id.isIn(ids))).go();
+      // 分批执行（L1：SQLite 绑定变量数上限，id 量大时一次 IN 会超限）。
+      for (final batch in _chunkIds(ids)) {
+        final tasks = await (_db.select(_db.tasks)
+              ..where((t) => t.id.isIn(batch)))
+            .get();
+        await (_db.delete(_db.checklistItems)
+              ..where((c) => c.taskId.isIn(batch)))
+            .go();
+        await (_db.delete(_db.tasks)..where((t) => t.id.isIn(batch))).go();
 
-      final datesByTemplate = <int, List<String>>{};
-      for (final task in tasks) {
-        final templateId = task.recurrenceTemplateId;
-        if (templateId == null) continue;
-        datesByTemplate.putIfAbsent(templateId, () => []).add(task.plannedDate);
+        final datesByTemplate = <int, List<String>>{};
+        for (final task in tasks) {
+          final templateId = task.recurrenceTemplateId;
+          if (templateId == null) continue;
+          datesByTemplate.putIfAbsent(templateId, () => []).add(task.plannedDate);
+        }
+        await _recordDeletedInstances(datesByTemplate);
       }
-      await _recordDeletedInstances(datesByTemplate);
     });
   }
 

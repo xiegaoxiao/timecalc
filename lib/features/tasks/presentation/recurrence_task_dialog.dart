@@ -216,8 +216,10 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
 
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    // 间隔序列输入从文本框回写。
-    if (_offsetsController.text.isNotEmpty) {
+    // 间隔序列输入从文本框回写（onChanged 已实时回写，此处兜底同步）。
+    // 仅 sequence 规则回写：切换到其他规则类型后残留的文本框内容不再
+    // 被塞进 weekly/interval 的规则 JSON（L44）。
+    if (_ruleType == 'sequence' && _offsetsController.text.isNotEmpty) {
       _ruleJson['offsets'] = _offsetsController.text
           .split(',')
           .map((s) => int.tryParse(s.trim()))
@@ -485,7 +487,16 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
                 border: const OutlineInputBorder(),
               ),
               keyboardType: TextInputType.number,
-              onChanged: (_) => setState(() {}),
+              onChanged: (_) => setState(() {
+                // 实时回写（M8）：预览与内联校验直接反映用户输入的间隔序列，
+                // 避免「所见非所存」——此前仅保存时回写，预览停留在默认值
+                // [1,2,4,7,15,30] 误导用户。
+                _ruleJson['offsets'] = _offsetsController.text
+                    .split(',')
+                    .map((s) => int.tryParse(s.trim()))
+                    .whereType<int>()
+                    .toList();
+              }),
               validator: (value) {
                 final text = (value ?? '').trim();
                 if (text.isEmpty) return '请输入至少一个间隔天数';

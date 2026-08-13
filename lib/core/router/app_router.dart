@@ -1,10 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/backup/presentation/archived_tasks_page.dart';
 import '../../features/backup/presentation/backup_page.dart';
-import '../../features/sync/presentation/sync_page.dart';
 import '../../features/goals/presentation/goal_detail_page.dart';
 import '../../features/goals/presentation/goal_list_page.dart';
 import '../../features/plan/presentation/plan_page.dart';
@@ -15,10 +16,12 @@ import '../../features/settings/presentation/plan_preference_page.dart';
 import '../../features/settings/presentation/reset_data_page.dart';
 import '../../features/settings/presentation/settings_page.dart';
 import '../../features/settings/presentation/shortcuts_page.dart';
+import '../../features/sync/presentation/sync_page.dart';
 import '../../features/tasks/data/recurrence_repository_provider.dart';
 import '../../features/tasks/data/task_repository_provider.dart';
 import '../../features/tasks/presentation/subject_task_page.dart';
 import '../../features/today/presentation/today_page.dart';
+import '../providers/clock_provider.dart';
 
 /// 主导航目的地（v1.12：今天 / 计划 / 目标 / 进度 / 设置）。
 enum AppDestination {
@@ -184,29 +187,63 @@ GoRouterRedirect _redirectOnInvalidInt(List<String> keys) {
 /// 断点 [kDesktopNavigationBreakpoint]：>= 该宽度走侧栏，否则底栏。
 /// 借鉴 proxypin / flutter-folio 的自适应布局思路——同一个
 /// [StatefulShellRoute.indexedStack] 承载页面状态，切换导航形态不丢页。
-///
-/// 首帧触发重复任务滚动生成（FR-4.3：应用打开即补齐未来 30 天窗口内
-/// 缺失实例）；无 active 模板时为空操作。
 const double kDesktopNavigationBreakpoint = 720;
 
-class AppShell extends ConsumerWidget {
+class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // watch 触发一次滚动生成；结果不用于渲染。
-    ref.watch(recurrenceBootstrapProvider);
-    // 启动预热进度页的重数据源（26 周完成记录扫描）：
-    // 首次切到「进度」页时数据已在后台 isolate 就绪，页面无需先等查询
-    // 再整页构建（消除首次切换的 spinner 等待与二次构建）。
-    ref.watch(completedTasksProvider);
+  ConsumerState<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends ConsumerState<AppShell> {
+  /// 跨午夜自动刷新定时器（M4）。
+  Timer? _midnightTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _armMidnightTimer();
+  }
+
+  @override
+  void dispose() {
+    _midnightTimer?.cancel();
+    super.dispose();
+  }
+
+  /// 桌面应用托盘常驻可能跨天运行：无任何午夜定时器时，「今天」页日期/
+  /// 倒计时/逾期状态会停留在昨天（M4）。定时到下个本地午夜 +1s，届时
+  /// 失效 [clockProvider]（各页 watch 后以新日期重建），并重新武装。
+  void _armMidnightTimer() {
+    _midnightTimer?.cancel();
+    final now = DateTime.now();
+    final nextMidnight = DateTime(now.year, now.month, now.day + 1)
+        .add(const Duration(seconds: 1));
+    _midnightTimer = Timer(nextMidnight.difference(now), () {
+      if (!mounted) return;
+      ref.invalidate(clockProvider);
+      _armMidnightTimer();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 首帧触发重复任务滚动生成（FR-4.3：应用打开即补齐未来 30 天窗口内
+    // 缺失实例）；用 ref.listen 订阅而不 watch：生成完成/后续失效不再导致
+    // 整个根壳重建（M3）。结果不用于渲染。
+    ref.listen(recurrenceBootstrapProvider, (_, _) {});
+    // 启动预热进度页的重数据源（26 周完成记录扫描）：同样用 listen 订阅，
+    // 使「每次任务变更 → invalidate completedTasksProvider」不再整壳重建
+    // （M3；此前 watch 会让每次勾选任务都重建根壳并重查 26 周）。
+    ref.listen(completedTasksProvider, (_, _) {});
 
     void onDestinationSelected(int index) {
-      navigationShell.goBranch(
+      widget.navigationShell.goBranch(
         index,
-        initialLocation: index == navigationShell.currentIndex,
+        initialLocation: index == widget.navigationShell.currentIndex,
       );
     }
 
@@ -214,14 +251,14 @@ class AppShell extends ConsumerWidget {
       builder: (context, constraints) {
         if (constraints.maxWidth >= kDesktopNavigationBreakpoint) {
           return _DesktopShell(
-            navigationShell: navigationShell,
+            navigationShell: widget.navigationShell,
             onDestinationSelected: onDestinationSelected,
           );
         }
         return Scaffold(
-          body: navigationShell,
+          body: widget.navigationShell,
           bottomNavigationBar: NavigationBar(
-            selectedIndex: navigationShell.currentIndex,
+            selectedIndex: widget.navigationShell.currentIndex,
             onDestinationSelected: onDestinationSelected,
             destinations: [
               for (final destination in AppDestination.values)

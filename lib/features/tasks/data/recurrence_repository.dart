@@ -189,6 +189,13 @@ class RecurrenceRepository {
           ruleType: template.ruleType,
           ruleJson: template.ruleJson,
         );
+        // 生成前校验规则（M16）：registry 对未知/非法类型静默返回空列表，
+        // 若不校验就推进 generatedThroughDate，脏数据模板将**永久跳过生成**
+        // （未来实例静默丢失）。非法规则跳过本模板、不推进窗口。
+        final ruleError = rule.validateWith(_registry);
+        if (ruleError != null) {
+          continue;
+        }
         final target = _minDate(_plusDays(todayStr, 30), template.endDate);
         final existingDates = existingByTemplate[template.id] ?? <String>{};
         // 用户删除过的实例日期（墓碑）：滚动生成时跳过，防止被删实例复活。

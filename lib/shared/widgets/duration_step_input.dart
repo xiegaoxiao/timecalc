@@ -155,10 +155,10 @@ class _DurationStepInputState extends State<DurationStepInput> {
                   min: 0,
                   max: 24,
                   enabled: !_empty,
-                  onChanged: (v) {
-                    setState(() => _hours = v);
-                    _notify();
-                  },
+                  // 经 _applyTotal 统一钳制总时长（M12）：直接赋值会绕过
+                  // maxMinutes 上限——「小时 24 + 分钟 30」得 1470 分钟，
+                  // 突破预估时长 1~1440 约束（DB 无 CHECK，全靠 UI 层）。
+                  onChanged: (v) => _applyTotal(v * 60 + _minutes),
                   // 小时步进 ±1 小时。
                   onStep: (d) => _stepBy(d * 60),
                   onStartAutoStep: (d) => _startAutoStep(d * 60),

@@ -110,7 +110,9 @@ class ChecklistItemRepository {
       if (target < 0 || target >= items.length) return;
       final current = items[index];
       final neighbor = items[target];
-      // 把两者 sortOrder 对调（相邻项写中间值再交换，避免唯一性约束问题）。
+      // 直接交换两者的 sortOrder（L42：注释曾误写「写中间值再交换」；
+      // sortOrder 无唯一约束，直接交换即可，两次 UPDATE 在单事务内保证
+      // 排序一致）。
       await (_db.update(_db.checklistItems)
             ..where((c) => c.id.equals(current.id)))
           .write(

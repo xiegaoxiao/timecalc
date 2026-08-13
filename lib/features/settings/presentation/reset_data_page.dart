@@ -185,7 +185,9 @@ class _ResetDataPageState extends ConsumerState<ResetDataPage> {
           duration: const Duration(seconds: 8),
         ),
       );
-    } on Exception catch (e) {
+    } catch (e) {
+      // 兜底捕获 Exception 与 Error（L36：与 restoreBackup 同款，
+      // 避免 TypeError 等 Error 无提示静默失败）。
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(content: Text('重置失败：$e')));
     } finally {

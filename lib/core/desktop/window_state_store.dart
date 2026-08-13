@@ -128,12 +128,17 @@ class WindowStateStore {
   }
 
   /// 写入窗口状态（覆盖式，幂等）。
+  ///
+  /// 原子写（L21）：先写临时文件再 rename 覆盖，避免中途崩溃留下截断的
+  /// JSON（读侧虽已容错自愈，但截断写会丢失上次完整状态）。
   Future<void> write(WindowState state) async {
     final dir = await _directory();
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
     final file = await _file();
-    await file.writeAsString(jsonEncode(state.toJson()));
+    final tmp = File('${file.path}.tmp');
+    await tmp.writeAsString(jsonEncode(state.toJson()));
+    await tmp.rename(file.path);
   }
 }

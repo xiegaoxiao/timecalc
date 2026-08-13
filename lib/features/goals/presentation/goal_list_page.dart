@@ -281,7 +281,8 @@ class _GoalCard extends ConsumerWidget {
       CountdownPhase.terminated => scheme.outline,
     };
     // 目标专属强调色：进度条/圆点/百分比共用（同目标跨卡一致）。
-    final accent = _accentColors[goal.id % _accentColors.length];
+    // abs 防御（L4）：负 id 理论上不可达（autoIncrement），取模负值越界。
+    final accent = _accentColors[goal.id.abs() % _accentColors.length];
 
     final done = completion?.done ?? 0;
     final total = completion?.total ?? 0;

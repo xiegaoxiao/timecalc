@@ -18,11 +18,14 @@ import 'features/backup/data/auto_backup_service.dart';
 import 'features/backup/data/backup_service.dart';
 import 'features/backup/data/credential_store.dart';
 import 'features/goals/data/goal_repository_provider.dart';
+import 'features/goals/data/milestone_repository_provider.dart';
+import 'features/goals/data/subject_repository_provider.dart';
 import 'features/settings/data/settings_repository.dart';
 import 'features/settings/data/settings_repository_provider.dart';
 import 'features/sync/data/database_change_watcher.dart';
 import 'features/sync/data/webdav_sync_service.dart';
 import 'features/sync/data/webdav_sync_service_provider.dart';
+import 'features/tasks/data/recurrence_repository_provider.dart';
 import 'features/tasks/data/task_repository_provider.dart';
 
 /// WebDAV 整库文件同步运行中周期拉取间隔（M9）。
@@ -51,8 +54,10 @@ Future<void> main() async {
   } catch (error) {
     // 数据库无法打开（PRD §8）：运行启动错误屏，提示恢复或导出诊断，
     // 不裸崩溃。正常桌面能力（托盘/窗口恢复）在无库时不可用，忽略。
+    // 共享 diagnostics 实例随错误屏传入：导出诊断包含刚捕获的启动错误
+    // （M2，此前新建空实例导致导出文件无错误日志）。
     diagnostics.capture(error);
-    runApp(StartupErrorScope(error: error));
+    runApp(StartupErrorScope(error: error, diagnostics: diagnostics));
     return;
   }
   diagnostics.attachDatabase(db);
@@ -71,6 +76,7 @@ Future<void> main() async {
 
   final controller = await _createDesktopController(
     db,
+    diagnostics: diagnostics,
     onQuit: () => _pushSyncOnQuit(syncService),
   );
 
@@ -98,6 +104,9 @@ Future<void> main() async {
   // - 启动拉取一次（runApp 后，ScaffoldMessenger key 已挂载可提示）；
   // - 运行中每 5 分钟复查远端（补足另一设备运行期间的变更）；
   // - 业务表变更防抖 3s 后推送（settings 表不监听，防推送写状态回环）。
+  // - markLocalDirty：启动即标记本地可能有未推送变更（覆盖应用崩溃于
+  //   上次推送前的窗口），使首次同步无条件推送一次本地快照（S3）。
+  syncService.markLocalDirty();
   unawaited(syncService.syncOnce());
   Timer.periodic(kSyncPeriodicInterval, (_) => unawaited(syncService.syncOnce()));
   DatabaseChangeWatcher(
@@ -107,19 +116,29 @@ Future<void> main() async {
 }
 
 /// 全局 ProviderContainer：同步拉取恢复后全量刷新各页缓存（恢复罕见，
-/// 全量刷新可接受）。用与 [invalidateAppData] 相同的公共集合 + 同步相关。
+/// 全量刷新可接受）。集合与 [invalidateAllAppData]（app_refresh.dart）对齐，
+/// 覆盖全部页面/入口的缓存族（M1：此前遗漏详情/科目/里程碑/重复模板/
+/// 归档 8 个族，拉取恢复后这些页面会残留陈旧数据）。
 ProviderContainer? _container;
 
-/// 对容器级 provider 集合做整族失效（WidgetRef 版本的 invalidateAppData
+/// 对容器级 provider 集合做整族失效（WidgetRef 版本的 invalidateAllAppData
 /// 见 app_refresh.dart；这里直接作用于容器）。
 void _invalidateDataProviders(ProviderContainer container) {
   container.invalidate(goalListProvider);
+  container.invalidate(goalDetailProvider);
+  container.invalidate(subjectListProvider);
   container.invalidate(taskListProvider);
   container.invalidate(tasksByDateProvider);
   container.invalidate(tasksByMonthProvider);
   container.invalidate(unfinishedBeforeProvider);
   container.invalidate(completedTasksProvider);
   container.invalidate(allTodoTasksProvider);
+  container.invalidate(archivedCountProvider);
+  container.invalidate(archivedTaskListProvider);
+  container.invalidate(allArchivedTasksProvider);
+  container.invalidate(recurrenceTemplatesProvider);
+  container.invalidate(recurrenceTemplateProvider);
+  container.invalidate(milestoneListProvider);
   container.invalidate(settingsProvider);
 }
 
@@ -165,6 +184,7 @@ void _startAutoBackupScheduler(AppDatabase db) {
 /// （M9 退出推送；minimizeToTray 分支不退出，不触发）。
 Future<DesktopController?> _createDesktopController(
   AppDatabase db, {
+  required DiagnosticsService diagnostics,
   Future<void> Function()? onQuit,
 }) async {
   try {
@@ -175,7 +195,10 @@ Future<DesktopController?> _createDesktopController(
     );
     await controller.initialize();
     return controller;
-  } catch (_) {
+  } catch (error) {
+    // 桌面能力初始化失败（平台不可用等）：静默降级但留诊断记录（L19），
+    // 便于排查托盘/窗口恢复异常。
+    diagnostics.capture(error);
     return null;
   }
 }

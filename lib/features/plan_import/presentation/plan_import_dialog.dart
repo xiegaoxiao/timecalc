@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -10,6 +11,17 @@ import '../../../services/duration_format.dart';
 import '../data/plan_import_repository_provider.dart';
 import '../data/plan_json_picker.dart';
 import '../domain/plan_import_parser.dart';
+
+/// 大 JSON（≥256KB）解析的后台 isolate 入口（M9）。
+///
+/// `compute` 要求入口为顶层/静态函数；[PlanImportParser] 是纯 Dart 无依赖，
+/// 可直接在 isolate 内执行。结果对象均为纯数据类，可在 isolate 组内传递。
+PlanImportResult _parsePlanInIsolate((String, String) args) {
+  return const PlanImportParser().parse(
+    args.$1,
+    today: DateTime.parse(args.$2),
+  );
+}
 
 /// 完整计划导入对话框：粘贴「计划书」式 JSON（plan_name/stages/
 /// weekly_plan/subjects/daily_breakdown/daily_must_do/unclassified），
@@ -34,12 +46,19 @@ class PlanImportDialog extends ConsumerStatefulWidget {
 
 class _PlanImportDialogState extends ConsumerState<PlanImportDialog> {
   static const _parser = PlanImportParser();
+
+  /// 大 JSON 解析阈值（字节）：超过后丢到后台 isolate，避免阻塞 UI（M9）。
+  static const int _isolateThreshold = 256 * 1024;
+
   late final TextEditingController _jsonController;
   PlanImportResult? _result;
   bool _importing = false;
 
   /// 自动校验防抖计时器：内容连续变化时只在校验最后一次。
   Timer? _debounce;
+
+  /// 校验序号：丢弃「防抖期间输入又变化」产生的过期校验结果。
+  int _validateSeq = 0;
 
   @override
   void initState() {
@@ -132,15 +151,28 @@ class _PlanImportDialogState extends ConsumerState<PlanImportDialog> {
     _scheduleAutoValidate();
   }
 
-  void _validate() {
+  /// 解析计划 JSON：小文件同步（即时反馈），大文件后台 isolate（M9，
+  /// 避免数百 KB 层级 JSON 在 UI 线程阻塞）。
+  Future<PlanImportResult> _parse(String source) async {
     final today = ref.read(clockProvider)();
-    setState(() => _result = _parser.parse(_jsonController.text, today: today));
+    if (source.length >= _isolateThreshold) {
+      final todayStr = DateFormat('yyyy-MM-dd').format(today);
+      return compute(_parsePlanInIsolate, (source, todayStr));
+    }
+    return _parser.parse(source, today: today);
+  }
+
+  Future<void> _validate() async {
+    final seq = ++_validateSeq;
+    final result = await _parse(_jsonController.text);
+    if (!mounted || seq != _validateSeq) return; // 过期结果丢弃
+    setState(() => _result = result);
   }
 
   Future<void> _import() async {
     // 点击导入时兜底校验：校验失败展示错误，不写入任何数据。
-    final today = ref.read(clockProvider)();
-    final result = _parser.parse(_jsonController.text, today: today);
+    final result = await _parse(_jsonController.text);
+    if (!mounted) return;
     setState(() => _result = result);
     final plan = result.plan;
     if (plan == null) return;
@@ -172,7 +204,8 @@ class _PlanImportDialogState extends ConsumerState<PlanImportDialog> {
         ),
       );
       Navigator.of(context).pop(stats.goalId);
-    } on Exception catch (e) {
+    } catch (e) {
+      // 兜底捕获 Exception 与 Error（TypeError 等），统一展示可读提示。
       if (!mounted) return;
       await showDialog<void>(
         context: context,
@@ -309,8 +342,18 @@ class _PlanPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final unclassified = plan.tasks.where((t) => t.subjectName == null).toList();
-    final subjectTasks = plan.tasks.where((t) => t.subjectName != null).toList();
+    // 一次遍历分组（L35）：替代逐科目对任务列表做 O(科目×任务) 线性扫描，
+    // 大计划（多科目多任务）预览不再重复扫描。
+    final unclassified = <ImportedPlanTask>[];
+    final bySubject = <String, List<ImportedPlanTask>>{};
+    for (final t in plan.tasks) {
+      final name = t.subjectName;
+      if (name == null) {
+        unclassified.add(t);
+      } else {
+        bySubject.putIfAbsent(name, () => []).add(t);
+      }
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -331,11 +374,11 @@ class _PlanPreview extends StatelessWidget {
         for (final name in plan.subjectOrder) ...[
           _PreviewRow(
             icon: Icons.category_outlined,
-            text: '科目「$name」${subjectTasks.where((t) => t.subjectName == name).length} 个任务',
+            text: '科目「$name」${(bySubject[name] ?? const <ImportedPlanTask>[]).length} 个任务',
           ),
-          for (final t in subjectTasks.where((t) => t.subjectName == name).take(3))
+          for (final t in (bySubject[name] ?? const <ImportedPlanTask>[]).take(3))
             _PreviewRow(text: '• ${_taskText(t)}', indent: true),
-          if (subjectTasks.where((t) => t.subjectName == name).length > 3)
+          if ((bySubject[name] ?? const <ImportedPlanTask>[]).length > 3)
             _PreviewRow(text: '• …等任务', indent: true),
         ],
         if (unclassified.isNotEmpty) ...[

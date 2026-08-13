@@ -246,10 +246,12 @@ class StatisticsService {
     int windowDays = 30,
   }) {
     final todayDay = _localDay(today);
-    final start = _localDay(todayDay.subtract(Duration(days: windowDays - 1)));
+    // 纯日历加法（date_text）：Duration(days:) 在夏令时切换日偏移一小时，
+    // 跨天减法可能落到相邻日期（M6，与 ganttWeekStarts/recentWeekStarts 同口径）。
+    final start = addLocalDays(todayDay, -(windowDays - 1));
     final days = List.generate(
       windowDays,
-      (i) => start.add(Duration(days: i)),
+      (i) => addLocalDays(start, i),
     );
 
     // 已完成任务按「完成日期」桶化（只取窗口起或之后完成的；窗口前完成
@@ -282,7 +284,7 @@ class StatisticsService {
 
     // 理想参考线：从 idealStart 线性递减到 endDate 归 0。
     final endDay = _localDay(endDate);
-    final idealTotalDays = endDay.difference(start).inDays;
+    final idealTotalDays = _dayDiff(endDay, start);
     final double idealPerDay = idealTotalDays > 0 ? idealStart / idealTotalDays : 0.0;
 
     final points = <BurndownPoint>[];
@@ -292,7 +294,7 @@ class StatisticsService {
       consumed += completedMinutesByDay[key] ?? 0;
       final int remaining = baseRemaining - consumed;
 
-      final elapsed = day.difference(start).inDays;
+      final elapsed = _dayDiff(day, start);
       final int ideal = idealPerDay > 0
           ? (idealStart - idealPerDay * elapsed).clamp(0, idealStart).toInt()
           : 0;
@@ -318,7 +320,8 @@ class StatisticsService {
     int windowDays = 30,
   }) {
     final todayDay = _localDay(today);
-    final start = _localDay(todayDay.subtract(Duration(days: windowDays - 1)));
+    // 纯日历减法（M6，同 burndownSeries 口径）。
+    final start = addLocalDays(todayDay, -(windowDays - 1));
     var done = 0;
     for (final task in completedTasks) {
       final minutes = task.estimatedMinutes;
@@ -333,6 +336,13 @@ class StatisticsService {
 
   static DateTime _localDay(DateTime date) {
     return DateTime(date.year, date.month, date.day);
+  }
+
+  /// 以「日历日」为单位计算 [a] - [b] 的天数（UTC 归一化，防 DST 偏差）。
+  static int _dayDiff(DateTime a, DateTime b) {
+    final aDay = DateTime.utc(a.year, a.month, a.day);
+    final bDay = DateTime.utc(b.year, b.month, b.day);
+    return aDay.difference(bDay).inDays;
   }
 
   static String _formatDate(DateTime local) {

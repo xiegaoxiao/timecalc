@@ -196,7 +196,13 @@ class _SubjectCard extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
-        leading: CircleAvatar(child: Text(subject.name.characters.first)),
+        leading: CircleAvatar(
+          child: Text(
+            // L11：空科目名（计划导入/备份恢复可引入）会令 characters.first
+            // 抛 StateError，兜底显示占位符。
+            subject.name.isEmpty ? '?' : subject.name.characters.first,
+          ),
+        ),
         title: Text(subject.name),
         subtitle: Text(
           taskCount == 0 ? '还没有任务，点击进入添加' : '$doneCount/$taskCount 个任务完成',

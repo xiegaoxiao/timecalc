@@ -75,7 +75,8 @@ class DbErrorDialog extends ConsumerWidget {
       messenger.showSnackBar(
         SnackBar(content: Text('诊断信息已导出：${target.path}')),
       );
-    } on Exception catch (e) {
+    } catch (e) {
+      // 兜底捕获 Exception 与 Error（L26：Error 场景也要给用户反馈）。
       messenger.showSnackBar(SnackBar(content: Text('导出诊断失败：$e')));
     }
   }

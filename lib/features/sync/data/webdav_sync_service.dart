@@ -111,6 +111,27 @@ class WebDavSyncService {
   /// 覆盖本地成功或推送成功（本地数据已与远端对齐）后清除。
   bool _hasLocalChanges = false;
 
+  /// 本地变更计数：`pushIfNeeded` 每置位一次 +1。同步结束后仅当计数未变
+  /// 才清除脏标记，避免「同步进行中又来了新变更」被并发误清（L30）。
+  int _changeCount = 0;
+
+  /// 拉取恢复期间的变更监听抑制窗口（M9/S2 防回环）。
+  ///
+  /// 拉取恢复会向业务表写入大量行，触发 DatabaseChangeWatcher 的 3s 防抖
+  /// 推送；若不抑制，恢复结束后的那次推送会把「刚拉取到的数据」原样推回
+  /// 远端（seq +1），另一台设备再拉再推，形成双设备乒乓。恢复开始时把
+  /// 抑制窗口设到「恢复耗时 + 防抖 + 余量」之后，窗口内的 watcher 触发
+  /// 一律跳过（也不置脏标记）。窗口内的真实用户编辑同样被跳过——概率极低
+  /// 且下次编辑/启动仍会推送，可接受。
+  DateTime? _suppressWatchUntil;
+
+  /// 启动时标记本地有未推送的变更（覆盖「应用崩溃于上次推送前」的窗口）：
+  /// 使启动后的首次同步无条件推送一次本地快照。
+  void markLocalDirty() {
+    _hasLocalChanges = true;
+    _changeCount++;
+  }
+
   /// 执行一次完整同步：先拉取（远端较新时覆盖本地），再推送本地快照。
   ///
   /// 未启用或 WebDAV 账号缺失时跳过（与自动备份同款「跳过 ≠ 失败」语义）。
@@ -136,8 +157,24 @@ class WebDavSyncService {
   ///
   /// 与 [syncOnce] 的唯一区别：先置「本地有未推送变更」标记——本入口只由
   /// 本地数据写入触发，用于拉取覆盖本地时向用户提示分叉风险。
+  ///
+  /// 拉取恢复引发的业务表写入也会触发本入口；恢复期间（[_suppressWatchUntil]
+  /// 窗口内）跳过且**不置脏标记**，防止「拉取 → 回推 → seq+1 → 另一设备
+  /// 再拉再推」的双设备乒乓（M9/S2）。
   Future<SyncResult> pushIfNeeded() {
+    final until = _suppressWatchUntil;
+    if (until != null && DateTime.now().isBefore(until)) {
+      return Future.value(
+        const SyncResult(
+          skipped: true,
+          pulled: false,
+          pushed: false,
+          skipReason: '同步恢复中，变更推送已抑制',
+        ),
+      );
+    }
     _hasLocalChanges = true;
+    _changeCount++;
     return syncOnce();
   }
 
@@ -183,9 +220,22 @@ class WebDavSyncService {
       );
     }
 
-    final remoteMeta = await _readRemoteMeta(client);
+    final SyncMeta? remoteMeta;
+    try {
+      remoteMeta = await _readRemoteMeta(client);
+    } on WebDavException catch (e) {
+      // meta 存在但损坏/格式不兼容：转为可读失败结果，不抛未处理异常
+      // （M13，也避免被上层当作「无 meta」盲推覆盖远端）。
+      return SyncResult(
+        skipped: false,
+        pulled: false,
+        pushed: false,
+        error: e.message,
+      );
+    }
     if (remoteMeta == null) {
-      // 远端没有 meta（首次使用或仅快照残留）：seq 视为 0。
+      // 远端没有 meta（首次启用或远端被清空）：始终推送一次本地快照建立
+      // 基线（同时覆盖「应用崩溃于上次推送前」的未推送变更）。
       return await _push(client, localSeq: settings.lastPushedSeq, remoteSeq: 0);
     }
 
@@ -201,46 +251,60 @@ class WebDavSyncService {
     }
 
     final localSeq = settings.lastPushedSeq ?? 0;
-    SyncResult pullResult = const SyncResult(
-      skipped: false,
-      pulled: false,
-      pushed: false,
-    );
+    // 快照同步开始时的变更计数：结束清脏标记时校验「期间没有新变更」。
+    final changeCountAtStart = _changeCount;
     // 分叉检测：拉取覆盖前本地已有未推送变更（离线编辑 + 远端更新）。
-    // 记录在结果里提示用户（安全副本仍可找回被覆盖的本地改动）。
     final conflictDetected = _hasLocalChanges;
+
     if (remoteMeta.seq > localSeq) {
-      pullResult = await _pull(client, remoteMeta);
+      // 远端较新：拉取覆盖本地（覆盖前自动安全副本）。
+      final pullResult = await _pull(client, remoteMeta);
       if (pullResult.hasError) return pullResult;
-      // 拉取成功：本地数据已与远端对齐，清除「本地有未推送变更」标记。
-      _hasLocalChanges = false;
+      // 拉取成功：本地已与远端对齐。**不再回推**——否则「拉取→回推→
+      // seq+1→另一设备再拉再推」形成双设备乒乓（S2），seq 无界增长。
+      if (_changeCount == changeCountAtStart) {
+        _hasLocalChanges = false;
+      }
+      return SyncResult(
+        skipped: false,
+        pulled: true,
+        pushed: false,
+        safetyCopyPath: pullResult.safetyCopyPath,
+        localChangesOverwritten: conflictDetected,
+      );
     }
 
-    // 拉取成功（或远端不快）后，推送本地最新快照；seq 单调递增。
-    // 合并结果：拉取可能发生（pulled）、推送始终执行（pushed）。
+    // 远端不快于本地：仅当「有待推送的本地变更」或「本地 seq 领先远端
+    // （远端被清空/回退）」时才推送；空闲时跳过整库导出上传（S3）。
+    final shouldPush = _hasLocalChanges || localSeq > remoteMeta.seq;
+    if (!shouldPush) {
+      return const SyncResult(
+        skipped: false,
+        pulled: false,
+        pushed: false,
+      );
+    }
     final pushResult = await _push(
       client,
       localSeq: localSeq,
       remoteSeq: remoteMeta.seq,
     );
     if (pushResult.hasError) {
-      // 推送失败不中断，但结果不带「本地变更被覆盖」提示（未发生覆盖）。
       return SyncResult(
         skipped: false,
-        pulled: pullResult.pulled,
+        pulled: false,
         pushed: false,
         error: pushResult.error,
-        safetyCopyPath: pullResult.safetyCopyPath,
       );
     }
-    // 推送成功：本地最新数据已上送远端，清除未推送变更标记。
-    _hasLocalChanges = false;
-    return SyncResult(
+    // 推送成功：本地最新数据已上送远端；期间无新变更才清除脏标记。
+    if (_changeCount == changeCountAtStart) {
+      _hasLocalChanges = false;
+    }
+    return const SyncResult(
       skipped: false,
-      pulled: pullResult.pulled,
-      pushed: pushResult.pushed,
-      safetyCopyPath: pullResult.safetyCopyPath,
-      localChangesOverwritten: conflictDetected && pullResult.pulled,
+      pulled: false,
+      pushed: true,
     );
   }
 
@@ -253,8 +317,15 @@ class WebDavSyncService {
         username.trim().isEmpty) {
       return null;
     }
-    final password = await credentialStore.read(url);
-    if (password == null || password.isEmpty) return null;
+    final String password;
+    try {
+      final saved = await credentialStore.read(url);
+      if (saved == null || saved.isEmpty) return null;
+      password = saved;
+    } on Exception catch (e) {
+      // L27：secure_storage 平台异常不冒泡为未处理异步错误，转可读文案。
+      throw WebDavException('读取保存的密码失败：$e');
+    }
     return WebDavClient(
       client: _httpClient,
       baseUrl: url,
@@ -264,11 +335,33 @@ class WebDavSyncService {
   }
 
   /// 读取远端 meta（404 = 不存在 → null）。
+  ///
+  /// meta **存在但解析失败/格式不兼容**时抛异常（而非返回 null）：
+  /// 返回 null 会被上层当作「远端无 meta」而盲推覆盖本地快照——若远端是
+  /// 更新格式或新版本应用写入的数据，覆盖会绕过 schema 版本守卫（M13）。
   Future<SyncMeta?> _readRemoteMeta(WebDavClient client) async {
     try {
       final bytes = await client.download('$syncFolder/$syncMetaFile');
-      final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
-      return SyncMeta.fromJson(json);
+      final Object? decoded;
+      try {
+        decoded = jsonDecode(utf8.decode(bytes));
+      } on FormatException {
+        throw const WebDavException(
+          '远端同步元数据损坏（JSON 解析失败），已停止同步以避免覆盖远端数据',
+        );
+      }
+      if (decoded is! Map<String, dynamic>) {
+        throw const WebDavException(
+          '远端同步元数据格式不正确，已停止同步以避免覆盖远端数据',
+        );
+      }
+      final meta = SyncMeta.fromJson(decoded);
+      if (meta == null) {
+        throw const WebDavException(
+          '远端同步元数据版本不兼容，已停止同步以避免覆盖远端数据',
+        );
+      }
+      return meta;
     } on WebDavException catch (e) {
       if (e.statusCode == 404) return null;
       rethrow;
@@ -279,7 +372,7 @@ class WebDavSyncService {
   ///
   /// 覆盖前自动安全副本（FR-9.3）；覆盖恢复保留运行时配置（含同步开关与
   /// seq），拉取不会关闭同步。拉取成功把「已吸收远端 seq」写回，避免下次
-  /// 周期又重复拉取（本次推送仍会把本地最新数据推上去、seq 继续递增）。
+  /// 周期又重复拉取。
   Future<SyncResult> _pull(WebDavClient client, SyncMeta meta) async {
     if (_restoring) {
       return const SyncResult(
@@ -289,6 +382,11 @@ class WebDavSyncService {
         error: '同步互斥：正在恢复数据',
       );
     }
+    _restoring = true;
+    // 恢复写入会触发 DatabaseChangeWatcher（3s 防抖）：抑制窗口覆盖「恢复
+    // 耗时 + 防抖 + 余量」，窗口内的 watcher 触发不置脏、不推送（S2 防回环）。
+    _suppressWatchUntil =
+        DateTime.now().add(const Duration(seconds: 15));
     final tempDir = await Directory.systemTemp.createTemp('timecalc-sync');
     final tempFile = File(
       '${tempDir.path}${Platform.pathSeparator}$syncSnapshotFile',
@@ -297,7 +395,6 @@ class WebDavSyncService {
       final bytes = await client.download('$syncFolder/$syncSnapshotFile');
       await tempFile.writeAsBytes(bytes);
 
-      _restoring = true;
       final safety = await backupService.restoreBackup(
         tempFile,
         mode: RestoreMode.overwrite,

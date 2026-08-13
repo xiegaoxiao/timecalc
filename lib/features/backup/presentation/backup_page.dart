@@ -416,9 +416,19 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     if (picked == null || !context.mounted) return;
 
     // 下载到临时文件后复用统一的恢复确认流程。
+    // 文件名净化（M14）：恶意 WebDAV href 可携带路径分隔符/`..`（如
+    // `..\..\evil`），直接拼接会写出临时目录之外。只取末段并拒绝 `..`。
+    final rawName = picked.file.fileName;
+    final safeName = rawName.split(RegExp(r'[\\/]')).last;
+    if (safeName.isEmpty || safeName == '..' || safeName.contains('..')) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('备份文件名不合法，已取消恢复')),
+      );
+      return;
+    }
     try {
       final dir = await Directory.systemTemp.createTemp('timecalc-restore');
-      final file = File('${dir.path}${Platform.pathSeparator}${picked.file.fileName}');
+      final file = File('${dir.path}${Platform.pathSeparator}$safeName');
       final bytes = await picked.target.download(picked.file);
       await file.writeAsBytes(bytes);
       if (!context.mounted) return;

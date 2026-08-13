@@ -68,57 +68,66 @@ class _AppearancePageState extends ConsumerState<AppearancePage> {
   @override
   Widget build(BuildContext context) {
     final settingsAsync = ref.watch(settingsProvider);
+    // valueOrNull 保留旧值（M15）：保存后 invalidate(settingsProvider) 使
+    // provider 短暂回到 loading，若用 .when(loading: spinner) 会整页闪烁。
+    final settings = settingsAsync.valueOrNull;
+    if (settings == null) {
+      if (settingsAsync.hasError) {
+        return Scaffold(
+          appBar: AppBar(title: const Text('外观')),
+          body: AppErrorView(
+            error: settingsAsync.error!,
+            onRetry: () => ref.invalidate(settingsProvider),
+          ),
+        );
+      }
+      return Scaffold(
+        appBar: AppBar(title: const Text('外观')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    // 首次加载到数据时初始化本地选择；provider 后续刷新不重置。
+    if (!_initialized) {
+      _mode = ThemeMode.values.firstWhere(
+        (m) => m.name == settings.themeMode,
+        orElse: () => ThemeMode.system,
+      );
+      _initialized = true;
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('外观')),
-      body: settingsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => AppErrorView(
-          error: error,
-          onRetry: () => ref.invalidate(settingsProvider),
-        ),
-        data: (settings) {
-          // 首次加载到数据时初始化本地选择；provider 后续刷新不重置。
-          if (!_initialized) {
-            _mode = ThemeMode.values.firstWhere(
-              (m) => m.name == settings.themeMode,
-              orElse: () => ThemeMode.system,
-            );
-            _initialized = true;
-          }
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Text(
-                '选择应用的明暗主题，点击即生效。「跟随系统」随 Windows 的深浅色自动切换。',
-                style: Theme.of(context).textTheme.bodySmall,
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text(
+            '选择应用的明暗主题，点击即生效。「跟随系统」随 Windows 的深浅色自动切换。',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 16),
+          SegmentedButton<ThemeMode>(
+            segments: const [
+              ButtonSegment(
+                value: ThemeMode.system,
+                label: Text('跟随系统'),
+                icon: Icon(Icons.brightness_auto),
               ),
-              const SizedBox(height: 16),
-              SegmentedButton<ThemeMode>(
-                segments: const [
-                  ButtonSegment(
-                    value: ThemeMode.system,
-                    label: Text('跟随系统'),
-                    icon: Icon(Icons.brightness_auto),
-                  ),
-                  ButtonSegment(
-                    value: ThemeMode.light,
-                    label: Text('浅色'),
-                    icon: Icon(Icons.light_mode_outlined),
-                  ),
-                  ButtonSegment(
-                    value: ThemeMode.dark,
-                    label: Text('深色'),
-                    icon: Icon(Icons.dark_mode_outlined),
-                  ),
-                ],
-                selected: {_mode},
-                onSelectionChanged: (selection) => _selectMode(selection.first),
+              ButtonSegment(
+                value: ThemeMode.light,
+                label: Text('浅色'),
+                icon: Icon(Icons.light_mode_outlined),
               ),
-              const SizedBox(height: 24),
-              _ThemePreview(mode: _mode),
+              ButtonSegment(
+                value: ThemeMode.dark,
+                label: Text('深色'),
+                icon: Icon(Icons.dark_mode_outlined),
+              ),
             ],
-          );
-        },
+            selected: {_mode},
+            onSelectionChanged: (selection) => _selectMode(selection.first),
+          ),
+          const SizedBox(height: 24),
+          _ThemePreview(mode: _mode),
+        ],
       ),
     );
   }
