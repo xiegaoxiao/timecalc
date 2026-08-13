@@ -91,6 +91,31 @@ abstract final class PageSkeletons {
       ),
     );
   }
+
+  /// 目标详情页骨架：渐变 hero 头卡 + 负载卡 + 里程碑/科目/任务行。
+  ///
+  /// 匹配详情页纵向结构（头部 hero → 负载 → 里程碑 → 科目 → 任务区），
+  /// 点击卡片进入详情页的首载窗口用骨架占位替代 spinner 白屏，过渡期间
+  /// 观感「立即有内容」，数据到达后自然过渡（消除 spinner 动画与页面
+  /// 过渡动画叠加造成的闪烁/掉帧）。
+  static Widget goalDetailPage() {
+    return Skeletonizer(
+      child: ListView(
+        padding: const EdgeInsets.all(AppTokens.pagePadding),
+        children: const [
+          _SkeletonCard(height: 140, radius: AppTokens.radiusXl),
+          SizedBox(height: 16),
+          _SkeletonCard(height: 96),
+          SizedBox(height: 8),
+          _SkeletonCard(height: 56),
+          SizedBox(height: 8),
+          _SkeletonCard(height: 56),
+          SizedBox(height: 8),
+          _SkeletonCard(height: 56),
+        ],
+      ),
+    );
+  }
 }
 
 /// 骨架卡片：固定高度 + 内嵌占位文字（skeletonizer 渲染为灰块）。

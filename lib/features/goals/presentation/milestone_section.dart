@@ -47,7 +47,17 @@ class MilestoneSection extends ConsumerWidget {
         ),
         const SizedBox(height: 8),
         milestonesAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          // 静态占位（非 spinner）：首载窗口与页面过渡动画叠加会造成
+          // 闪烁/掉帧（Windows 实测），数据到达即被真实列表替换。
+          loading: () => const Card(
+            margin: EdgeInsets.zero,
+            child: Padding(
+              padding: EdgeInsets.all(12),
+              child: Row(
+                children: [Text('正在加载里程碑…')],
+              ),
+            ),
+          ),
           error: (error, _) => AppErrorView(error: error),
           data: (milestones) {
             if (milestones.isEmpty) {

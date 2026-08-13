@@ -24,23 +24,32 @@ class TaskRepository {
     return query.get();
   }
 
-  /// 批量统计各目标的未归档任务「总数 / 已完成数」（目标列表进度环用）。
+  /// 批量统计各目标的未归档任务「总数 / 已完成数 / 预估分钟数」（目标卡片用）。
   ///
   /// 一次 IN 查询 + Dart 内存分组，避免目标列表逐卡 `byGoal` 造成 N+1。
-  /// 返回 `Map<goalId, (total, done)>`；无任务的 goalId 不出现。
-  Future<Map<int, ({int total, int done})>> completionByGoals(
-    List<int> goalIds,
-  ) async {
+  /// `doneMinutes`/`totalMinutes` 为任务 `estimatedMinutes`（可空）聚合，
+  /// 供卡片统计行「已完成 Xh / 剩余 Yh」使用；无预估时长为 0。
+  /// 返回 `Map<goalId, (total, done, totalMinutes, doneMinutes)>`；
+  /// 无任务的 goalId 不出现。
+  Future<Map<int, ({int total, int done, int totalMinutes, int doneMinutes})>>
+  completionByGoals(List<int> goalIds) async {
     if (goalIds.isEmpty) return const {};
     final query = _db.select(_db.tasks)
       ..where((t) => t.goalId.isIn(goalIds) & t.archivedAt.isNull());
     final rows = await query.get();
-    final result = <int, ({int total, int done})>{};
+    final result = <
+      int,
+      ({int total, int done, int totalMinutes, int doneMinutes})
+    >{};
     for (final row in rows) {
-      final current = result[row.goalId] ?? (total: 0, done: 0);
+      final current =
+          result[row.goalId] ?? (total: 0, done: 0, totalMinutes: 0, doneMinutes: 0);
+      final minutes = row.estimatedMinutes ?? 0;
       result[row.goalId] = (
         total: current.total + 1,
         done: current.done + (row.status == 'done' ? 1 : 0),
+        totalMinutes: current.totalMinutes + minutes,
+        doneMinutes: current.doneMinutes + (row.status == 'done' ? minutes : 0),
       );
     }
     return result;

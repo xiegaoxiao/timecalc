@@ -10,6 +10,7 @@ import '../../../services/countdown_service.dart';
 import '../../../services/duration_format.dart';
 import '../../../services/load_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
+import '../../../shared/widgets/page_skeletons.dart';
 import '../../settings/data/settings_repository.dart';
 import '../../settings/data/settings_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
@@ -35,7 +36,10 @@ class GoalDetailPage extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('目标详情')),
       body: goalAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        // 首载用骨架屏（非 spinner）：点击卡片进入的过渡窗口内「立即有
+        // 内容」占位，数据到达后自然过渡；spinner 动画与页面过渡动画
+        // 叠加在 Windows 上会造成闪烁/掉帧观感（P3.5 卡顿排查）。
+        loading: () => PageSkeletons.goalDetailPage(),
         error: (error, _) => AppErrorView(
           error: error,
           onRetry: () => ref.invalidate(goalDetailProvider(int.parse(goalId))),
@@ -342,6 +346,9 @@ class _GoalHeader extends ConsumerWidget {
 
 /// 任务加载占位（L2 修复）：任务列表加载中展示轻量占位卡片，避免负载区
 /// /任务区整段闪空（白跳）。待首次数据到达即被真实内容替换。
+///
+/// 用静态文案代替 CircularProgressIndicator：spinner 旋转动画与页面过渡
+/// 动画叠加时造成闪烁/掉帧（Windows 实测），占位卡无需动画观感即可。
 class _TasksLoadingPlaceholder extends StatelessWidget {
   const _TasksLoadingPlaceholder();
 
@@ -355,14 +362,7 @@ class _TasksLoadingPlaceholder extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                const SizedBox(width: 12),
-                Text('正在加载任务…',
-                    style: Theme.of(context).textTheme.bodySmall),
+                Text('正在加载任务…', style: Theme.of(context).textTheme.bodySmall),
               ],
             ),
           ),
