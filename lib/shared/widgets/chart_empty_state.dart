@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
-/// 统一空态：outline 色 40px 图标 + 主文案 + bodySmall 副文案 + 可选 CTA。
+/// 统一空态：主色容器圆底图标 + 主文案 + bodySmall 副文案 + 可选 CTA。
 ///
-/// 进度页图表空态（M13 从 progress_page 公有化）。副文案承载引导，CTA
-/// 提供 PRD §8 要求的「首个操作」；无 CTA 时纯展示。
+/// 进度页图表空态（M13 从 progress_page 公有化；v1.11 视觉升级为
+/// shadcn 风格「主色通明圆底图标」）。副文案承载引导，CTA 提供 PRD §8
+/// 要求的「首个操作」；无 CTA 时纯展示。
 class ChartEmptyState extends StatelessWidget {
   const ChartEmptyState({
     super.key,
@@ -31,7 +32,18 @@ class ChartEmptyState extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 24),
       child: Column(
         children: [
-          Icon(icon, size: 40, color: scheme.outline),
+          // 主色通明圆底图标：克制点缀，替代裸 outline 图标。
+          // 高度与原版（40px 图标 + 8px 间距）完全一致，避免长页面
+          // 中被推离 CustomScrollView 懒构建窗口。
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: scheme.primary.withValues(alpha: 0.08),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 20, color: scheme.primary),
+          ),
           const SizedBox(height: 8),
           Text(title),
           if (caption != null) ...[

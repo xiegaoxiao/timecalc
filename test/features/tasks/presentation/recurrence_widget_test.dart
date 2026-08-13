@@ -12,6 +12,8 @@ import 'package:timecalc/features/tasks/data/recurrence_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 import 'package:timecalc/features/tasks/domain/recurrence/recurrence_rule.dart';
 
+import '../../../shared/nav_helper.dart';
+
 /// 重复任务用户流程 Widget 测试（FR-4）。
 ///
 /// 固定时钟 2026-08-05（周三）。验证：
@@ -111,13 +113,7 @@ void main() {
     // 今天页也出现今日实例（先返回计划页，再切到今天）。
     await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('今天'),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await tapNavDestination(tester, '今天');
     expect(find.text('复习单词'), findsOneWidget);
   });
 

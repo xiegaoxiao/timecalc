@@ -44,6 +44,8 @@ class SettingsPage extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // 分组标题：层级更清晰（个性化 / 数据与同步）。
+          const _GroupHeader(title: '个性化'),
           Card(
             margin: EdgeInsets.zero,
             clipBehavior: Clip.antiAlias,
@@ -56,6 +58,29 @@ class SettingsPage extends ConsumerWidget {
                   onTap: () => context.push(CloseBehaviorPage.route),
                 ),
                 const Divider(height: 1),
+                _MenuTile(
+                  icon: Icons.palette_outlined,
+                  title: '外观',
+                  subtitle: appearanceLabel,
+                  onTap: () => context.push(AppearancePage.route),
+                ),
+                const Divider(height: 1),
+                _MenuTile(
+                  icon: Icons.keyboard_outlined,
+                  title: '快捷键',
+                  subtitle: '全局快捷键 · 即将上线',
+                  onTap: () => context.push(ShortcutsPage.route),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          const _GroupHeader(title: '数据与同步'),
+          Card(
+            margin: EdgeInsets.zero,
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
                 _MenuTile(
                   icon: Icons.sync_outlined,
                   title: '同步',
@@ -78,20 +103,6 @@ class SettingsPage extends ConsumerWidget {
                 ),
                 const Divider(height: 1),
                 _MenuTile(
-                  icon: Icons.palette_outlined,
-                  title: '外观',
-                  subtitle: appearanceLabel,
-                  onTap: () => context.push(AppearancePage.route),
-                ),
-                const Divider(height: 1),
-                _MenuTile(
-                  icon: Icons.keyboard_outlined,
-                  title: '快捷键',
-                  subtitle: '全局快捷键 · 即将上线',
-                  onTap: () => context.push(ShortcutsPage.route),
-                ),
-                const Divider(height: 1),
-                _MenuTile(
                   icon: Icons.delete_outline,
                   title: '重置数据',
                   subtitle: '清空全部数据（可选同时恢复默认设置），执行前自动备份',
@@ -101,6 +112,27 @@ class SettingsPage extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 设置页分组标题：小号次级色标题 + 上下留白，分割菜单层级。
+class _GroupHeader extends StatelessWidget {
+  const _GroupHeader({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+      child: Text(
+        title,
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: Theme.of(context).colorScheme.primary,
+        ),
       ),
     );
   }

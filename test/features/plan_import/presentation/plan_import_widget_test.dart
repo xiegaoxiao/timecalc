@@ -10,6 +10,8 @@ import 'package:timecalc/core/database/database_provider.dart';
 import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/plan_import/data/plan_json_picker.dart';
 
+import '../../../shared/nav_helper.dart';
+
 /// 假 JSON 文件选择器：按序返回内容，null 模拟取消，可抛异常模拟读取失败。
 class FakePlanJsonPicker implements PlanJsonPicker {
   FakePlanJsonPicker(this.results);
@@ -59,13 +61,7 @@ void main() {
 
   /// 切到「计划」页（默认落在「今天」tab，计划页 AppBar 处于 offstage）。
   Future<void> goPlan(WidgetTester tester) async {
-    await tester.tap(
-      find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('计划'),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await tapNavDestination(tester, '计划');
   }
 
   /// 合法完整计划 JSON（固定时钟 2026-08-05，日期不早于今天）。
@@ -229,13 +225,7 @@ void main() {
     await goPlan(tester);
 
     // 先访问进度页：无目标无任务，今日概览「目标剩余工作量」显示 -- 分。
-    await tester.tap(
-      find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('进度'),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await tapNavDestination(tester, '进度');
     final overviewBefore = find.widgetWithText(Card, '今日概览');
     expect(
       find.descendant(of: overviewBefore, matching: find.text('-- 分')),
@@ -243,13 +233,7 @@ void main() {
     );
 
     // 回计划页导入完整计划（含未完成任务 → 有数据但无时长）。
-    await tester.tap(
-      find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('计划'),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await tapNavDestination(tester, '计划');
     await tester.tap(find.byTooltip('导入完整计划'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, planJson);
@@ -262,13 +246,7 @@ void main() {
     // （无时长任务不计分钟，但 -- 无数据占位消失），已完成时长仍 -- 分。
     await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('进度'),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await tapNavDestination(tester, '进度');
     final overviewAfter = find.widgetWithText(Card, '今日概览');
     expect(
       find.descendant(of: overviewAfter, matching: find.text('-- 分')),
@@ -334,13 +312,7 @@ void main() {
 
     // 切到进度页：剩余工作量趋势应有数据（180+90 = 270 分钟；重复模板
     // 实例另计 30×7，均在窗口内），任务耗时图应有计划段。
-    await tester.tap(
-      find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('进度'),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await tapNavDestination(tester, '进度');
 
     // 空态不再出现。
     expect(find.text('还没有可展示的剩余工作量数据'), findsNothing);

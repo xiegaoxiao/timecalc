@@ -12,6 +12,8 @@ import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 
+import '../../../shared/nav_helper.dart';
+
 /// 进度页 Widget 测试（FR-7.1 / FR-7.2 / FR-7.3 / FR-7.4）。
 ///
 /// 固定时钟 2026-08-05（周三），验证：
@@ -278,13 +280,15 @@ void main() {
     final overviewCard = find.widgetWithText(Card, '今日概览');
     expect(overviewCard, findsOneWidget);
     final overviewBox = tester.getRect(overviewCard);
-    // 卡片宽度铺满容器（两侧仅约 5% 边距），即约 95% 屏宽以上。
-    expect(overviewBox.width, greaterThan(1600 * 0.9));
+    // 卡片随窗口拉伸：宽窗走 NavigationRail 侧栏（约 80px），内容区宽度
+    // ≈ 1600-80=1520，再扣 5% 边距（≤48px）后卡片仍应铺满内容区
+    // （>1600*0.85，比旧式整宽断言更贴近真实布局）。
+    expect(overviewBox.width, greaterThan(1600 * 0.85));
 
     // 热力图卡片同样铺满，且色块随宽度放大（工具提示存在即已渲染）。
     final heatCard = find.widgetWithText(Card, '完成热力图');
     final heatBox = tester.getRect(heatCard);
-    expect(heatBox.width, greaterThan(1600 * 0.9));
+    expect(heatBox.width, greaterThan(1600 * 0.85));
 
     // 任务耗时图无 RenderFlex overflow（宽屏等分拉伸）。
     expect(tester.takeException(), isNull);
@@ -598,14 +602,8 @@ void main() {
 
     // 切到「今天」页，经真实 UI 路径快速添加一个 90 分钟任务
     // （保存后今日页走 invalidateAppData 全量刷新）。
-    // 限定在底部导航内定位：燃尽图 X 轴也标注「今天」，直接 find.text 歧义。
-    await tester.tap(
-      find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('今天'),
-      ),
-    );
-    await tester.pumpAndSettle();
+    // 限定在导航内定位：燃尽图 X 轴也标注「今天」，直接 find.text 歧义。
+    await tapNavDestination(tester, '今天');
     await tester.tap(find.text('添加任务').first);
     await tester.pumpAndSettle();
 
@@ -666,13 +664,7 @@ void main() {
     );
 
     // 切到「今天」页，经真实 UI 路径编辑该任务：时长 +30 分钟。
-    await tester.tap(
-      find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('今天'),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await tapNavDestination(tester, '今天');
     // 任务条目 trailing 的「任务操作」菜单 → 编辑。
     await tester.tap(find.byTooltip('任务操作'));
     await tester.pumpAndSettle();
@@ -686,13 +678,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 切回「进度」页：剩余工作量应变为 150 分钟（2 小时 30 分）。
-    await tester.tap(
-      find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('进度'),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await tapNavDestination(tester, '进度');
 
     final refreshedBurnCard = find.widgetWithText(Card, '剩余工作量趋势');
     expect(

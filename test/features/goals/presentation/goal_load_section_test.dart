@@ -11,6 +11,8 @@ import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/settings/data/settings_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 
+import '../../../shared/nav_helper.dart';
+
 /// 目标详情负载区 + 设置计划偏好 Widget 测试（FR-5.3/FR-5.4/PRD §5.1）。
 ///
 /// 固定时钟 2026-08-05（周三）。默认偏好：120 分钟/天、每周 7 天。
@@ -175,13 +177,7 @@ void main() {
     // 偏好页是独立路由（无底部导航），返回进度页后再切今天页。
     await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('今天'),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await tapNavDestination(tester, '今天');
     expect(find.text('今日任务总计 2 小时 30 分'), findsOneWidget);
     expect(find.text('可用 3 小时'), findsOneWidget);
     expect(find.textContaining('超出'), findsNothing);
@@ -284,13 +280,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('今天'),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await tapNavDestination(tester, '今天');
     expect(find.text('今日任务总计 1 小时'), findsOneWidget);
     expect(find.text('可用 5 小时'), findsOneWidget);
   });

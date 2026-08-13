@@ -102,16 +102,29 @@ class _EmptyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     // 数据为空时提供与当前页相关的首个操作（PRD §8）。
+    // 圆底图标语言与今天页/图表空态统一（v1.11 空态规范）。
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.flag_outlined, size: 64),
-          const SizedBox(height: 12),
-          const Text('还没有目标'),
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: scheme.primary.withValues(alpha: 0.08),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.flag_outlined, size: 32, color: scheme.primary),
+          ),
+          const SizedBox(height: 16),
+          Text('还没有目标', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
-          const Text('创建一个目标，把截止日期变成今天的行动'),
+          Text(
+            '创建一个目标，把截止日期变成今天的行动',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
           const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: () => _createGoal(context),

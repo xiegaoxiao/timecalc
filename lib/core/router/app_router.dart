@@ -21,15 +21,34 @@ import '../../features/today/presentation/today_page.dart';
 
 /// 主导航目的地（PRD §7 信息架构：今天 / 计划 / 进度 / 设置）。
 enum AppDestination {
-  today(label: '今天', icon: Icons.today_outlined),
-  plan(label: '计划', icon: Icons.calendar_month_outlined),
-  progress(label: '进度', icon: Icons.insights_outlined),
-  settings(label: '设置', icon: Icons.settings_outlined);
+  today(label: '今天', icon: Icons.today_outlined, selectedIcon: Icons.today),
+  plan(
+    label: '计划',
+    icon: Icons.calendar_month_outlined,
+    selectedIcon: Icons.calendar_month,
+  ),
+  progress(
+    label: '进度',
+    icon: Icons.insights_outlined,
+    selectedIcon: Icons.insights,
+  ),
+  settings(
+    label: '设置',
+    icon: Icons.settings_outlined,
+    selectedIcon: Icons.settings,
+  );
 
-  const AppDestination({required this.label, required this.icon});
+  const AppDestination({
+    required this.label,
+    required this.icon,
+    required this.selectedIcon,
+  });
 
   final String label;
   final IconData icon;
+
+  /// 选中态图标（实心），底部导航与侧栏 NavigationRail 共用。
+  final IconData selectedIcon;
 }
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -150,10 +169,17 @@ GoRouterRedirect _redirectOnInvalidInt(List<String> keys) {
   };
 }
 
-/// 主导航 Shell：底部导航承载四个一级入口。
+/// 主导航 Shell：宽窗用左侧 NavigationRail（桌面观感），窄窗回退底部
+/// NavigationBar（手机式布局）。
+///
+/// 断点 [kDesktopNavigationBreakpoint]：>= 该宽度走侧栏，否则底栏。
+/// 借鉴 proxypin / flutter-folio 的自适应布局思路——同一个
+/// [StatefulShellRoute.indexedStack] 承载页面状态，切换导航形态不丢页。
 ///
 /// 首帧触发重复任务滚动生成（FR-4.3：应用打开即补齐未来 30 天窗口内
 /// 缺失实例）；无 active 模板时为空操作。
+const double kDesktopNavigationBreakpoint = 720;
+
 class AppShell extends ConsumerWidget {
   const AppShell({super.key, required this.navigationShell});
 
@@ -167,22 +193,76 @@ class AppShell extends ConsumerWidget {
     // 首次切到「进度」页时数据已在后台 isolate 就绪，页面无需先等查询
     // 再整页构建（消除首次切换的 spinner 等待与二次构建）。
     ref.watch(completedTasksProvider);
-    return Scaffold(
-      body: navigationShell,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: navigationShell.currentIndex,
-        onDestinationSelected: (index) {
-          navigationShell.goBranch(
-            index,
-            initialLocation: index == navigationShell.currentIndex,
+
+    void onDestinationSelected(int index) {
+      navigationShell.goBranch(
+        index,
+        initialLocation: index == navigationShell.currentIndex,
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= kDesktopNavigationBreakpoint) {
+          return _DesktopShell(
+            navigationShell: navigationShell,
+            onDestinationSelected: onDestinationSelected,
           );
-        },
-        destinations: [
-          for (final destination in AppDestination.values)
-            NavigationDestination(
-              icon: Icon(destination.icon),
-              label: destination.label,
-            ),
+        }
+        return Scaffold(
+          body: navigationShell,
+          bottomNavigationBar: NavigationBar(
+            selectedIndex: navigationShell.currentIndex,
+            onDestinationSelected: onDestinationSelected,
+            destinations: [
+              for (final destination in AppDestination.values)
+                NavigationDestination(
+                  icon: Icon(destination.icon),
+                  selectedIcon: Icon(destination.selectedIcon),
+                  label: destination.label,
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// 宽窗口桌面壳：左侧 NavigationRail + 内容区。
+///
+/// 侧栏窄带（约 80px）+ 选中态指示器，与底部 NavigationBar 共用同一套
+/// destination 定义与选中逻辑；Rail 与内容区之间以细分隔线隔开。
+class _DesktopShell extends StatelessWidget {
+  const _DesktopShell({
+    required this.navigationShell,
+    required this.onDestinationSelected,
+  });
+
+  final StatefulNavigationShell navigationShell;
+  final ValueChanged<int> onDestinationSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Row(
+        children: [
+          NavigationRail(
+            selectedIndex: navigationShell.currentIndex,
+            onDestinationSelected: onDestinationSelected,
+            labelType: NavigationRailLabelType.all,
+            groupAlignment: -0.9,
+            destinations: [
+              for (final destination in AppDestination.values)
+                NavigationRailDestination(
+                  icon: Icon(destination.icon),
+                  selectedIcon: Icon(destination.selectedIcon),
+                  label: Text(destination.label),
+                ),
+            ],
+          ),
+          const VerticalDivider(width: 1, thickness: 1),
+          Expanded(child: navigationShell),
         ],
       ),
     );
