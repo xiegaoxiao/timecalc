@@ -13,11 +13,15 @@ import '../../../services/load_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/chart_empty_state.dart';
 import '../../goals/data/goal_repository_provider.dart';
+import '../../goals/data/subject_repository_provider.dart';
 import '../../settings/data/settings_repository.dart';
 import '../../settings/data/settings_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
 import '../../tasks/presentation/quick_task_form_dialog.dart';
 import '../../tasks/presentation/task_tile.dart';
+
+/// 选日面板标题（含星期，中文），复用单一实例避免每帧重建 DateFormat。
+final _dayLabelFormat = DateFormat('yyyy-MM-dd EEEE', 'zh_CN');
 
 /// 日历视图（FR-3.4）：月历网格 + 选日任务面板。
 ///
@@ -44,13 +48,13 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
     super.initState();
     final today = ref.read(clockProvider)();
     _month = DateTime(today.year, today.month);
-    _selectedDate = DateFormat('yyyy-MM-dd').format(today);
+    _selectedDate = formatLocalDate(today);
   }
 
   @override
   Widget build(BuildContext context) {
     final today = ref.watch(clockProvider)();
-    final todayStr = DateFormat('yyyy-MM-dd').format(today);
+    final todayStr = formatLocalDate(today);
     final monthKey =
         '${_month.year}-${_month.month.toString().padLeft(2, '0')}';
 
@@ -100,6 +104,15 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
       availableMinutes: settings.dailyAvailableMinutes,
       availableWeekdays: weekdays,
     );
+
+    // 选日任务的科目名：父级一次性预取（按 goalId 去重），避免每个 TaskTile
+    // 各自 watch(subjectListProvider) + 线性扫描（N+1）。
+    final selectedTasks = selectedTasksAsync.valueOrNull ?? const <Task>[];
+    final subjectsByGoal = <int, List<Subject>>{
+      for (final gid in {for (final t in selectedTasks) t.goalId})
+        gid:
+            ref.watch(subjectListProvider(gid)).valueOrNull ?? const <Subject>[],
+    };
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -155,10 +168,10 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
             duration: const Duration(milliseconds: 200),
             child: _DayPanel(
               key: ValueKey(_selectedDate),
-              dateLabel: DateFormat('yyyy-MM-dd EEEE', 'zh_CN')
-                  .format(parseLocalDate(_selectedDate)),
+              dateLabel: _dayLabelFormat.format(parseLocalDate(_selectedDate)),
               selectedTasksAsync: selectedTasksAsync,
               goalsById: goalsById,
+              subjectsByGoal: subjectsByGoal,
               onChanged: onChanged,
               // 无可归属目标时不提供「添加任务」（头部按钮 + 空态 CTA 共用）。
               onAddTask: addGoals.isEmpty
@@ -222,6 +235,7 @@ class _DayPanel extends StatelessWidget {
     required this.dateLabel,
     required this.selectedTasksAsync,
     required this.goalsById,
+    required this.subjectsByGoal,
     required this.onChanged,
     required this.onAddTask,
     required this.onRetryTasks,
@@ -230,6 +244,7 @@ class _DayPanel extends StatelessWidget {
   final String dateLabel;
   final AsyncValue<List<Task>> selectedTasksAsync;
   final Map<int, Goal> goalsById;
+  final Map<int, List<Subject>> subjectsByGoal;
   final VoidCallback onChanged;
 
   /// 「添加任务」回调（无可归属目标时为 null：头部按钮禁用、空态无 CTA）。
@@ -303,12 +318,14 @@ class _DayPanel extends StatelessWidget {
                 child: TaskTile(
                   task: task,
                   goalTitle: goalsById[task.goalId]?.title,
+                  subjects: subjectsByGoal[task.goalId],
                   onChanged: onChanged,
                 ),
               ),
               child: TaskTile(
                 task: task,
                 goalTitle: goalsById[task.goalId]?.title,
+                subjects: subjectsByGoal[task.goalId],
                 onChanged: onChanged,
               ),
             ),
@@ -493,7 +510,7 @@ class _MonthGrid extends StatelessWidget {
     }
     final warning = AppSemanticColors.of(context).warning;
     final date = DateTime(month.year, month.month, day);
-    final dateStr = DateFormat('yyyy-MM-dd').format(date);
+    final dateStr = formatLocalDate(date);
     final agg = aggregate[dateStr] ?? DayAggregate.empty;
     final isAvailable = weekdays.contains(date.weekday);
     final isToday = dateStr == todayStr;

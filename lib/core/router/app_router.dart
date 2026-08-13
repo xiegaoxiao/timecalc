@@ -15,6 +15,7 @@ import '../../features/settings/presentation/reset_data_page.dart';
 import '../../features/settings/presentation/settings_page.dart';
 import '../../features/settings/presentation/shortcuts_page.dart';
 import '../../features/tasks/data/recurrence_repository_provider.dart';
+import '../../features/tasks/data/task_repository_provider.dart';
 import '../../features/tasks/presentation/subject_task_page.dart';
 import '../../features/today/presentation/today_page.dart';
 
@@ -162,6 +163,10 @@ class AppShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // watch 触发一次滚动生成；结果不用于渲染。
     ref.watch(recurrenceBootstrapProvider);
+    // 启动预热进度页的重数据源（26 周完成记录扫描）：
+    // 首次切到「进度」页时数据已在后台 isolate 就绪，页面无需先等查询
+    // 再整页构建（消除首次切换的 spinner 等待与二次构建）。
+    ref.watch(completedTasksProvider);
     return Scaffold(
       body: navigationShell,
       bottomNavigationBar: NavigationBar(

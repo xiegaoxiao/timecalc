@@ -65,6 +65,11 @@ class _TaskListSectionState extends ConsumerState<TaskListSection> {
   /// 展开/收起只触发任务区重建，不波及页面其他区块。
   final Set<int> _expandedTemplates = {};
 
+  /// _groupTasks 缓存：任务列表实例未变（如仅手风琴展开/收起）时直接复用，
+  /// 避免每次重建都对全量任务重新分组+排序。
+  List<Task>? _groupedTasksSource;
+  List<_ListUnit>? _groupedUnits;
+
   void _toggleTemplate(int templateId) {
     setState(() {
       if (!_expandedTemplates.remove(templateId)) {
@@ -75,7 +80,10 @@ class _TaskListSectionState extends ConsumerState<TaskListSection> {
 
   @override
   Widget build(BuildContext context) {
-    final units = _groupTasks(widget.tasks);
+    final units = _groupTasksCached(widget.tasks);
+    // 扁平行计划：单任务 / 组头 / 组实例，一次构建、index 直接定位——
+    // 替代旧版 _buildRow 对每个可见行线性扫描全部 units（O(可见行×分组数)）。
+    final rows = _flattenRows(units);
     // 一次批量查询目标下全部模板，父卡片按 id 取（避免每张父卡片各自
     // watch 单个模板 provider 造成 N+1 数据库查询）。
     final templates = ref
@@ -111,17 +119,40 @@ class _TaskListSectionState extends ConsumerState<TaskListSection> {
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             sliver: SliverList.builder(
-              itemCount: _rowCount(units),
-              itemBuilder: (context, index) => _buildRow(
-                context,
-                units,
-                templatesById,
-                index,
-              ),
+              itemCount: rows.length,
+              itemBuilder: (context, index) =>
+                  _buildRow(context, rows, templatesById, index),
             ),
           ),
       ],
     );
+  }
+
+  /// 任务列表实例未变时复用上次分组结果（手风琴展开/收起不再重排任务）。
+  List<_ListUnit> _groupTasksCached(List<Task> tasks) {
+    if (!identical(_groupedTasksSource, tasks)) {
+      _groupedTasksSource = tasks;
+      _groupedUnits = _groupTasks(tasks);
+    }
+    return _groupedUnits!;
+  }
+
+  /// 把分组展开为扁平行计划列表（组头 1 行；展开组追加实例行）。
+  List<_RowPlan> _flattenRows(List<_ListUnit> units) {
+    final rows = <_RowPlan>[];
+    for (final unit in units) {
+      if (!unit.isGroup) {
+        rows.add(_RowPlan.single(unit));
+        continue;
+      }
+      rows.add(_RowPlan.header(unit));
+      if (_expandedTemplates.contains(unit.templateId)) {
+        for (final task in unit.instances) {
+          rows.add(_RowPlan.instance(unit, task));
+        }
+      }
+    }
+    return rows;
   }
 
   Widget _header(BuildContext context) {
@@ -200,73 +231,38 @@ class _TaskListSectionState extends ConsumerState<TaskListSection> {
     );
   }
 
-  /// 当前行数：折叠组计 1 行（父卡片头），展开组计 1 + N 行（实例行）。
-  int _rowCount(List<_ListUnit> units) {
-    var count = 0;
-    for (final unit in units) {
-      if (!unit.isGroup) {
-        count += 1;
-        continue;
-      }
-      count += 1;
-      if (_expandedTemplates.contains(unit.templateId)) {
-        count += unit.instances.length;
-      }
-    }
-    return count;
-  }
-
   /// 把扁平行 index 映射到具体行 widget（懒加载的 itemBuilder 每次只构建
   /// 可见的那几行，滚动时才按需实例化其余行）。
+  ///
+  /// [rows] 是 [build] 里一次性展开的行计划（见 [_flattenRows]），此处按
+  /// index 直接定位，O(1)——旧版对每个可见行从头线性扫描全部 units。
   Widget _buildRow(
     BuildContext context,
-    List<_ListUnit> units,
+    List<_RowPlan> rows,
     Map<int, RecurrenceTemplate> templatesById,
     int index,
   ) {
-    for (final unit in units) {
-      if (!unit.isGroup) {
-        if (index == 0) {
-          return TaskTile(
-            task: unit.task!,
-            subjects: widget.subjects,
-            showPlannedDate: true,
-            onChanged: widget.onChanged,
-          );
-        }
-        index -= 1;
-        continue;
-      }
+    final plan = rows[index];
+    if (plan.isHeader) {
+      final unit = plan.unit;
       final templateId = unit.templateId!;
-      final expanded = _expandedTemplates.contains(templateId);
-      // 父卡片头行。
-      if (index == 0) {
-        return RecurrenceGroupTile(
-          goalId: widget.goalId,
-          templateId: templateId,
-          template: templatesById[templateId],
-          instances: unit.instances,
-          subjects: widget.subjects,
-          expanded: expanded,
-          onToggle: () => _toggleTemplate(templateId),
-          onChanged: widget.onChanged,
-        );
-      }
-      index -= 1;
-      // 展开态：实例行。
-      if (expanded) {
-        if (index < unit.instances.length) {
-          return TaskTile(
-            task: unit.instances[index],
-            subjects: widget.subjects,
-            showPlannedDate: true,
-            onChanged: widget.onChanged,
-          );
-        }
-        index -= unit.instances.length;
-      }
+      return RecurrenceGroupTile(
+        goalId: widget.goalId,
+        templateId: templateId,
+        template: templatesById[templateId],
+        instances: unit.instances,
+        subjects: widget.subjects,
+        expanded: _expandedTemplates.contains(templateId),
+        onToggle: () => _toggleTemplate(templateId),
+        onChanged: widget.onChanged,
+      );
     }
-    throw StateError('row index out of range: $index');
+    return TaskTile(
+      task: plan.task ?? plan.unit.task!,
+      subjects: widget.subjects,
+      showPlannedDate: true,
+      onChanged: widget.onChanged,
+    );
   }
 
   /// 把任务列表按重复模板分组（FR-4 迭代：手风琴折叠）。
@@ -314,6 +310,22 @@ class _ListUnit {
 
   /// 最早计划日期（`yyyy-MM-dd`，字符串序即时间序）。
   String get minDate => task?.plannedDate ?? instances.first.plannedDate;
+}
+
+/// 扁平行构建计划（[_flattenRows] 一次性生成，行 index 直接定位）。
+class _RowPlan {
+  const _RowPlan.single(this.unit) : task = null;
+  const _RowPlan.header(this.unit) : task = null;
+  const _RowPlan.instance(this.unit, Task this.task);
+
+  final _ListUnit unit;
+  final Task? task;
+
+  /// 重复模板折叠组的父卡片头行。
+  bool get isHeader => unit.isGroup && task == null;
+
+  /// 展开组的实例行（[task] 非空）。
+  bool get isInstance => unit.isGroup && task != null;
 }
 
 /// 重复任务折叠父卡片头（FR-4 迭代：手风琴折叠）。

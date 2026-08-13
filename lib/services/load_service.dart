@@ -57,6 +57,10 @@ class LoadService {
   /// 从 [today] 起到截止日（含）的剩余可用天数（FR-5.3）。
   ///
   /// [availableWeekdays] 为 ISO 星期集合；截止日已过返回 0。
+  ///
+  /// O(1)：按整周计算（`totalDays ~/ 7` 周 × 可用星期数），仅对余下不足
+  /// 一周（≤6 天）逐日判断。旧版逐日循环在多年期目标下（如 4 年计划
+  /// ≈ 1460 次迭代/卡）在 build 中反复执行，属不必要的 UI 隔离区开销。
   int remainingAvailableDays({
     required String deadlineDate,
     required DateTime today,
@@ -69,11 +73,13 @@ class LoadService {
     final weekdays = availableWeekdays.isEmpty
         ? const {1, 2, 3, 4, 5, 6, 7}
         : availableWeekdays;
-    var count = 0;
-    var cursor = start;
-    while (!cursor.isAfter(deadline)) {
-      if (weekdays.contains(cursor.weekday)) count++;
-      cursor = cursor.add(const Duration(days: 1));
+    final totalDays = deadline.difference(start).inDays + 1; // 含首尾
+    var count = (totalDays ~/ 7) * weekdays.length;
+    final remainder = totalDays % 7;
+    var wd = start.weekday;
+    for (var i = 0; i < remainder; i++) {
+      if (weekdays.contains(wd)) count++;
+      wd = wd == 7 ? 1 : wd + 1;
     }
     return count;
   }

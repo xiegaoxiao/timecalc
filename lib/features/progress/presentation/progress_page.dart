@@ -39,6 +39,12 @@ const _heatColors = <Color>[
   _progressGreen,
 ];
 
+/// 复用单一 DateFormat 实例（Intl 格式化非 const 可构造，逐格/逐任务
+/// 新建会引入不必要的日期符号与语言环境解析开销）。
+final _ymd = DateFormat('yyyy-MM-dd');
+final _md = DateFormat('M/d');
+final _hm = DateFormat('HH:mm');
+
 /// 进度页（M3）：基础统计、热力图与任务耗时图（FR-7.1 / FR-7.2 / FR-7.3 / FR-7.4）。
 ///
 /// 结构（自上而下）：
@@ -49,35 +55,174 @@ const _heatColors = <Color>[
 ///    tooltip 与图例文本，状态不只依赖颜色，NFR-4）；
 /// 4. 任务耗时图（fl_chart，M7 迭代）：按周展示未来计划与已完成时长；
 /// 5. FR-7.4 说明：无预估时长的任务只计入任务数。
+/// 进度页各图表的数据聚合（P 优化）。
+///
+/// 旧版 ProgressPage 在 build 里 watch 4 个任务类 provider、四层嵌套 .when，
+/// 任一 provider 变化（如勾选一个任务 → invalidateAppData 全量失效）都会
+/// 整页重算全部聚合。现拆为独立 provider：
+/// - [progressTasksProvider]：把「全部未完成 + 26 周完成」合并为一次就绪，
+///   页面只剩 goals + tasks 两层加载门；
+/// - 概览/热力图/燃尽/耗时图各 watch 自己依赖的子集，任一输入变化只重算
+///   受影响区块（对应区块组件独立重建，互不连带）。
+const _progressStats = StatisticsService();
+
+/// 进度页任务数据：全部未完成 + 最近 26 周完成，一次就绪。
+final progressTasksProvider = FutureProvider<({
+  List<Task> todo,
+  List<Task> completed,
+})>((ref) async {
+  final todo = await ref.watch(allTodoTasksProvider.future);
+  final completed = await ref.watch(completedTasksProvider.future);
+  return (todo: todo, completed: completed);
+});
+
+/// 今日概览数据（FR-7.1）：仅依赖今日任务 + 进度任务。
+final progressOverviewProvider = Provider<({
+  DayCompletionStats stats,
+  int remainingMinutes,
+  bool hasAnyTask,
+})?>((ref) {
+  final todayStr = _ymd.format(ref.watch(clockProvider)());
+  final todayTasks = ref.watch(tasksByDateProvider(todayStr)).valueOrNull;
+  final tasks = ref.watch(progressTasksProvider).valueOrNull;
+  if (todayTasks == null || tasks == null) return null;
+  return (
+    stats: _progressStats.completionStats(todayTasks),
+    remainingMinutes: _progressStats.remainingMinutes(tasks.todo),
+    hasAnyTask: tasks.todo.isNotEmpty || tasks.completed.isNotEmpty,
+  );
+});
+
+/// 热力图数据（FR-7.2）：仅依赖已完成任务。
+final progressHeatmapProvider = Provider<({
+  Map<String, int> counts,
+  Map<String, List<Task>> byDate,
+  List<DateTime> weekStarts,
+})?>((ref) {
+  final completed = ref.watch(progressTasksProvider).valueOrNull?.completed;
+  if (completed == null) return null;
+  final byDate = _progressStats.completedTasksByLocalDate(completed);
+  return (
+    counts: {for (final e in byDate.entries) e.key: e.value.length},
+    byDate: byDate,
+    weekStarts: StatisticsService.recentWeekStarts(
+      ref.watch(clockProvider)(),
+    ),
+  );
+});
+
+/// 燃尽趋势数据（FR-7.3）：仅依赖未完成 + 已完成 + 最晚截止日。
+final progressBurndownProvider = Provider<({
+  List<BurndownPoint> points,
+  int? currentRemaining,
+  int doneMinutes,
+  DateTime today,
+})?>((ref) {
+  final tasks = ref.watch(progressTasksProvider).valueOrNull;
+  if (tasks == null) return null;
+  final today = ref.watch(clockProvider)();
+  final goals = ref.watch(goalListProvider).valueOrNull ?? const <Goal>[];
+  final endDate = _latestDeadline(goals) ?? today;
+  final hasMinutes =
+      tasks.todo.any(
+        (t) => t.status != 'done' && t.estimatedMinutes != null,
+      ) ||
+      tasks.completed.any((t) => t.estimatedMinutes != null);
+  final points = hasMinutes
+      ? StatisticsService.burndownSeries(
+          todoTasks: tasks.todo,
+          completedTasks: tasks.completed,
+          today: today,
+          endDate: endDate,
+        )
+      : const <BurndownPoint>[];
+  return (
+    points: points,
+    currentRemaining: points.isEmpty ? null : points.last.remaining,
+    doneMinutes: hasMinutes
+        ? StatisticsService.burndownWindowDoneMinutes(
+            completedTasks: tasks.completed,
+            today: today,
+          )
+        : 0,
+    today: today,
+  );
+});
+
+/// 任务耗时图数据（FR-7.3 甘特窗口）：跨目标每周聚合在此完成一次，
+/// 替代旧版 _GanttSection.build 每帧重算 rows × weekStarts。
+final progressGanttProvider = Provider<({
+  List<DateTime> weekStarts,
+  Map<int, GoalGanttRow> data,
+  List<Goal> rows,
+  List<int> plannedPerWeek,
+  List<int> completedPerWeek,
+  bool hasAnyWeek,
+})?>((ref) {
+  final tasks = ref.watch(progressTasksProvider).valueOrNull;
+  if (tasks == null) return null;
+  final today = ref.watch(clockProvider)();
+  final goals = ref.watch(goalListProvider).valueOrNull ?? const <Goal>[];
+  final weekStarts = StatisticsService.ganttWeekStarts(today);
+  final data = _progressStats.goalGanttData(
+    todoTasks: tasks.todo,
+    completedTasks: tasks.completed,
+    weekStarts: weekStarts,
+  );
+  final rows = goals
+      .where((g) => data[g.id]?.hasData ?? false)
+      .toList();
+  final plannedPerWeek = List.filled(weekStarts.length, 0);
+  final completedPerWeek = List.filled(weekStarts.length, 0);
+  for (final goal in rows) {
+    final row = data[goal.id];
+    if (row == null) continue;
+    for (var i = 0; i < weekStarts.length; i++) {
+      plannedPerWeek[i] += row.planned[i];
+      completedPerWeek[i] += row.completed[i];
+    }
+  }
+  var hasAnyWeek = false;
+  for (var i = 0; i < weekStarts.length; i++) {
+    if (plannedPerWeek[i] > 0 || completedPerWeek[i] > 0) {
+      hasAnyWeek = true;
+      break;
+    }
+  }
+  return (
+    weekStarts: weekStarts,
+    data: data,
+    rows: rows,
+    plannedPerWeek: plannedPerWeek,
+    completedPerWeek: completedPerWeek,
+    hasAnyWeek: hasAnyWeek,
+  );
+});
+
+/// 进行中目标的最晚截止日（yyyy-MM-dd 文本）；无进行中目标返回 null。
+DateTime? _latestDeadline(List<Goal> goals) {
+  DateTime? latest;
+  for (final goal in goals) {
+    if (goal.status == GoalStatus.completed ||
+        goal.status == GoalStatus.abandoned ||
+        goal.status == GoalStatus.archived) {
+      continue;
+    }
+    final date = parseLocalDate(goal.deadlineDate);
+    if (latest == null || date.isAfter(latest)) latest = date;
+  }
+  return latest;
+}
+
 class ProgressPage extends ConsumerWidget {
   const ProgressPage({super.key});
 
-  static const _stats = StatisticsService();
-
-  /// 进行中目标的最晚截止日（yyyy-MM-dd 文本）；无进行中目标返回 null。
-  static DateTime? _latestDeadline(List<Goal> goals) {
-    DateTime? latest;
-    for (final goal in goals) {
-      if (goal.status == GoalStatus.completed ||
-          goal.status == GoalStatus.abandoned ||
-          goal.status == GoalStatus.archived) {
-        continue;
-      }
-      final date = parseLocalDate(goal.deadlineDate);
-      if (latest == null || date.isAfter(latest)) latest = date;
-    }
-    return latest;
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final today = ref.watch(clockProvider)();
-    final todayStr = DateFormat('yyyy-MM-dd').format(today);
-
     final goalsAsync = ref.watch(goalListProvider);
-    final todayTasksAsync = ref.watch(tasksByDateProvider(todayStr));
-    final completedAsync = ref.watch(completedTasksProvider);
-    final todoAsync = ref.watch(allTodoTasksProvider);
+    // 任务类数据合并为一次就绪（todo + completed），首载/出错整页占位；
+    // 就绪后各图表区块各自 watch 自己的聚合 provider，互不连带重算。
+    final tasksAsync = ref.watch(progressTasksProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('进度')),
@@ -87,81 +232,28 @@ class ProgressPage extends ConsumerWidget {
           error: error,
           onRetry: () => ref.invalidate(goalListProvider),
         ),
-        data: (goals) => todayTasksAsync.when(
+        data: (_) => tasksAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, _) => AppErrorView(
             error: error,
-            onRetry: () => ref.invalidate(tasksByDateProvider),
+            onRetry: () {
+              ref.invalidate(allTodoTasksProvider);
+              ref.invalidate(completedTasksProvider);
+            },
           ),
-          data: (todayTasks) => completedAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => AppErrorView(
-              error: error,
-              onRetry: () => ref.invalidate(completedTasksProvider),
-            ),
-            data: (completed) => todoAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => AppErrorView(
-                error: error,
-                onRetry: () => ref.invalidate(allTodoTasksProvider),
-              ),
-              data: (todo) => _buildBody(
-                context,
-                ref,
-                goals: goals,
-                today: today,
-                todayTasks: todayTasks,
-                completed: completed,
-                todo: todo,
-              ),
-            ),
-          ),
+          data: (_) => _buildBody(context),
         ),
       ),
     );
   }
 
-  Widget _buildBody(
-    BuildContext context,
-    WidgetRef ref, {
-    required List<Goal> goals,
-    required DateTime today,
-    required List<Task> todayTasks,
-    required List<Task> completed,
-    required List<Task> todo,
-  }) {
-    final todayStats = _stats.completionStats(todayTasks);
-    final remainingMinutes = _stats.remainingMinutes(todo);
-    final completedCounts = _stats.completedCountsByLocalDate(completed);
-    final weekStarts = StatisticsService.recentWeekStarts(today);
-    // 任务耗时图窗口：过去 12 周 + 当前周 + 未来 13 周，能看到未来计划。
-    final ganttStarts = StatisticsService.ganttWeekStarts(today);
-
-    // 应用是否有任何任务（未完成 + 已完成）：决定今日概览「目标剩余工作量」
-    // 显示 `-- 分`（没计划）还是实际数值（计划饱和但已全部完成）。
-    final hasAnyTask = todo.isNotEmpty || completed.isNotEmpty;
-
-    // 任务耗时图数据：按目标×周聚合（跨目标总览时在图表区合并）。
-    final ganttData = _stats.goalGanttData(
-      todoTasks: todo,
-      completedTasks: completed,
-      weekStarts: ganttStarts,
-    );
-    final ganttRows = goals
-        .where((g) => ganttData[g.id]?.hasData ?? false)
-        .toList();
-
-    // 进行中目标（燃尽/耗时图空态 CTA 的归属目标列表）。
-    final activeGoals = goals
-        .where(
-          (g) =>
-              g.status != GoalStatus.completed &&
-              g.status != GoalStatus.abandoned &&
-              g.status != GoalStatus.archived,
-        )
-        .toList();
-
-    // 整页纵向滚动（概览 + 燃尽 + 热力图 + 任务耗时图 + 说明统一滚动）。
+  /// 整页纵向滚动（概览 + 燃尽 + 热力图 + 任务耗时图 + 说明统一滚动）。
+  ///
+  /// 各图表区块为 const 构造、各自 watch 自己的聚合 provider：页面 build
+  /// （仅由 goals/tasks 加载态驱动）重建时不连带重建区块；区块只在自身
+  /// 依赖的 provider 变化时独立重算（旧版在 _buildBody 里全量聚合 + 整页
+  /// 一次性构建全部区块）。
+  Widget _buildBody(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         // 水平边距按容器宽度比例（约 5%，夹取 12~48px），其余交给内容铺满。
@@ -172,52 +264,25 @@ class ProgressPage extends ConsumerWidget {
           padding: EdgeInsets.fromLTRB(hPad, 16, hPad, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+            children: const [
               // 计划偏好入口卡：偏好是解读进度（今日概览完成率/剩余工作量）
               // 的上下文，点击进入独立编辑页（设置页已移除该区块）。
-              const _PlanPreferenceEntryCard(),
-              const SizedBox(height: 8),
-              _TodayOverviewCard(
-                stats: todayStats,
-                remainingMinutes: remainingMinutes,
-                hasAnyTask: hasAnyTask,
-              ),
-              const SizedBox(height: 8),
+              _PlanPreferenceEntryCard(),
+              SizedBox(height: 8),
+              _TodayOverviewCard(),
+              SizedBox(height: 8),
               // 空态 CTA（无可归属目标时不显示按钮）：燃尽/耗时图需要
               // 「带预估时长」的数据，点「去设置预估时长」跳转到计划页排期，
               // 语义比「随便加个任务」更贴合图表；热力图无完成记录时
               // 渲染全灰网格，不放引导按钮。
-              _BurndownSection(
-                todoTasks: todo,
-                completedTasks: completed,
-                today: today,
-                endDate: _latestDeadline(goals) ?? today,
-                onAddTask: activeGoals.isEmpty
-                    ? null
-                    : () => context.go('/plan'),
-                ctaLabel: '去设置预估时长',
-              ),
-              const SizedBox(height: 8),
-              _HeatmapSection(
-                today: today,
-                weekStarts: weekStarts,
-                completedCounts: completedCounts,
-                completedTasks: completed,
-                goalsById: {for (final g in goals) g.id: g},
-              ),
-              const SizedBox(height: 8),
-              _GanttSection(
-                rows: ganttRows,
-                data: ganttData,
-                weekStarts: ganttStarts,
-                onAddTask: activeGoals.isEmpty
-                    ? null
-                    : () => context.go('/plan'),
-                ctaLabel: '去设置预估时长',
-              ),
-              const SizedBox(height: 8),
+              _BurndownSection(ctaLabel: '去设置预估时长'),
+              SizedBox(height: 8),
+              _HeatmapSection(),
+              SizedBox(height: 8),
+              _GanttSection(ctaLabel: '去设置预估时长'),
+              SizedBox(height: 8),
               // 数据统计说明：默认折叠，点击展开（不霸占底部留白）。
-              const _StatNote(),
+              _StatNote(),
             ],
           ),
         );
@@ -388,19 +453,32 @@ class _PlanPreferenceEntryCard extends ConsumerWidget {
 ///   → `-- 分`；
 /// - 应用完全没有任务（[hasAnyTask] 为 false）：目标剩余工作量 → `-- 分`
 ///   （「今天本来就没有计划」而非「完美完成」）。
-class _TodayOverviewCard extends StatelessWidget {
-  const _TodayOverviewCard({
-    required this.stats,
-    required this.remainingMinutes,
-    required this.hasAnyTask,
-  });
-
-  final DayCompletionStats stats;
-  final int remainingMinutes;
-  final bool hasAnyTask;
+class _TodayOverviewCard extends ConsumerWidget {
+  const _TodayOverviewCard();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final todayStr = _ymd.format(ref.watch(clockProvider)());
+    final todayAsync = ref.watch(tasksByDateProvider(todayStr));
+    final data = ref.watch(progressOverviewProvider);
+    if (data == null) {
+      // 今日任务数据未就绪：首载由页面加载门处理；出错给局部重试，
+      // 刷新间隙保留占位，不塌陷整页。
+      if (todayAsync.hasError) {
+        return AppErrorView(
+          error: todayAsync.error!,
+          onRetry: () => ref.invalidate(tasksByDateProvider),
+        );
+      }
+      return const SizedBox(
+        height: 120,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    final stats = data.stats;
+    final remainingMinutes = data.remainingMinutes;
+    final hasAnyTask = data.hasAnyTask;
+
     final hasTodayTask = stats.totalCount > 0;
     return Card(
       child: Padding(
@@ -507,23 +585,8 @@ class _StatItem extends StatelessWidget {
 ///   （剩余工作量趋势 / 匀速参考线），副标题为一句话结论（过去 N 天消化
 ///   了多少、还剩多少）；悬停 tooltip + 图例文本 + 整体读屏语义（NFR-4，
 ///   不只依赖颜色）。
-class _BurndownSection extends StatelessWidget {
-  const _BurndownSection({
-    required this.todoTasks,
-    required this.completedTasks,
-    required this.today,
-    required this.endDate,
-    this.onAddTask,
-    this.ctaLabel = '去添加任务',
-  });
-
-  final List<Task> todoTasks;
-  final List<Task> completedTasks;
-  final DateTime today;
-  final DateTime endDate;
-
-  /// 空态「去添加任务」回调（无可归属目标时为 null，不显示按钮）。
-  final VoidCallback? onAddTask;
+class _BurndownSection extends ConsumerWidget {
+  const _BurndownSection({this.ctaLabel = '去添加任务'});
 
   /// 空态按钮文案（默认「去添加任务」；燃尽/耗时图用「去设置预估时长」）。
   final String ctaLabel;
@@ -538,7 +601,7 @@ class _BurndownSection extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     // 理想参考线用主题 outline：浅色浅灰、深色自动提亮（替代硬编码浅灰）。
     final idealColor = scheme.outline;
@@ -547,34 +610,36 @@ class _BurndownSection extends StatelessWidget {
         ? scheme.surface
         : Colors.white;
 
-    final hasMinutes =
-        todoTasks.any(
-          (t) => t.status != 'done' && t.estimatedMinutes != null,
-        ) ||
-        completedTasks.any((t) => t.estimatedMinutes != null);
-
-    // 燃尽序列：Header 的「当前剩余」与图表共用一次计算。
-    // currentRemaining 为 null 表示「无带时长数据」（无任务/未设预估时长），
-    // 与「有数据但剩余 0（已全部完成）」区分开。
-    final points = hasMinutes
-        ? StatisticsService.burndownSeries(
-            todoTasks: todoTasks,
-            completedTasks: completedTasks,
-            today: today,
-            endDate: endDate,
-          )
-        : const <BurndownPoint>[];
-    final currentRemaining = points.isEmpty ? null : points.last.remaining;
+    // 数据聚合由 progressBurndownProvider 完成（独立区块，输入变化只重算
+    // 本区块）；空态 CTA 的目标归属列表同样自查，避免父级传参导致本区块
+    // 被无关页面重建连带。
+    final data = ref.watch(progressBurndownProvider);
+    if (data == null) {
+      return const SizedBox.shrink(); // 首载由页面加载门处理
+    }
+    final activeGoals = ref
+            .watch(goalListProvider)
+            .valueOrNull
+            ?.where(
+              (g) =>
+                  g.status != GoalStatus.completed &&
+                  g.status != GoalStatus.abandoned &&
+                  g.status != GoalStatus.archived,
+            )
+            .toList() ??
+        const <Goal>[];
+    final onAddTask =
+        activeGoals.isEmpty ? null : () => context.go('/plan');
+    final today = data.today;
+    final points = data.points;
+    final currentRemaining = data.currentRemaining;
+    final doneMinutes = data.doneMinutes;
+    // provider 已按「是否有带时长数据」决定是否生成序列：有序列即有数据。
+    final hasMinutes = points.isNotEmpty;
 
     // 结论句（白话，取代原 FR 术语副标题）：一句话说清这张图讲什么。
     // 拆成「消化了 X」（窗口内完成时长）+「还剩 Y」（当前剩余）两个数字，
     // 按四种状态组句，避免 0 值产生「消化了 0」这类怪话。
-    final doneMinutes = hasMinutes
-        ? StatisticsService.burndownWindowDoneMinutes(
-            completedTasks: completedTasks,
-            today: today,
-          )
-        : 0;
     final String summary;
     if (doneMinutes > 0 && (currentRemaining ?? 0) > 0) {
       summary =
@@ -641,7 +706,9 @@ class _BurndownSection extends StatelessWidget {
                 onAction: onAddTask,
               )
             else ...[
-              _BurndownChart(points: points, today: today),
+              // RepaintBoundary：fl_chart 每帧 repaint 开销大，隔离成独立
+              // 图层，滚动经过时避免整页连带重绘。
+              RepaintBoundary(child: _BurndownChart(points: points, today: today)),
               const SizedBox(height: 16),
               // Footer 图例：色块 + 文字（与其它图表统一；无数据时不渲染）。
               Row(
@@ -848,7 +915,7 @@ class _BurndownChart extends StatelessWidget {
                         child: Transform.rotate(
                           angle: -math.pi / 4, // -45°，向左下倾斜
                           child: Text(
-                            DateFormat('M/d').format(points[index].date),
+                            _md.format(points[index].date),
                             style: axisStyle,
                           ),
                         ),
@@ -876,7 +943,7 @@ class _BurndownChart extends StatelessWidget {
                       final isRemaining = spot.barIndex == 0;
                       final value = isRemaining ? point.remaining : point.ideal;
                       return LineTooltipItem(
-                        '${DateFormat('yyyy-MM-dd').format(point.date)}\n'
+                        '${_ymd.format(point.date)}\n'
                         '${isRemaining ? '剩余' : '理想'} '
                         '${DurationFormat.minutes(value)}',
                         TextStyle(
@@ -947,32 +1014,23 @@ class _BurndownChart extends StatelessWidget {
 /// 白色间距；悬停展示「yyyy-MM-dd：完成 N 项」；底部紧凑图例对应色块。
 /// 无完成记录时网格照常渲染（全灰 0 档），把「还没开始」当作真实状态
 /// 直观呈现，不放空态引导（与燃尽/耗时图的「去添加任务」空态区分）。
-class _HeatmapSection extends StatelessWidget {
-  const _HeatmapSection({
-    required this.today,
-    required this.weekStarts,
-    required this.completedCounts,
-    required this.completedTasks,
-    required this.goalsById,
-  });
-
-  final DateTime today;
-  final List<DateTime> weekStarts;
-
-  /// 按日期聚合的完成任务数量（key：yyyy-MM-dd）；空 map 表示无完成记录。
-  final Map<String, int> completedCounts;
-
-  /// 最近 26 周内完成的任务（与热力图窗口一致，供热力图格子点击查看
-  /// 某天完成的具体任务）。
-  final List<Task> completedTasks;
-
-  /// 目标 id → 目标（任务行展示目标名）。
-  final Map<int, Goal> goalsById;
+class _HeatmapSection extends ConsumerWidget {
+  const _HeatmapSection();
 
   @override
-  Widget build(BuildContext context) {
-    final todayStr = DateFormat('yyyy-MM-dd').format(today);
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 数据聚合由 progressHeatmapProvider 完成（独立区块，只随 completed 变化
+    // 重算）；目标名映射在格子点击弹窗内自查，本区块不依赖 goals。
+    final data = ref.watch(progressHeatmapProvider);
+    if (data == null) {
+      return const SizedBox.shrink(); // 首载由页面加载门处理
+    }
+    final today = ref.watch(clockProvider)();
+    final todayStr = _ymd.format(today);
     final dark = Theme.of(context).brightness == Brightness.dark;
+    final weekStarts = data.weekStarts;
+    final completedCounts = data.counts;
+    final completedByDate = data.byDate;
 
     return Card(
       child: Padding(
@@ -986,13 +1044,16 @@ class _HeatmapSection extends StatelessWidget {
               subtitle: '最近 26 周，按完成日期统计完成任务数量',
             ),
             const SizedBox(height: 12),
-            _HeatmapGrid(
-              todayStr: todayStr,
-              weekStarts: weekStarts,
-              completedCounts: completedCounts,
-              completedTasks: completedTasks,
-              goalsById: goalsById,
-              dark: dark,
+            // RepaintBoundary：热力图区域相对独立，滚动经过时只重绘本层，
+            // 不连带整页其它图表/列表一起 repaint（进度页整页单滚动视图）。
+            RepaintBoundary(
+              child: _HeatmapGrid(
+                todayStr: todayStr,
+                weekStarts: weekStarts,
+                completedCounts: completedCounts,
+                completedByDate: completedByDate,
+                dark: dark,
+              ),
             ),
             const SizedBox(height: 12),
             // 图例始终渲染：全灰网格需要「0」档色块解释（与有数据时一致，
@@ -1049,16 +1110,14 @@ class _HeatmapGrid extends StatelessWidget {
     required this.todayStr,
     required this.weekStarts,
     required this.completedCounts,
-    required this.completedTasks,
-    required this.goalsById,
+    required this.completedByDate,
     required this.dark,
   });
 
   final String todayStr;
   final List<DateTime> weekStarts;
   final Map<String, int> completedCounts;
-  final List<Task> completedTasks;
-  final Map<int, Goal> goalsById;
+  final Map<String, List<Task>> completedByDate;
   final bool dark;
 
   static const _weekdayLabels = ['一', '二', '三', '四', '五', '六', '日'];
@@ -1177,7 +1236,7 @@ class _HeatmapGrid extends StatelessWidget {
     // 纯日历加法（date_text）：防 DST 切换日「加 row 天偏移一小时」导致
     // 日期错位（与 statistics_service 周窗口口径一致）。
     final date = addLocalDays(weekStart, row);
-    final dateStr = DateFormat('yyyy-MM-dd').format(date);
+    final dateStr = _ymd.format(date);
     final count = completedCounts[dateStr] ?? 0;
     final scheme = Theme.of(context).colorScheme;
     final isToday = dateStr == todayStr;
@@ -1188,15 +1247,8 @@ class _HeatmapGrid extends StatelessWidget {
         : _heatColors[level];
 
     // 点击色块：查看当天完成的具体任务（含 0 档：弹窗内展示空提示）。
-    final dayTasks = completedTasks
-        .where(
-          (t) =>
-              t.status == TaskStatus.done &&
-              t.completedAt != null &&
-              DateFormat('yyyy-MM-dd').format(t.completedAt!.toLocal()) ==
-                  dateStr,
-        )
-        .toList();
+    // 已按日期预分桶，此处 O(1) 取当天任务，避免逐格全量扫描。
+    final dayTasks = completedByDate[dateStr] ?? const <Task>[];
 
     return Tooltip(
       message: '$dateStr：完成 $count 项',
@@ -1231,11 +1283,7 @@ class _HeatmapGrid extends StatelessWidget {
   }) {
     showDialog<void>(
       context: context,
-      builder: (_) => _DayTasksDialog(
-        dateStr: dateStr,
-        tasks: tasks,
-        goalsById: goalsById,
-      ),
+      builder: (_) => _DayTasksDialog(dateStr: dateStr, tasks: tasks),
     );
   }
 }
@@ -1243,11 +1291,7 @@ class _HeatmapGrid extends StatelessWidget {
 /// 热力图某天完成任务的查看对话框：当天完成的任务清单（标题、目标、
 /// 科目、时长、完成时刻），以及完成数量的汇总文案。
 class _DayTasksDialog extends ConsumerWidget {
-  const _DayTasksDialog({
-    required this.dateStr,
-    required this.tasks,
-    required this.goalsById,
-  });
+  const _DayTasksDialog({required this.dateStr, required this.tasks});
 
   /// 当天日期（yyyy-MM-dd）。
   final String dateStr;
@@ -1255,12 +1299,15 @@ class _DayTasksDialog extends ConsumerWidget {
   /// 当天完成的任务（已完成且 completedAt 落于当天）。
   final List<Task> tasks;
 
-  /// 目标 id → 目标（任务行展示目标名）。
-  final Map<int, Goal> goalsById;
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
+    // 目标名映射在弹窗内自查（只在打开弹窗时计算，不参与热力图网格的
+    // 常规构建路径）。
+    final goalsById = {
+      for (final g in ref.watch(goalListProvider).valueOrNull ?? const <Goal>[])
+        g.id: g,
+    };
     return AlertDialog(
       title: Text('$dateStr 完成的任务'),
       content: SizedBox(
@@ -1279,7 +1326,8 @@ class _DayTasksDialog extends ConsumerWidget {
                 shrinkWrap: true,
                 itemCount: tasks.length,
                 separatorBuilder: (_, _) => const Divider(height: 1),
-                itemBuilder: (context, index) => _buildTaskTile(context, ref, tasks[index]),
+                itemBuilder: (context, index) =>
+                    _buildTaskTile(context, ref, tasks[index], goalsById),
               ),
       ),
       actions: [
@@ -1291,7 +1339,12 @@ class _DayTasksDialog extends ConsumerWidget {
     );
   }
 
-  Widget _buildTaskTile(BuildContext context, WidgetRef ref, Task task) {
+  Widget _buildTaskTile(
+    BuildContext context,
+    WidgetRef ref,
+    Task task,
+    Map<int, Goal> goalsById,
+  ) {
     final scheme = Theme.of(context).colorScheme;
     final goal = goalsById[task.goalId];
     // 科目名经 subjectListProvider 自查（避免父级传参）。
@@ -1311,7 +1364,7 @@ class _DayTasksDialog extends ConsumerWidget {
       if (task.estimatedMinutes != null)
         DurationFormat.minutes(task.estimatedMinutes!),
       if (completedAt != null)
-        '完成于 ${DateFormat('HH:mm').format(completedAt)}',
+        '完成于 ${_hm.format(completedAt)}',
     ];
 
     return ListTile(
@@ -1329,47 +1382,38 @@ class _DayTasksDialog extends ConsumerWidget {
 /// 目标时长），无任务时间跨度、非真正甘特图，名不符实；重构后以周为
 /// 横轴（一维 fl_chart BarChart），跨目标合并为每周一根堆叠条——
 /// 深色=已完成时长（底）、浅色=未来计划时长（上），保留时间趋势。
-class _GanttSection extends StatelessWidget {
-  const _GanttSection({
-    required this.rows,
-    required this.data,
-    required this.weekStarts,
-    this.onAddTask,
-    this.ctaLabel = '去添加任务',
-  });
-
-  final List<Goal> rows;
-  final Map<int, GoalGanttRow> data;
-  final List<DateTime> weekStarts;
-
-  /// 空态「去添加任务」回调（无可归属目标时为 null，不显示按钮）。
-  final VoidCallback? onAddTask;
+///
+/// 数据聚合（目标×周 + 跨目标合并）由 [progressGanttProvider] 缓存完成，
+/// 本区块只在聚合变化时重建——不再每帧重算 rows × weekStarts。
+class _GanttSection extends ConsumerWidget {
+  const _GanttSection({this.ctaLabel = '去添加任务'});
 
   /// 空态按钮文案（默认「去添加任务」；燃尽/耗时图用「去设置预估时长」）。
   final String ctaLabel;
 
   @override
-  Widget build(BuildContext context) {
-    // 跨目标合并：每周的计划/完成时长（长度 = weekStarts.length）。
-    final plannedPerWeek = List.filled(weekStarts.length, 0);
-    final completedPerWeek = List.filled(weekStarts.length, 0);
-    for (final goal in rows) {
-      final row = data[goal.id];
-      if (row == null) continue;
-      for (var i = 0; i < weekStarts.length; i++) {
-        plannedPerWeek[i] += row.planned[i];
-        completedPerWeek[i] += row.completed[i];
-      }
+  Widget build(BuildContext context, WidgetRef ref) {
+    final data = ref.watch(progressGanttProvider);
+    if (data == null) {
+      return const SizedBox.shrink(); // 首载由页面加载门处理
     }
-    // 兜底：rows 非空但窗口内实际没有周数据（如数据在窗口外）时，
-    // 渲染空态而非空白图表。
-    var hasAnyWeek = false;
-    for (var i = 0; i < weekStarts.length; i++) {
-      if (plannedPerWeek[i] > 0 || completedPerWeek[i] > 0) {
-        hasAnyWeek = true;
-        break;
-      }
-    }
+    final activeGoals = ref
+            .watch(goalListProvider)
+            .valueOrNull
+            ?.where(
+              (g) =>
+                  g.status != GoalStatus.completed &&
+                  g.status != GoalStatus.abandoned &&
+                  g.status != GoalStatus.archived,
+            )
+            .toList() ??
+        const <Goal>[];
+    final onAddTask =
+        activeGoals.isEmpty ? null : () => context.go('/plan');
+    final weekStarts = data.weekStarts;
+    final plannedPerWeek = data.plannedPerWeek;
+    final completedPerWeek = data.completedPerWeek;
+    final hasAnyWeek = data.hasAnyWeek;
 
     return Card(
       // 顶部加大留白：容纳 Y 轴 maxY 刻度的长文本（如「74 小时 10 分」），
@@ -1394,10 +1438,14 @@ class _GanttSection extends StatelessWidget {
                 onAction: onAddTask,
               )
             else ...[
-              _BarChart(
-                plannedPerWeek: plannedPerWeek,
-                completedPerWeek: completedPerWeek,
-                weekStarts: weekStarts,
+              // RepaintBoundary：fl_chart 每帧 repaint 开销大，隔离成独立
+              // 图层，滚动经过时避免整页连带重绘。
+              RepaintBoundary(
+                child: _BarChart(
+                  plannedPerWeek: plannedPerWeek,
+                  completedPerWeek: completedPerWeek,
+                  weekStarts: weekStarts,
+                ),
               ),
               const SizedBox(height: 12),
               // 图例固定在卡片底部，不随图表横向滚动而移动；无数据时不渲染。
@@ -1606,7 +1654,7 @@ class _BarChart extends StatelessWidget {
                           child: Transform.rotate(
                             angle: -math.pi / 4, // -45°，向左下倾斜
                             child: Text(
-                              DateFormat('M/d').format(weekStarts[index]),
+                              _md.format(weekStarts[index]),
                               style: axisStyle,
                             ),
                           ),
@@ -1632,7 +1680,7 @@ class _BarChart extends StatelessWidget {
                           '完成 ${DurationFormat.minutes(completed)}',
                       ];
                       return BarTooltipItem(
-                        '${DateFormat('M/d').format(weekStarts[weekIndex])}'
+                        '${_md.format(weekStarts[weekIndex])}'
                         ' 起一周\n${parts.join(' · ')}',
                         TextStyle(
                           color: scheme.onInverseSurface,

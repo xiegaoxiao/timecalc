@@ -65,6 +65,23 @@ class StatisticsService {
     return counts;
   }
 
+  /// 按完成日期（本地 yyyy-MM-dd）把已完成任务分桶（FR-7.2 热力图点击详情）。
+  ///
+  /// 与 [completedCountsByLocalDate] 同口径（status=done 且 completedAt
+  /// 非空），但返回每个日期下的任务列表，供热力图格子点击时 O(1) 取当天
+  /// 任务，避免逐格对全量任务做线性扫描。无完成记录的日期不出现在映射中。
+  Map<String, List<Task>> completedTasksByLocalDate(List<Task> tasks) {
+    final byDate = <String, List<Task>>{};
+    for (final task in tasks) {
+      if (task.status != TaskStatus.done) continue;
+      final completedAt = task.completedAt;
+      if (completedAt == null) continue;
+      final key = _formatDate(completedAt.toLocal());
+      byDate.putIfAbsent(key, () => <Task>[]).add(task);
+    }
+    return byDate;
+  }
+
   /// 单日完成概览（FR-7.1）：完成数 / 总数 / 已完成任务预估时长之和。
   ///
   /// 无预估时长的任务只计入任务数，不计入时长（FR-7.4）。
@@ -171,15 +188,19 @@ class StatisticsService {
 
   /// [date]（本地日历日期）落在 [weekStarts] 中哪一周（下标）；不在任何
   /// 一周内返回 null。
+  ///
+  /// O(1)：周窗是均匀的 7 天网格，直接用「距首周起点的日历天数 ~/ 7」
+  /// 定位，替代旧版逐周线性扫描（N 个任务 × 26 周）。天差用 UTC 归一化
+  /// 计算，避免本地 DST 让 `difference().inDays` 出现 23/25 小时偏差——
+  /// 与 [addLocalDays] 的纯日历口径一致。
   static int? _weekIndexOf(DateTime date, List<DateTime> weekStarts) {
-    final day = DateTime(date.year, date.month, date.day);
-    for (var i = 0; i < weekStarts.length; i++) {
-      final start = weekStarts[i];
-      // 纯日历加法：防 DST 切换日「加 7 天偏移一小时」导致边界错位。
-      final end = addLocalDays(start, 7);
-      if (!day.isBefore(start) && day.isBefore(end)) return i;
-    }
-    return null;
+    if (weekStarts.isEmpty) return null;
+    final first = weekStarts.first;
+    final startUtc = DateTime.utc(first.year, first.month, first.day);
+    final dayUtc = DateTime.utc(date.year, date.month, date.day);
+    final index = dayUtc.difference(startUtc).inDays ~/ 7;
+    if (index < 0 || index >= weekStarts.length) return null;
+    return index;
   }
 
   /// 甘特图时长分桶（LeetCode 绿系五档，按周完成分钟数）。

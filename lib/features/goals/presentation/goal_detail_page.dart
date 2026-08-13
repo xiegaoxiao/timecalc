@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/providers/app_refresh.dart';
@@ -327,7 +326,7 @@ class _GoalHeader extends ConsumerWidget {
               Icon(phaseIcon, size: 18, color: onHero),
               const SizedBox(width: 6),
               Text(
-                '${CountdownService.label(phase, days)} · 截止 ${DateFormat('yyyy-MM-dd').format(parseLocalDate(goal.deadlineDate))}',
+                '${CountdownService.label(phase, days)} · 截止 ${formatLocalDate(parseLocalDate(goal.deadlineDate))}',
                 style: TextStyle(
                   color: onHero,
                   fontWeight: FontWeight.w600,

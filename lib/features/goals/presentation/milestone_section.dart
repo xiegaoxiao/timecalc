@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/database/tables.dart';
@@ -188,7 +187,7 @@ class _MilestoneCard extends StatelessWidget {
               : null,
         ),
         subtitle: Text(
-          '${DateFormat('yyyy-MM-dd').format(date)}'
+          '${formatLocalDate(date)}'
           '${done ? ' · 已完成' : ''}',
         ),
         trailing: Row(

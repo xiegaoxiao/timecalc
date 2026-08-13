@@ -392,4 +392,49 @@ void main() {
       expect(doneMinutes, 120);
     });
   });
+
+  group('goalGanttData 性能（NFR-1）', () {
+    // 10,000 条任务（5k 计划 + 5k 完成）聚合到 26 周窗口，验证周定位
+    // 不再是逐周线性扫描（回归防护：_weekIndexOf 曾对每个任务扫 26 周）。
+    // 预算 500ms 与 calendar_performance_test 的 NFR-1 口径一致，给 CI
+    // 满载运行留余量（新实现单测约 0ms；旧逐周扫描在 10k 任务下 3-4s）。
+    test('10,000 条任务：周聚合 ≤ 500ms', () {
+      final weekStarts = StatisticsService.ganttWeekStarts(DateTime(2026, 8, 5));
+      final todoTasks = <Task>[];
+      final completedTasks = <Task>[];
+      for (var i = 0; i < 5000; i++) {
+        todoTasks.add(todo('2026-08-12', minutes: 60, id: i, goalId: i % 10));
+      }
+      for (var i = 0; i < 5000; i++) {
+        completedTasks.add(
+          done(
+            '2026-07-20',
+            minutes: 30,
+            id: 10000 + i,
+            goalId: i % 10,
+            completedAt: DateTime(2026, 7, 20, 8),
+          ),
+        );
+      }
+
+      final stopwatch = Stopwatch()..start();
+      final data = service.goalGanttData(
+        todoTasks: todoTasks,
+        completedTasks: completedTasks,
+        weekStarts: weekStarts,
+      );
+      stopwatch.stop();
+
+      expect(data.length, 10); // 10 个目标各有数据
+      expect(
+        data.values.every((r) => r.planned.any((m) => m > 0)),
+        isTrue,
+      );
+      expect(
+        stopwatch.elapsedMilliseconds,
+        lessThan(500),
+        reason: '10k 任务周聚合应 ≤500ms（旧版逐周扫描易超时，NFR-1）',
+      );
+    });
+  });
 }

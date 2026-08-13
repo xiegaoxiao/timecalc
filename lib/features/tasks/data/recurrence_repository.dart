@@ -142,27 +142,55 @@ class RecurrenceRepository {
   /// 对 active 模板：从 generatedThroughDate 的次日生成到
   /// min(today+30, endDate)，同模板同日期已存在未归档实例则跳过；更新
   /// generatedThroughDate。幂等；[goalId] 为空时处理全部模板（应用启动调用）。
+  ///
+  /// 性能：先筛出真正需要生成的模板，再对这批模板发**一条** `IN` 查询取
+  /// 全部未归档实例、按模板分组去重——替代旧版每模板一次全量实例查询的
+  /// N+1（启动路径，模板多时逐条往返明显）。
   Future<int> generateDue({int? goalId, DateTime? today}) {
     final service = RecurrenceService();
     return _db.transaction(() async {
       final todayStr = _format(today ?? DateTime.now());
       var generated = 0;
       final templates = await _activeTemplates(goalId);
+
+      // 第一遍：仅收集需要滚动生成的模板（跳过窗口未推进的），避免对
+      // 无需生成的模板也发起实例查询。
+      final toGenerate = <RecurrenceTemplate>[];
       for (final template in templates) {
+        final target = _minDate(_plusDays(todayStr, 30), template.endDate);
+        if (_dateLess(template.generatedThroughDate, target)) {
+          toGenerate.add(template);
+        }
+      }
+
+      // 第二遍：单条 IN 查询取这些模板的全部未归档实例，按模板分组。
+      final existingByTemplate = <int, Set<String>>{};
+      if (toGenerate.isNotEmpty) {
+        final existing = await (_db.select(_db.tasks)
+              ..where(
+                (t) =>
+                    t.recurrenceTemplateId.isIn(
+                      toGenerate.map((t) => t.id),
+                    ) &
+                    t.archivedAt.isNull(),
+              ))
+            .get();
+        for (final task in existing) {
+          final templateId = task.recurrenceTemplateId;
+          if (templateId == null) continue;
+          existingByTemplate
+              .putIfAbsent(templateId, () => <String>{})
+              .add(task.plannedDate);
+        }
+      }
+
+      for (final template in toGenerate) {
         final rule = RecurrenceRule(
           ruleType: template.ruleType,
           ruleJson: template.ruleJson,
         );
         final target = _minDate(_plusDays(todayStr, 30), template.endDate);
-        if (!_dateLess(template.generatedThroughDate, target)) continue;
-
-        final existing = await (_db.select(_db.tasks)
-              ..where((t) => t.recurrenceTemplateId.equals(template.id)))
-            .get();
-        final existingDates = existing
-            .where((t) => t.archivedAt == null)
-            .map((t) => t.plannedDate)
-            .toSet();
+        final existingDates = existingByTemplate[template.id] ?? <String>{};
         // 用户删除过的实例日期（墓碑）：滚动生成时跳过，防止被删实例复活。
         final tombstoneDates = decodeTombstones(template.deletedInstanceDates);
 

@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
-
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
@@ -164,7 +162,7 @@ class _GoalCard extends ConsumerWidget {
           children: [
             const SizedBox(height: 2),
             Text(
-              '截止 ${DateFormat('yyyy-MM-dd').format(parseLocalDate(goal.deadlineDate))}',
+              '截止 ${formatLocalDate(parseLocalDate(goal.deadlineDate))}',
             ),
             const SizedBox(height: 2),
             // 状态不只依赖颜色（NFR-4）：阶段文案 + 图标。

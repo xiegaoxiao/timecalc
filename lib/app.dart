@@ -23,7 +23,10 @@ class TimeCalcApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(appRouterProvider);
-    final themeMode = ref.watch(settingsProvider).valueOrNull?.themeMode;
+    // 只依赖 themeMode 字段：用 select 窄化监听，避免任何设置项变更
+    // （如 last_synced_at、关闭行为、备份目录）都重建整个 MaterialApp 树。
+    final themeMode = ref
+        .watch(settingsProvider.select((s) => s.valueOrNull?.themeMode));
     return MaterialApp.router(
       title: 'TimeCalc 时间计算器',
       debugShowCheckedModeBanner: false,

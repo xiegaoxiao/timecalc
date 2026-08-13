@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
@@ -123,7 +122,7 @@ class TaskTile extends ConsumerWidget {
               [
                 ?goalTitle,
                 if (showPlannedDate)
-                  DateFormat('yyyy-MM-dd').format(parseLocalDate(task.plannedDate)),
+                  formatLocalDate(parseLocalDate(task.plannedDate)),
                 ?subjectName,
                 if (task.estimatedMinutes != null)
                   DurationFormat.minutes(task.estimatedMinutes!),
@@ -271,7 +270,7 @@ class TaskTile extends ConsumerWidget {
     final repo = ref.read(taskRepositoryProvider);
     final ok = await runDbAction(
       context,
-      action: () => repo.defer(task.id, DateFormat('yyyy-MM-dd').format(picked)),
+      action: () => repo.defer(task.id, formatLocalDate(picked)),
     );
     if (ok) onChanged();
   }

@@ -41,15 +41,18 @@ class ChecklistItemRepository {
   }) {
     final now = DateTime.now().toUtc();
     return _db.transaction(() async {
-      final existing = await byTask(taskId);
-      final maxOrder = existing.isEmpty
-          ? -1
-          : existing.map((c) => c.sortOrder).reduce((a, b) => a > b ? a : b);
+      // 单条 MAX 聚合查询代替「加载任务下全部检查项再求最大」——
+      // 检查项多时避免整表行拉进内存只为求一个计数。
+      final maxQuery = _db.selectOnly(_db.checklistItems)
+        ..addColumns([_db.checklistItems.sortOrder.max()])
+        ..where(_db.checklistItems.taskId.equals(taskId));
+      final maxOrder =
+          await maxQuery.map((row) => row.read(_db.checklistItems.sortOrder.max())).getSingle();
       final id = await _db.into(_db.checklistItems).insert(
             ChecklistItemsCompanion.insert(
               taskId: taskId,
               title: title,
-              sortOrder: Value(maxOrder + 1),
+              sortOrder: Value((maxOrder ?? -1) + 1),
               createdAt: now,
               updatedAt: now,
             ),

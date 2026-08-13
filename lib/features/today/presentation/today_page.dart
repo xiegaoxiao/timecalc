@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
@@ -18,6 +17,7 @@ import '../../../services/statistics_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../../goals/data/milestone_repository_provider.dart';
+import '../../goals/data/subject_repository_provider.dart';
 import '../../goals/presentation/goal_form_dialog.dart';
 import '../../settings/data/settings_repository.dart';
 import '../../settings/data/settings_repository_provider.dart';
@@ -51,7 +51,7 @@ class _TodayPageState extends ConsumerState<TodayPage> {
   @override
   Widget build(BuildContext context) {
     final today = ref.watch(clockProvider)();
-    final todayStr = DateFormat('yyyy-MM-dd').format(today);
+    final todayStr = formatLocalDate(today);
 
     final goalsAsync = ref.watch(goalListProvider);
     final settingsAsync = ref.watch(settingsProvider);
@@ -136,6 +136,17 @@ class _TodayPageState extends ConsumerState<TodayPage> {
     }
 
     final goalsById = {for (final g in goals) g.id: g};
+    // 跨目标列表的科目名：父级一次性预取（按 goalId 去重），避免每个
+    // TaskTile 各自 watch(subjectListProvider) + 线性扫描（N+1）。
+    final goalIdsForSubjects = <int>{
+      for (final t in todayTasks) t.goalId,
+      for (final t in unfinished) t.goalId,
+    };
+    final subjectsByGoal = <int, List<Subject>>{
+      for (final gid in goalIdsForSubjects)
+        gid:
+            ref.watch(subjectListProvider(gid)).valueOrNull ?? const <Subject>[],
+    };
     final availableMinutes = settings.dailyAvailableMinutes;
     final load = _load.dayLoad(todayTasks);
     final over = _load.overMinutes(load: load, available: availableMinutes);
@@ -150,141 +161,162 @@ class _TodayPageState extends ConsumerState<TodayPage> {
     // 由空态大按钮承担唯一「添加任务」入口，避免两个相同入口。
     final todayEmpty = todayTasks.isEmpty && !tasksLoading && tasksError == null;
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        if (activeGoals.isNotEmpty) ...[
-          for (final goal in activeGoals) _CountdownCard(goal: goal),
-          const SizedBox(height: 8),
-        ],
-        // 今日概览常驻：有活跃目标即显示（空态用 `--` 无数据语义），
-        // 把「今日计划量与完成度」前置到首页。
-        if (activeGoals.isNotEmpty) ...[
-          _LoadOverviewCard(
-            load: load,
-            available: availableMinutes,
-            over: over,
-            stats: _stats.completionStats(todayTasks),
-            remainingMinutes: _stats.remainingMinutes(todoTasks),
-            hasAnyTask: hasAnyTask,
-          ),
-          const SizedBox(height: 8),
-        ],
-        if (unfinished.isEmpty && unfinishedError != null)
-          _SectionError(
-            error: unfinishedError,
-            onRetry: onRetryUnfinished,
-          ),
-        if (unfinished.isNotEmpty && !_bannerDismissed) ...[
-          _UnfinishedBanner(
-            count: unfinished.length,
-            onDeferNext: () async {
-              final next = _defer.nextAvailableDate(
-                today: today,
-                availableWeekdays: weekdays,
-              );
-              final ok = await runDbAction(
-                context,
-                action: () => ref
-                    .read(taskRepositoryProvider)
-                    .deferMany(unfinished.map((t) => t.id).toList(), next),
-              );
-              if (ok) onChanged();
-            },
-            onDeferPickDate: () async {
-              final now = DateTime.now();
-              final picked = await showDatePicker(
-                context: context,
-                initialDate: today,
-                firstDate: DateTime(now.year - 1),
-                lastDate: DateTime(now.year + 10),
-                helpText: '选择延期日期',
-              );
-              if (picked == null) return;
-              if (!mounted) return;
-              final ok = await runDbAction(
-                context,
-                action: () => ref
-                    .read(taskRepositoryProvider)
-                    .deferMany(
-                      unfinished.map((t) => t.id).toList(),
-                      DateFormat('yyyy-MM-dd').format(picked),
-                    ),
-              );
-              if (ok) onChanged();
-            },
-            onKeepOriginal: () => setState(() => _bannerDismissed = true),
-          ),
-          const SizedBox(height: 8),
-        ],
-        // 过期任务区块（FR-3.7 扩展）：红条下方逐条列出昨日及更早未完成
-        // 任务，复用 TaskTile 的完成/编辑/延期/删除操作；与红条共用
-        // unfinished 数据源，任何操作经 onChanged 联动刷新。
-        // 数据驱动显示：无过期任务即隐藏；「保留原日期」只关横幅，区块
-        // 保留以便用户仍可逐条处理。
-        if (unfinished.isNotEmpty) ...[
-          _OverdueTasksSection(
-            tasks: unfinished,
-            goalsById: goalsById,
-            today: today,
-            onChanged: onChanged,
-          ),
-          const SizedBox(height: 8),
-        ],
-        Row(
-          children: [
-            Text('今日任务', style: Theme.of(context).textTheme.titleMedium),
-            // 空态时不重复右上角按钮：唯一的「添加任务」入口由空态大按钮承担。
-            if (!todayEmpty) ...[
-              const Spacer(),
-              TextButton.icon(
-                onPressed: addGoals.isEmpty
-                    ? null
-                    : () async {
-                        await QuickTaskFormDialog.show(
-                          context,
-                          date: today,
-                          goals: addGoals,
-                        );
-                        onChanged();
-                      },
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('添加任务'),
-              ),
-            ],
-          ],
-        ),
-        if (todayTasks.isEmpty && tasksLoading)
-          const Padding(
-            padding: EdgeInsets.only(bottom: 4),
-            child: LinearProgressIndicator(minHeight: 2),
-          ),
-        if (todayTasks.isEmpty && tasksError != null)
-          _SectionError(
-            error: tasksError,
-            onRetry: onRetryTasks,
-          ),
-        if (todayTasks.isEmpty && !tasksLoading && tasksError == null)
-          _TodayEmptyView(
-            onAddTask: addGoals.isEmpty
-                ? null
-                : () async {
-                    // 等待对话框保存完成后再刷新，避免 invalidate 早于数据写入（回归）。
-                    await QuickTaskFormDialog.show(
-                      context,
-                      date: today,
-                      goals: addGoals,
+    return CustomScrollView(
+      // 头部区块（倒计时卡/概览/横幅/标题行等）用 SliverChildListDelegate
+      // 一次性构建；今日任务列表用 SliverList.builder 懒加载——大任务量下
+      // 只实例化视口内的任务行，滚动时按需构建（原 ListView(children:) 会
+      // 一次性构建全部行）。
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.all(16),
+          sliver: SliverList(
+            delegate: SliverChildListDelegate([
+              if (activeGoals.isNotEmpty) ...[
+                for (final goal in activeGoals) _CountdownCard(goal: goal),
+                const SizedBox(height: 8),
+              ],
+              // 今日概览常驻：有活跃目标即显示（空态用 `--` 无数据语义），
+              // 把「今日计划量与完成度」前置到首页。
+              if (activeGoals.isNotEmpty) ...[
+                _LoadOverviewCard(
+                  load: load,
+                  available: availableMinutes,
+                  over: over,
+                  stats: _stats.completionStats(todayTasks),
+                  remainingMinutes: _stats.remainingMinutes(todoTasks),
+                  hasAnyTask: hasAnyTask,
+                ),
+                const SizedBox(height: 8),
+              ],
+              if (unfinished.isEmpty && unfinishedError != null)
+                _SectionError(
+                  error: unfinishedError,
+                  onRetry: onRetryUnfinished,
+                ),
+              if (unfinished.isNotEmpty && !_bannerDismissed) ...[
+                _UnfinishedBanner(
+                  count: unfinished.length,
+                  onDeferNext: () async {
+                    final next = _defer.nextAvailableDate(
+                      today: today,
+                      availableWeekdays: weekdays,
                     );
-                    onChanged();
+                    final ok = await runDbAction(
+                      context,
+                      action: () => ref
+                          .read(taskRepositoryProvider)
+                          .deferMany(unfinished.map((t) => t.id).toList(), next),
+                    );
+                    if (ok) onChanged();
                   },
-          )
-        else
-          for (final task in todayTasks)
-            TaskTile(
-              task: task,
-              goalTitle: goalsById[task.goalId]?.title,
-              onChanged: onChanged,
+                  onDeferPickDate: () async {
+                    final now = DateTime.now();
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: today,
+                      firstDate: DateTime(now.year - 1),
+                      lastDate: DateTime(now.year + 10),
+                      helpText: '选择延期日期',
+                    );
+                    if (picked == null) return;
+                    if (!mounted) return;
+                    final ok = await runDbAction(
+                      context,
+                      action: () => ref
+                          .read(taskRepositoryProvider)
+                          .deferMany(
+                            unfinished.map((t) => t.id).toList(),
+                            formatLocalDate(picked),
+                          ),
+                    );
+                    if (ok) onChanged();
+                  },
+                  onKeepOriginal: () => setState(() => _bannerDismissed = true),
+                ),
+                const SizedBox(height: 8),
+              ],
+              // 过期任务区块（FR-3.7 扩展）：红条下方逐条列出昨日及更早未完成
+              // 任务，复用 TaskTile 的完成/编辑/延期/删除操作；与红条共用
+              // unfinished 数据源，任何操作经 onChanged 联动刷新。
+              // 数据驱动显示：无过期任务即隐藏；「保留原日期」只关横幅，区块
+              // 保留以便用户仍可逐条处理。
+              if (unfinished.isNotEmpty) ...[
+                _OverdueTasksSection(
+                  tasks: unfinished,
+                  goalsById: goalsById,
+                  subjectsByGoal: subjectsByGoal,
+                  today: today,
+                  onChanged: onChanged,
+                ),
+                const SizedBox(height: 8),
+              ],
+              Row(
+                children: [
+                  Text('今日任务', style: Theme.of(context).textTheme.titleMedium),
+                  // 空态时不重复右上角按钮：唯一的「添加任务」入口由空态大按钮承担。
+                  if (!todayEmpty) ...[
+                    const Spacer(),
+                    TextButton.icon(
+                      onPressed: addGoals.isEmpty
+                          ? null
+                          : () async {
+                              await QuickTaskFormDialog.show(
+                                context,
+                                date: today,
+                                goals: addGoals,
+                              );
+                              onChanged();
+                            },
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('添加任务'),
+                    ),
+                  ],
+                ],
+              ),
+              if (todayTasks.isEmpty && tasksLoading)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 4),
+                  child: LinearProgressIndicator(minHeight: 2),
+                ),
+              if (todayTasks.isEmpty && tasksError != null)
+                _SectionError(
+                  error: tasksError,
+                  onRetry: onRetryTasks,
+                ),
+              if (todayTasks.isEmpty && !tasksLoading && tasksError == null)
+                _TodayEmptyView(
+                  onAddTask: addGoals.isEmpty
+                      ? null
+                      : () async {
+                          // 等待对话框保存完成后再刷新，避免 invalidate 早于数据写入（回归）。
+                          await QuickTaskFormDialog.show(
+                            context,
+                            date: today,
+                            goals: addGoals,
+                          );
+                          onChanged();
+                        },
+                ),
+            ]),
+          ),
+        ),
+        // 今日任务列表：懒加载（视口内按需构建 + 滚动回收）。
+        if (todayTasks.isNotEmpty)
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            sliver: SliverList.builder(
+              itemCount: todayTasks.length,
+              itemBuilder: (context, index) {
+                final task = todayTasks[index];
+                return TaskTile(
+                  task: task,
+                  goalTitle: goalsById[task.goalId]?.title,
+                  subjects: subjectsByGoal[task.goalId],
+                  onChanged: onChanged,
+                );
+              },
             ),
+          ),
       ],
     );
   }
@@ -448,12 +480,14 @@ class _OverdueTasksSection extends StatelessWidget {
   const _OverdueTasksSection({
     required this.tasks,
     required this.goalsById,
+    required this.subjectsByGoal,
     required this.today,
     required this.onChanged,
   });
 
   final List<Task> tasks;
   final Map<int, Goal> goalsById;
+  final Map<int, List<Subject>> subjectsByGoal;
   final DateTime today;
   final VoidCallback onChanged;
 
@@ -506,7 +540,7 @@ class _OverdueTasksSection extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
-                  '原计划 ${DateFormat('yyyy-MM-dd').format(parseLocalDate(task.plannedDate))}'
+                  '原计划 ${formatLocalDate(parseLocalDate(task.plannedDate))}'
                   ' · 已逾期 ${_overdueDays(today, task.plannedDate)} 天',
                   style: Theme.of(
                     context,
@@ -516,6 +550,7 @@ class _OverdueTasksSection extends StatelessWidget {
               TaskTile(
                 task: task,
                 goalTitle: goalsById[task.goalId]?.title,
+                subjects: subjectsByGoal[task.goalId],
                 onChanged: onChanged,
               ),
             ],
@@ -684,7 +719,7 @@ class _CountdownCard extends ConsumerWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '截止 ${DateFormat('yyyy-MM-dd').format(parseLocalDate(goal.deadlineDate))}',
+                  '截止 ${formatLocalDate(parseLocalDate(goal.deadlineDate))}',
                   style: TextStyle(color: onHeroSoft, fontSize: 12),
                 ),
                 // 倒计时是 hero 的视觉焦点：大号数字 + 阶段图标，一眼抓住剩余量。

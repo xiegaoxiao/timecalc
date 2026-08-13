@@ -419,29 +419,27 @@ class TaskRepository {
 
   /// 批量延期到同一日期（FR-3.7 次日未完成任务集中处理）。
   ///
-  /// 全部延期在单个事务内完成（NFR-2）：任一条失败整体回滚，无半写入。
-  /// 返回实际发生延期（计划日期被改变）的任务数。
-  Future<int> deferMany(List<int> ids, String newPlannedDate) {
-    return _db.transaction(() async {
-      var changed = 0;
-      for (final id in ids) {
-        final current = await byId(id);
-        if (current == null) continue;
-        if (current.plannedDate == newPlannedDate) continue;
-        await (_db.update(_db.tasks)..where((t) => t.id.equals(id))).write(
-          TasksCompanion(
-            plannedDate: Value(newPlannedDate),
-            originalPlannedDate:
-                current.originalPlannedDate == null
-                    ? Value(current.plannedDate)
-                    : const Value.absent(),
-            updatedAt: Value(DateTime.now().toUtc()),
-          ),
-        );
-        changed++;
-      }
-      return changed;
-    });
+  /// 单条 SQL 完成（NFR-2）：`original_planned_date = COALESCE(original_planned_date,
+  /// planned_date)` 利用 SQLite UPDATE 赋值读取旧行值，仅在尚未记录原计划日期时
+  /// 快照当前计划日期，与旧版逐条「byId + update」语义一致，但把 N 次
+  /// SELECT+N 次 UPDATE 收敛为一次 UPDATE。返回实际发生延期（计划日期被改变）
+  /// 的任务数。
+  Future<int> deferMany(List<int> ids, String newPlannedDate) async {
+    if (ids.isEmpty) return 0;
+    final placeholders = List.filled(ids.length, '?').join(',');
+    return _db.customUpdate(
+      'UPDATE tasks SET planned_date = ?, '
+      'original_planned_date = COALESCE(original_planned_date, planned_date), '
+      'updated_at = ? '
+      'WHERE id IN ($placeholders) AND planned_date != ?',
+      variables: [
+        Variable.withString(newPlannedDate),
+        Variable.withDateTime(DateTime.now().toUtc()),
+        ...ids.map(Variable.withInt),
+        Variable.withString(newPlannedDate),
+      ],
+      updates: {_db.tasks},
+    );
   }
 
   /// 改期时计算应写入的 originalPlannedDate 字段。
@@ -485,41 +483,63 @@ class TaskRepository {
   /// 与 [delete] 同语义：检查项级联删除、重复实例日期记入模板墓碑。
   /// 全部删除在单个事务内完成，任一条失败整体回滚，无半删除。
   /// 空列表为 no-op。
+  ///
+  /// 旧版逐 id 执行「byId + 删检查项 + 删任务 + 墓碑」，N 条即 4N 次 SQL；
+  /// 现改为一次 `IN` 查询 + 一次 `IN` 删检查项 + 一次 `IN` 删任务，墓碑按
+  /// 模板分组后每模板一次 SELECT + 一次 UPDATE（批量删除通常只涉 0/1 个模板）。
   Future<void> deleteMany(List<int> ids) {
     if (ids.isEmpty) return Future.value();
     return _db.transaction(() async {
-      for (final id in ids) {
-        final task = await byId(id);
-        if (task == null) continue;
-        await (_db.delete(_db.checklistItems)
-              ..where((c) => c.taskId.equals(id)))
-            .go();
-        await (_db.delete(_db.tasks)..where((t) => t.id.equals(id))).go();
+      final tasks = await (_db.select(_db.tasks)
+            ..where((t) => t.id.isIn(ids)))
+          .get();
+      await (_db.delete(_db.checklistItems)
+            ..where((c) => c.taskId.isIn(ids)))
+          .go();
+      await (_db.delete(_db.tasks)..where((t) => t.id.isIn(ids))).go();
+
+      final datesByTemplate = <int, List<String>>{};
+      for (final task in tasks) {
         final templateId = task.recurrenceTemplateId;
-        if (templateId != null) {
-          await _recordDeletedInstance(templateId, task.plannedDate);
-        }
+        if (templateId == null) continue;
+        datesByTemplate.putIfAbsent(templateId, () => []).add(task.plannedDate);
       }
+      await _recordDeletedInstances(datesByTemplate);
     });
   }
 
+  /// 把 [datesByTemplate] 中每个模板的日期批量记入墓碑（同一事务内调用）。
+  ///
+  /// 每模板一次 SELECT + 一次 UPDATE（相对 [delete] 单条路径的逐日期版本，
+  /// 批量删除同模板多实例时收敛为一次写）。
+  Future<void> _recordDeletedInstances(
+    Map<int, List<String>> datesByTemplate,
+  ) async {
+    for (final entry in datesByTemplate.entries) {
+      final templateId = entry.key;
+      final dates = entry.value;
+      if (dates.isEmpty) continue;
+      final template = await (_db.select(_db.recurrenceTemplates)
+            ..where((t) => t.id.equals(templateId)))
+          .getSingleOrNull();
+      if (template == null) continue;
+      final tombstones =
+          RecurrenceRepository.decodeTombstones(template.deletedInstanceDates)
+            ..addAll(dates);
+      await (_db.update(_db.recurrenceTemplates)
+            ..where((t) => t.id.equals(templateId)))
+          .write(
+            RecurrenceTemplatesCompanion(
+              deletedInstanceDates:
+                  Value(RecurrenceRepository.encodeTombstones(tombstones)),
+              updatedAt: Value(DateTime.now().toUtc()),
+            ),
+          );
+    }
+  }
+
   /// 把 [date] 记入模板墓碑（同一事务内调用，删除实例后写入）。
-  Future<void> _recordDeletedInstance(int templateId, String date) async {
-    final template = await (_db.select(_db.recurrenceTemplates)
-          ..where((t) => t.id.equals(templateId)))
-        .getSingleOrNull();
-    if (template == null) return;
-    final tombstones =
-        RecurrenceRepository.decodeTombstones(template.deletedInstanceDates)
-          ..add(date);
-    await (_db.update(_db.recurrenceTemplates)
-          ..where((t) => t.id.equals(templateId)))
-        .write(
-          RecurrenceTemplatesCompanion(
-            deletedInstanceDates:
-                Value(RecurrenceRepository.encodeTombstones(tombstones)),
-            updatedAt: Value(DateTime.now().toUtc()),
-          ),
-        );
+  Future<void> _recordDeletedInstance(int templateId, String date) {
+    return _recordDeletedInstances({templateId: [date]});
   }
 }
