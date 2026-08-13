@@ -1,32 +1,37 @@
 import 'package:flutter/material.dart';
 
 import 'app_semantic_colors.dart';
+import 'app_tokens.dart';
 
 /// TimeCalc 品牌种子色（深绿）。
 ///
 /// 主题派生与启动错误屏共用，避免硬编码多处漂移。
 const Color kTimeCalcSeedColor = Color(0xFF3F6C51);
 
-/// 浅色模式页面底色（模板参考：浅灰页面底，卡片留白更清晰）。
-const Color kTimeCalcLightBackground = Color(0xFFF6F6F6);
+/// 浅色模式页面底色（token：中性冷灰，卡片留白更干净）。
+const Color kTimeCalcLightBackground = AppTokens.neutralBgLight;
 
-/// 浅色模式分割线色（模板参考）。
-const Color kTimeCalcLightDivider = Color(0xFFE0E0E0);
+/// 浅色模式分割线色（token：中性细边框）。
+const Color kTimeCalcLightDivider = AppTokens.neutralBorderLight;
 
 /// 品牌渐变深端（hero 卡片背景起点，同 seed 色相）。
-const Color kTimeCalcBrandDeep = Color(0xFF3F6C51);
+const Color kTimeCalcBrandDeep = AppTokens.brandDeep;
 
 /// 品牌渐变浅端（同色相提亮变体，模板 A「同色深浅表达层次」手法）。
-const Color kTimeCalcBrandBright = Color(0xFF5C8A6E);
+const Color kTimeCalcBrandBright = AppTokens.brandBright;
 
 /// TimeCalc 主题定义。
 ///
 /// M1 起以 Material 3 默认色板为基础；M13 外观升级引入**组件级主题定制**
-/// （克制型生产力风，参照 ui-template 模板的轻阴影/圆角/浅灰底手法）：
-/// - [CardThemeData]：圆角 12 + 微边框 + 轻阴影——把进度页既有的卡片语言
-///   提升为全局，所有页面 `Card` 自动统一；
+/// （克制型生产力风，参照 ui-template 模板的轻阴影/圆角/浅灰底手法）；
+/// v1.11 主题重写接入 [AppTokens] design token 层（借鉴 shadcn/ui 的
+/// 现代极简生产力语言）：中性底色/细边框/小圆角/统一动效档位，主色仍由
+/// M3 派生色板承担（对比度测试锁定）。
+///
+/// - [CardThemeData]：圆角 12 + 中性细边框 + 轻阴影——卡片语言全局统一；
 /// - [AppBarTheme]：去表面色晕染、无阴影，页面头干净；
-/// - 按钮/分割线/SnackBar/对话框统一圆角；
+/// - 按钮/分割线/SnackBar/对话框统一圆角档位；
+/// - [NavigationBarThemeData]：底导航指示器圆角/标签规格统一；
 /// - [AppSemanticColors]：警告/成功/信息语义色 token 随主题注册；
 /// - 品牌渐变（[kTimeCalcBrandDeep]→[kTimeCalcBrandBright]）+ 统一路由
 ///   过渡（页面入场动画），给 hero 卡片与页面切换注入品牌感。
@@ -45,13 +50,41 @@ abstract final class AppTheme {
     final isDark = brightness == Brightness.dark;
     final scaffoldBackground = isDark
         ? colorScheme.surface
-        : kTimeCalcLightBackground;
+        : AppTokens.neutralBgLight;
+
+    // 文字层级：标题统一加粗（Semibold），摘要统一中性次级色，
+    // 与中性底/细边框一起构成「清晰层级」。
+    final baseTextTheme = ThemeData(
+      brightness: brightness,
+      useMaterial3: true,
+    ).textTheme;
+    final textTheme = baseTextTheme
+        // 先统一到 M3 派生前景色。
+        .apply(
+          bodyColor: colorScheme.onSurface,
+          displayColor: colorScheme.onSurface,
+        )
+        // 再覆写层级：标题 Semibold、摘要中性次级色（后写生效）。
+        .copyWith(
+          titleLarge: baseTextTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+          titleMedium: baseTextTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+          bodySmall: baseTextTheme.bodySmall?.copyWith(
+            color: isDark
+                ? colorScheme.outline
+                : AppTokens.neutralTextSecondaryLight,
+          ),
+        );
 
     return ThemeData(
       colorScheme: colorScheme,
       useMaterial3: true,
       visualDensity: VisualDensity.adaptivePlatformDensity,
-      // 浅灰页面底（深色用 M3 派生 surface），卡片留白更清晰。
+      textTheme: textTheme,
+      // 中性底色（深色用 M3 派生 surface），卡片留白更清晰。
       scaffoldBackgroundColor: scaffoldBackground,
       // 语义色 token 随主题注册，页面经 AppSemanticColors.of(context) 读取。
       extensions: [
@@ -63,21 +96,29 @@ abstract final class AppTheme {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         backgroundColor: scaffoldBackground,
+        // 页面标题层级：Semibold，与 token 文字档位一致。
+        titleTextStyle: textTheme.titleLarge?.copyWith(
+          color: colorScheme.onSurface,
+        ),
       ),
-      // 卡片：圆角 12 + 微边框 + 轻阴影（进度页既有语言的全局化）。
-      // clipBehavior: Clip.none 让 fl_chart tooltip 可浮出图表边界。
+      // 卡片：圆角 12 + 中性细边框 + 轻阴影（token 化；进度页既有语言
+      // 的全局化）。clipBehavior: Clip.none 让 fl_chart tooltip 可浮出
+      // 图表边界。
       cardTheme: CardThemeData(
         elevation: 1,
         clipBehavior: Clip.none,
+        color: colorScheme.surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppTokens.radiusXl),
           side: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.4),
+            color: isDark
+                ? colorScheme.outlineVariant.withValues(alpha: 0.4)
+                : AppTokens.neutralBorderLight,
           ),
         ),
       ),
       dividerTheme: DividerThemeData(
-        color: isDark ? colorScheme.outlineVariant : kTimeCalcLightDivider,
+        color: isDark ? colorScheme.outlineVariant : AppTokens.neutralBorderLight,
         thickness: 1,
         space: 1,
       ),
@@ -85,7 +126,7 @@ abstract final class AppTheme {
         style: FilledButton.styleFrom(
           minimumSize: const Size(64, 40),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(AppTokens.radiusLg),
           ),
         ),
       ),
@@ -93,23 +134,42 @@ abstract final class AppTheme {
         style: OutlinedButton.styleFrom(
           minimumSize: const Size(64, 40),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(AppTokens.radiusLg),
           ),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(AppTokens.radiusLg),
           ),
         ),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+        ),
       ),
       dialogTheme: DialogThemeData(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusDialog),
+        ),
+      ),
+      // 底部导航（窄窗保留手机式底栏）：指示器圆角/标签规格统一，
+      // 与 NavigationRail（宽窗）保持同一视觉语言。
+      navigationBarTheme: NavigationBarThemeData(
+        indicatorShape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+        ),
+        labelTextStyle: WidgetStateProperty.resolveWith(
+          (states) => TextStyle(
+            fontSize: 12,
+            fontWeight: states.contains(WidgetState.selected)
+                ? FontWeight.w600
+                : FontWeight.w500,
+          ),
+        ),
       ),
       // 统一路由过渡（页面入场动画）：淡入淡出，克制不抢戏。
       pageTransitionsTheme: const PageTransitionsTheme(

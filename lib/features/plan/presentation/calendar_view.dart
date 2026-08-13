@@ -12,6 +12,7 @@ import '../../../core/utils/date_text.dart';
 import '../../../services/load_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/chart_empty_state.dart';
+import '../../../shared/widgets/page_skeletons.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../../goals/data/subject_repository_provider.dart';
 import '../../settings/data/settings_repository.dart';
@@ -78,7 +79,7 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
           },
         );
       }
-      return const Center(child: CircularProgressIndicator());
+      return PageSkeletons.cardColumn(count: 3, height: 220);
     }
 
     void onChanged() => _invalidateAll();

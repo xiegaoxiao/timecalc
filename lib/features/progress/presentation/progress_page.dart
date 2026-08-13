@@ -14,6 +14,7 @@ import '../../../services/duration_format.dart';
 import '../../../services/statistics_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/chart_empty_state.dart';
+import '../../../shared/widgets/page_skeletons.dart';
 import '../../../shared/widgets/section_header.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../../goals/data/subject_repository_provider.dart';
@@ -227,13 +228,13 @@ class ProgressPage extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('进度')),
       body: goalsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => PageSkeletons.progressPage(),
         error: (error, _) => AppErrorView(
           error: error,
           onRetry: () => ref.invalidate(goalListProvider),
         ),
         data: (_) => tasksAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => PageSkeletons.progressPage(),
           error: (error, _) => AppErrorView(
             error: error,
             onRetry: () {

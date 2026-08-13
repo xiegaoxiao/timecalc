@@ -10,6 +10,8 @@ import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 
+import '../../../shared/nav_helper.dart';
+
 /// 日历视图 Widget 测试（FR-3.4 / checklists §11 M2）。
 ///
 /// 固定时钟 2026-08-05（周三），验证：
@@ -215,13 +217,7 @@ void main() {
     expect(find.text('超出30m'), findsNothing);
 
     // 回到今天页：负载归零，无「超出」提示。
-    await tester.tap(
-      find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('今天'),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await tapNavDestination(tester, '今天');
     expect(find.text('今日任务总计 0 分'), findsOneWidget);
     expect(find.text('可用 2 小时'), findsOneWidget);
   });

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -7,6 +8,7 @@ import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../core/providers/app_refresh.dart';
 import '../../../core/theme/app_semantic_colors.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../services/countdown_service.dart';
@@ -15,6 +17,8 @@ import '../../../services/duration_format.dart';
 import '../../../services/load_service.dart';
 import '../../../services/statistics_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
+import '../../../shared/widgets/celebration_overlay.dart';
+import '../../../shared/widgets/page_skeletons.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../../goals/data/milestone_repository_provider.dart';
 import '../../goals/data/subject_repository_provider.dart';
@@ -48,6 +52,10 @@ class _TodayPageState extends ConsumerState<TodayPage> {
   /// FR-3.7 横幅的会话级关闭（「保留原日期」），不写库。
   bool _bannerDismissed = false;
 
+  /// v1.11 彩带：已触发过「今日任务全部完成」庆祝的标记（非全完成时复位），
+  /// 避免每次刷新/操作重复播放骚扰用户。
+  bool _celebratedDone = false;
+
   @override
   Widget build(BuildContext context) {
     final today = ref.watch(clockProvider)();
@@ -79,7 +87,7 @@ class _TodayPageState extends ConsumerState<TodayPage> {
       }
       return Scaffold(
         appBar: AppBar(title: const Text('今天')),
-        body: const Center(child: CircularProgressIndicator()),
+        body: PageSkeletons.todayPage(),
       );
     }
 
@@ -160,6 +168,19 @@ class _TodayPageState extends ConsumerState<TodayPage> {
     // 今日任务区空态（显示 _TodayEmptyView）：此时标题行右上角按钮隐藏，
     // 由空态大按钮承担唯一「添加任务」入口，避免两个相同入口。
     final todayEmpty = todayTasks.isEmpty && !tasksLoading && tasksError == null;
+
+    // 今日任务全部完成庆祝（v1.11）：从非全完成跃迁到全完成（且确有任务）
+    // 时在 Overlay 层播一次彩带；首帧即全完成不触发，非全完成后复位标记。
+    final doneCount = todayTasks.where((t) => t.status == 'done').length;
+    final allDone = todayTasks.isNotEmpty && doneCount == todayTasks.length;
+    if (allDone && !_celebratedDone) {
+      _celebratedDone = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _celebratedDone) showCelebration(context);
+      });
+    } else if (!allDone && _celebratedDone) {
+      _celebratedDone = false;
+    }
 
     return CustomScrollView(
       // 头部区块（倒计时卡/概览/横幅/标题行等）用 SliverChildListDelegate
@@ -688,10 +709,23 @@ class _CountdownCard extends ConsumerWidget {
         ? 1.0
         : (elapsedDays / totalDays).clamp(0.0, 1.0).toDouble();
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    return Animate(
+      key: ValueKey('countdown-${goal.id}'),
+      effects: [
+        FadeEffect(duration: AppTokens.motionSlow, curve: AppTokens.motionCurve),
+        SlideEffect(
+          begin: const Offset(0, -0.04),
+          end: Offset.zero,
+          duration: AppTokens.motionSlow,
+          curve: AppTokens.motionCurve,
+        ),
+      ],
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 12),
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusXl),
+        ),
       child: DecoratedBox(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -779,7 +813,8 @@ class _CountdownCard extends ConsumerWidget {
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 }
 

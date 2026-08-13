@@ -11,6 +11,8 @@ import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/goals/data/subject_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 
+import '../../../shared/nav_helper.dart';
+
 /// 今天页每日执行闭环 Widget 测试（checklists §11 M2）。
 ///
 /// 内存数据库 + 固定时钟（2026-08-05 周三）：
@@ -369,13 +371,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 回到今天页：任务与负载卡都不再显示。
-    await tester.tap(
-      find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('今天'),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await tapNavDestination(tester, '今天');
     expect(find.text('背单词'), findsNothing);
     expect(find.textContaining('今日任务总计'), findsNothing);
   });
