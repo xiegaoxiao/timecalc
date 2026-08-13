@@ -47,8 +47,7 @@ void main() {
   }
 
   Future<void> openGoalDetail(WidgetTester tester) async {
-    await tester.tap(find.text('计划'));
-    await tester.pumpAndSettle();
+    await tapNavDestination(tester, '目标');
     await tester.tap(find.text('考研'));
     await tester.pumpAndSettle();
   }

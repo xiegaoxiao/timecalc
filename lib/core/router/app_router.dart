@@ -6,6 +6,7 @@ import '../../features/backup/presentation/archived_tasks_page.dart';
 import '../../features/backup/presentation/backup_page.dart';
 import '../../features/sync/presentation/sync_page.dart';
 import '../../features/goals/presentation/goal_detail_page.dart';
+import '../../features/goals/presentation/goal_list_page.dart';
 import '../../features/plan/presentation/plan_page.dart';
 import '../../features/progress/presentation/progress_page.dart';
 import '../../features/settings/presentation/appearance_page.dart';
@@ -19,7 +20,7 @@ import '../../features/tasks/data/task_repository_provider.dart';
 import '../../features/tasks/presentation/subject_task_page.dart';
 import '../../features/today/presentation/today_page.dart';
 
-/// 主导航目的地（PRD §7 信息架构：今天 / 计划 / 进度 / 设置）。
+/// 主导航目的地（v1.12：今天 / 计划 / 目标 / 进度 / 设置）。
 enum AppDestination {
   today(label: '今天', icon: Icons.today_outlined, selectedIcon: Icons.today),
   plan(
@@ -27,6 +28,7 @@ enum AppDestination {
     icon: Icons.calendar_month_outlined,
     selectedIcon: Icons.calendar_month,
   ),
+  goal(label: '目标', icon: Icons.flag_outlined, selectedIcon: Icons.flag),
   progress(
     label: '进度',
     icon: Icons.insights_outlined,
@@ -72,6 +74,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               path: '/plan',
               name: 'plan',
               builder: (context, state) => const PlanPage(),
+            ),
+          ]),
+          StatefulShellBranch(routes: [
+            GoRoute(
+              path: '/goals',
+              name: 'goals',
+              builder: (context, state) => const GoalListPage(),
             ),
           ]),
           StatefulShellBranch(routes: [

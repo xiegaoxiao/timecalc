@@ -50,8 +50,7 @@ void main() {
 
   /// 进入指定目标的目标详情页。
   Future<void> openGoalDetail(WidgetTester tester, String title) async {
-    await tester.tap(find.text('计划'));
-    await tester.pumpAndSettle();
+    await tapNavDestination(tester, '目标');
     await tester.tap(find.text(title));
     await tester.pumpAndSettle();
   }

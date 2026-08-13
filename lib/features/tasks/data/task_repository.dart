@@ -24,6 +24,28 @@ class TaskRepository {
     return query.get();
   }
 
+  /// 批量统计各目标的未归档任务「总数 / 已完成数」（目标列表进度环用）。
+  ///
+  /// 一次 IN 查询 + Dart 内存分组，避免目标列表逐卡 `byGoal` 造成 N+1。
+  /// 返回 `Map<goalId, (total, done)>`；无任务的 goalId 不出现。
+  Future<Map<int, ({int total, int done})>> completionByGoals(
+    List<int> goalIds,
+  ) async {
+    if (goalIds.isEmpty) return const {};
+    final query = _db.select(_db.tasks)
+      ..where((t) => t.goalId.isIn(goalIds) & t.archivedAt.isNull());
+    final rows = await query.get();
+    final result = <int, ({int total, int done})>{};
+    for (final row in rows) {
+      final current = result[row.goalId] ?? (total: 0, done: 0);
+      result[row.goalId] = (
+        total: current.total + 1,
+        done: current.done + (row.status == 'done' ? 1 : 0),
+      );
+    }
+    return result;
+  }
+
   Future<Task?> byId(int id) {
     return (_db.select(_db.tasks)..where((t) => t.id.equals(id)))
         .getSingleOrNull();

@@ -9,15 +9,30 @@ import '../../../core/theme/app_semantic_colors.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../services/countdown_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
+import '../../plan_import/presentation/plan_import_dialog.dart';
 import '../../tasks/data/recurrence_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
 import '../data/goal_repository_provider.dart';
 import 'goal_form_dialog.dart';
 
-/// 计划页：目标列表（FR-1 目标 CRUD 入口）。
+/// 各目标的任务完成统计（目标列表进度环用）。
 ///
-/// [GoalListBody] 抽出无 Scaffold 的目标列表主体，供 M2 计划页
-/// 「目标」分段内嵌复用；本页保留独立使用时的 Scaffold 与 FAB。
+/// 依赖 [goalListProvider] 的目标集合，一次批量 SQL（[TaskRepository.completionByGoals]）
+/// 避免逐卡查询的 N+1；目标变更（invalidateAppData）时随 goalList 一同失效。
+final goalCompletionProvider = FutureProvider<
+  Map<int, ({int total, int done})>
+>((ref) async {
+  final goals = await ref.watch(goalListProvider.future);
+  final ids = goals.map((g) => g.id).toList();
+  if (ids.isEmpty) return const {};
+  return ref.watch(taskRepositoryProvider).completionByGoals(ids);
+});
+
+/// 目标页：目标列表（FR-1 目标 CRUD 入口）。
+///
+/// v1.12 起从计划页拆分为独立一级导航：底部导航「目标」进入本页，
+/// 计划页退化为纯日历。AppBar 承载「导入完整计划」入口（原计划页
+/// 目标段 AppBar 迁移至此），FAB 创建目标。
 class GoalListPage extends ConsumerWidget {
   const GoalListPage({super.key});
 
@@ -29,10 +44,27 @@ class GoalListPage extends ConsumerWidget {
     }
   }
 
+  /// 打开「导入完整计划」对话框；导入成功（返回新建目标 id）后跳转详情。
+  Future<void> _importPlan(BuildContext context) async {
+    final createdId = await PlanImportDialog.show(context);
+    if (createdId != null && context.mounted) {
+      context.push('/goals/$createdId');
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      appBar: AppBar(title: const Text('计划')),
+      appBar: AppBar(
+        title: const Text('目标'),
+        actions: [
+          IconButton(
+            tooltip: '导入完整计划',
+            onPressed: () => _importPlan(context),
+            icon: const Icon(Icons.upload_file_outlined),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _createGoal(context),
         tooltip: '创建目标',
@@ -64,19 +96,26 @@ class GoalListBody extends ConsumerWidget {
         if (goals.isEmpty) {
           return _EmptyView(onCreateGoal: onCreateGoal);
         }
+        // 各目标任务完成统计：父级一次性预取（批量 SQL，避免逐卡 N+1），
+        // 供卡片进度环使用；数据未就绪时卡片进度环显示 0% 占位。
+        final completion =
+            ref.watch(goalCompletionProvider).valueOrNull ?? const {};
         // 宽屏双列网格、窄窗自动回落单列（maxCrossAxisExtent）：
         // 消除单列列表在目标较少时的下方大片空白，视觉更紧凑。
         return GridView.builder(
           padding: const EdgeInsets.all(16),
           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
             maxCrossAxisExtent: 560,
-            mainAxisExtent: 108,
+            mainAxisExtent: 132,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
           ),
           itemCount: goals.length,
           itemBuilder: (context, index) {
-            return _GoalCard(goal: goals[index]);
+            return _GoalCard(
+              goal: goals[index],
+              completion: completion[goals[index].id],
+            );
           },
         );
       },
@@ -137,12 +176,38 @@ class _EmptyView extends StatelessWidget {
   }
 }
 
+/// 目标卡片（v1.12 进度环卡，借鉴 mhabit / streak 的开源设计）。
+///
+/// 结构（自上而下）：
+/// 1. 上段：目标专属色圆点 + 标题（2 行）｜右侧任务完成度进度环（42px，
+///    中心小号 %，无任务时 0% 灰环）；
+/// 2. 细分隔线（fitness 统计卡的分段手法）；
+/// 3. 下段：截止日期 + 倒计时徽标（剩余/今天/逾期，文字不只依赖颜色
+///    NFR-4）+ 操作菜单。
+/// 状态颜色跟随倒计时阶段（进行中=目标色/今天=琥珀/逾期=红/已结束=灰），
+/// 每张卡以目标专属稳定色板区分，双列网格中靠色块快速定位目标。
 class _GoalCard extends ConsumerWidget {
-  const _GoalCard({required this.goal});
+  const _GoalCard({required this.goal, this.completion});
 
   final Goal goal;
 
+  /// 该目标任务完成统计（null = 数据未就绪，环显示 0% 占位）。
+  final ({int total, int done})? completion;
+
   static const _countdown = CountdownService();
+
+  /// 目标专属稳定色板（按 goal.id 取色）：柔和高辨识度色相，
+  /// 同目标在各处（圆点/进度环）颜色一致。
+  static const _accentColors = <Color>[
+    Color(0xFF3F6C51), // 品牌深绿
+    Color(0xFF6B5B95), // 紫
+    Color(0xFF2E7D8A), // 青
+    Color(0xFFC0564D), // 砖红
+    Color(0xFF8A6D2F), // 赭石
+    Color(0xFF3F7C5A), // 墨绿
+    Color(0xFF5C6BC0), // 靛蓝
+    Color(0xFF8C5E9E), // 藕紫
+  ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -162,55 +227,147 @@ class _GoalCard extends ConsumerWidget {
       CountdownPhase.overdue => scheme.error,
       CountdownPhase.terminated => scheme.outline,
     };
+    // 目标专属强调色：环与圆点共用（同目标跨卡一致）。
+    final accent = _accentColors[goal.id % _accentColors.length];
+
+    final done = completion?.done ?? 0;
+    final total = completion?.total ?? 0;
+    final progress = total == 0 ? 0.0 : done / total;
+    final percent = (progress * 100).round();
 
     return Card(
       // 网格间距由 GridView delegate 控制，卡片自身不带 margin。
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-        title: Text(goal.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 2),
-            Text(
-              '截止 ${formatLocalDate(parseLocalDate(goal.deadlineDate))}',
-            ),
-            const SizedBox(height: 2),
-            // 状态不只依赖颜色（NFR-4）：阶段文案 + 图标。
-            Row(
-              children: [
-                Icon(
-                  phase == CountdownPhase.upcoming
-                      ? Icons.schedule
-                      : Icons.error_outline,
-                  size: 14,
-                  color: phaseColor,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  CountdownService.label(phase, days),
-                  style: TextStyle(color: phaseColor),
-                ),
-              ],
-            ),
-          ],
-        ),
-        isThreeLine: true,
-        trailing: PopupMenuButton<String>(
-          tooltip: '目标操作',
-          onSelected: (action) => _handleAction(context, ref, action),
-          itemBuilder: (_) => [
-            const PopupMenuItem(value: 'edit', child: Text('编辑')),
-            const PopupMenuItem(value: 'complete', child: Text('标记已完成')),
-            const PopupMenuItem(value: 'abandon', child: Text('标记已放弃')),
-            const PopupMenuItem(value: 'archive', child: Text('归档')),
-            const PopupMenuItem(value: 'delete', child: Text('删除')),
-          ],
-        ),
+      child: InkWell(
         // push 压入导航栈，详情页 AppBar 自动出现返回箭头。
         onTap: () => context.push('/goals/${goal.id}'),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 8, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // —— 上段：目标标题 + 完成度进度环 ——
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // 目标专属色圆点（状态定位色标）。
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: accent,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      goal.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.titleMedium?.copyWith(height: 1.25),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // 任务完成度进度环：mhabit 式（strokeWidth 4、round cap、
+                  // 中心小号 %），完成时环满 + 数字 100%。
+                  SizedBox(
+                    width: 42,
+                    height: 42,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        CircularProgressIndicator(
+                          value: progress,
+                          strokeWidth: 4,
+                          strokeCap: StrokeCap.round,
+                          color: accent,
+                          backgroundColor: scheme.surfaceContainerHighest
+                              .withValues(alpha: 0.5),
+                        ),
+                        Center(
+                          child: Text(
+                            '$percent%',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: total == 0 ? scheme.outline : accent,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              // —— 细分隔线：截止区与进度区切分（fitness 手法）——
+              Divider(
+                height: 1,
+                color: scheme.outlineVariant.withValues(alpha: 0.5),
+              ),
+              const SizedBox(height: 8),
+              // —— 下段：截止日期 + 倒计时徽标 + 操作菜单 ——
+              Row(
+                children: [
+                  Icon(Icons.schedule, size: 14, color: scheme.outline),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      '截止 ${formatLocalDate(parseLocalDate(goal.deadlineDate))}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                  // 倒计时徽标：胶囊底色 + 阶段文案（文字不只依赖颜色）。
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: phaseColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      CountdownService.label(phase, days),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: phaseColor,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  PopupMenuButton<String>(
+                    tooltip: '目标操作',
+                    padding: const EdgeInsets.all(4),
+                    iconSize: 20,
+                    onSelected: (action) =>
+                        _handleAction(context, ref, action),
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(value: 'edit', child: Text('编辑')),
+                      const PopupMenuItem(
+                        value: 'complete',
+                        child: Text('标记已完成'),
+                      ),
+                      const PopupMenuItem(
+                        value: 'abandon',
+                        child: Text('标记已放弃'),
+                      ),
+                      const PopupMenuItem(value: 'archive', child: Text('归档')),
+                      const PopupMenuItem(value: 'delete', child: Text('删除')),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

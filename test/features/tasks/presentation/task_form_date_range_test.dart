@@ -11,6 +11,8 @@ import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 
+import '../../../shared/nav_helper.dart';
+
 /// 任务日期选择器范围测试（修复：计划日期不得晚于目标截止日）。
 ///
 /// 固定时钟 2026-08-05（今天），验证：
@@ -44,8 +46,7 @@ void main() {
   }
 
   Future<void> openGoalDetail(WidgetTester tester, String goalTitle) async {
-    await tester.tap(find.text('计划'));
-    await tester.pumpAndSettle();
+    await tapNavDestination(tester, '目标');
     await tester.tap(find.text(goalTitle));
     await tester.pumpAndSettle();
   }

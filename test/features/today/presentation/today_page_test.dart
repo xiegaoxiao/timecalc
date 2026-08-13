@@ -360,9 +360,8 @@ void main() {
     expect(find.text('背单词'), findsOneWidget);
     expect(find.text('今日任务总计 1 小时 30 分'), findsOneWidget);
 
-    // 切到计划页，删除目标（二次确认）。
-    await tester.tap(find.text('计划'));
-    await tester.pumpAndSettle();
+    // 切到目标页，删除目标（二次确认）。
+    await tapNavDestination(tester, '目标');
     await tester.tap(find.byTooltip('目标操作'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('删除'));

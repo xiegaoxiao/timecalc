@@ -59,9 +59,10 @@ void main() {
     await db.close();
   });
 
-  /// 切到「计划」页（默认落在「今天」tab，计划页 AppBar 处于 offstage）。
+  /// 切到「目标」页（v1.12 起「导入完整计划」入口在目标页 AppBar；
+  /// 默认落在「今天」tab，目标页 AppBar 处于 offstage）。
   Future<void> goPlan(WidgetTester tester) async {
-    await tapNavDestination(tester, '计划');
+    await tapNavDestination(tester, '目标');
   }
 
   /// 合法完整计划 JSON（固定时钟 2026-08-05，日期不早于今天）。
@@ -99,7 +100,7 @@ void main() {
     await pumpApp(tester);
     await goPlan(tester);
 
-    // 计划页目标分段 AppBar 打开「导入完整计划」。
+    // 目标页 AppBar 打开「导入完整计划」。
     await tester.tap(find.byTooltip('导入完整计划'));
     await tester.pumpAndSettle();
     expect(find.text('导入完整计划'), findsOneWidget);
@@ -232,8 +233,8 @@ void main() {
       findsNWidgets(2), // 已完成时长 + 目标剩余工作量
     );
 
-    // 回计划页导入完整计划（含未完成任务 → 有数据但无时长）。
-    await tapNavDestination(tester, '计划');
+    // 回目标页导入完整计划（含未完成任务 → 有数据但无时长）。
+    await tapNavDestination(tester, '目标');
     await tester.tap(find.byTooltip('导入完整计划'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, planJson);

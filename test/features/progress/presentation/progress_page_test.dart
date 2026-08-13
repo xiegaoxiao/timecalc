@@ -490,8 +490,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(cta);
     await tester.pumpAndSettle();
-    // 已切到计划页：其独有的「日历/目标」分段按钮出现。
-    expect(find.text('日历'), findsOneWidget);
+    // 已切到计划页：v1.12 起计划页即纯日历，选日面板标题含星期。
+    expect(find.textContaining('星期三'), findsOneWidget);
   });
 
   testWidgets('无目标时燃尽/耗时图空态不显示引导按钮', (tester) async {

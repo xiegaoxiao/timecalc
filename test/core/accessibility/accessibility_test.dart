@@ -55,9 +55,8 @@ void main() {
     await tasks.create(goalId: goal.id, title: 'B', plannedDate: '2026-08-05', estimatedMinutes: 60);
 
     await pumpApp(tester);
+    // v1.12 起计划页即纯日历，直接进入计划页即可见月历。
     await tester.tap(find.text('计划'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('日历'));
     await tester.pumpAndSettle();
 
     // 超出格同时有红色文本与警告图标（非颜色提示）。
@@ -71,9 +70,8 @@ void main() {
 
     await pumpApp(tester);
     final semantics = tester.ensureSemantics();
+    // v1.12 起计划页即纯日历，直接进入计划页即可见月历。
     await tester.tap(find.text('计划'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('日历'));
     await tester.pumpAndSettle();
 
     // 2026-08-05：完成 0/1，时长 1h30m（无超出）。

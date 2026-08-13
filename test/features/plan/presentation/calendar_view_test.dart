@@ -38,12 +38,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// 切到「计划」页并选中「日历」分段。
+  /// 切到「计划」页（v1.12 起计划页即纯日历，无需再选分段）。
   Future<void> openCalendar(WidgetTester tester) async {
-    await tester.tap(find.text('计划'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('日历'));
-    await tester.pumpAndSettle();
+    await tapNavDestination(tester, '计划');
   }
 
   setUp(() {
@@ -240,11 +237,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('今日任务总计 0 分'), findsOneWidget);
 
-    // 切到日历：该日格应同步为已完成状态，不再显示「超出」。
-    await tester.tap(find.text('计划'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('日历'));
-    await tester.pumpAndSettle();
+    // 切到计划页（纯日历）：该日格应同步为已完成状态，不再显示「超出」。
+    await tapNavDestination(tester, '计划');
     expect(find.text('1/1'), findsOneWidget);
     expect(find.text('超出30m'), findsNothing);
   });

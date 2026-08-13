@@ -23,8 +23,7 @@ void main() {
   late int goalId;
 
   Future<void> openGoalDetail(WidgetTester tester) async {
-    await tester.tap(find.text('计划'));
-    await tester.pumpAndSettle();
+    await tapNavDestination(tester, '目标');
     await tester.tap(find.text('考研数学'));
     await tester.pumpAndSettle();
   }
@@ -198,7 +197,7 @@ void main() {
     );
 
     // 到目标详情页勾选完成该任务。
-    await goTab(tester, '计划');
+    await goTab(tester, '目标');
     await tester.tap(find.text('考研数学'));
     await tester.pumpAndSettle();
     final checkbox = find.byType(Checkbox);
@@ -422,7 +421,7 @@ void main() {
 
     // 回到目标详情，JSON 导入一个 180 分钟任务（固定时钟 2026-08-05，
     // 日期用明天，满足「不得早于今天」校验）。
-    await goTab(tester, '计划');
+    await goTab(tester, '目标');
     await tester.tap(find.text('考研数学'));
     await tester.pumpAndSettle();
     await openMoreActions(tester);

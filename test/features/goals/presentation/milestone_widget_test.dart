@@ -10,10 +10,12 @@ import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/goals/data/milestone_repository.dart';
 
+import '../../../shared/nav_helper.dart';
+
 /// 里程碑用户流程 Widget 测试（checklists §2.2 / §5.3）。
 ///
 /// 使用内存数据库 + 固定时钟。测试数据：目标「考研」截止 2026-12-20，
-/// 从计划页进入目标详情页操作里程碑区。
+/// 从目标页进入目标详情页操作里程碑区。
 void main() {
   late AppDatabase db;
   late GoalRepository goals;
@@ -48,8 +50,7 @@ void main() {
 
   Future<void> openGoalDetail(WidgetTester tester) async {
     await pumpApp(tester);
-    await tester.tap(find.text('计划'));
-    await tester.pumpAndSettle();
+    await tapNavDestination(tester, '目标');
     await tester.tap(find.text('考研'));
     await tester.pumpAndSettle();
   }
@@ -110,8 +111,7 @@ void main() {
     await goals.create(title: '期末复习', deadlineDate: '2026-08-10');
 
     await pumpApp(tester);
-    await tester.tap(find.text('计划'));
-    await tester.pumpAndSettle();
+    await tapNavDestination(tester, '目标');
     await tester.tap(find.text('期末复习'));
     await tester.pumpAndSettle();
 
