@@ -82,6 +82,47 @@ void main() {
     });
   });
 
+  group('completedCountsByMonth（年视图按完成月份）', () {
+    test('跨月归组：按 completedAt 本地日期归月计数', () {
+      final counts = service.completedCountsByMonth([
+        done('2026-01-05', completedAt: DateTime(2026, 1, 5, 8)),
+        done('2026-01-31', completedAt: DateTime(2026, 1, 31, 23)),
+        done('2026-02-01', completedAt: DateTime(2026, 2, 1, 0)),
+        todo('2026-01-05', minutes: 30),
+      ]);
+      expect(counts['2026-01'], 2);
+      expect(counts['2026-02'], 1);
+      expect(counts['2026-03'], isNull);
+      expect(counts.length, 2);
+    });
+
+    test('跨年边界：1 月与 12 月不混淆', () {
+      final counts = service.completedCountsByMonth([
+        done('2025-12-31', completedAt: DateTime(2025, 12, 31, 23, 59)),
+        done('2026-01-01', completedAt: DateTime(2026, 1, 1, 0, 1)),
+      ]);
+      expect(counts['2025-12'], 1);
+      expect(counts['2026-01'], 1);
+    });
+
+    test('completedAt 为 null 的任务不计入', () {
+      final counts = service.completedCountsByMonth([
+        Task(
+          id: 9,
+          goalId: 1,
+          title: '无完成时间',
+          plannedDate: '2026-01-02',
+          status: 'done',
+          completedAt: null,
+          sortOrder: 0,
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 1),
+        ),
+      ]);
+      expect(counts, isEmpty);
+    });
+  });
+
   group('completionStats（FR-7.1）', () {
     test('统计完成数 / 总数 / 已完成预估时长', () {
       final stats = service.completionStats([

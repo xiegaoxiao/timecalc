@@ -13,6 +13,7 @@ import '../../../services/countdown_service.dart';
 import '../../../services/duration_format.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../plan_import/presentation/plan_import_dialog.dart';
+import '../../settings/data/settings_repository_provider.dart';
 import '../../tasks/data/recurrence_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
 import '../data/goal_repository_provider.dart';
@@ -156,32 +157,38 @@ class GoalListBody extends ConsumerWidget {
                   ],
                 ),
               ),
-              // 目标卡片网格：单目标时通栏大卡（避免孤卡占小角 + 大片留白，
-              // Dashboard 首页感）；多目标时按 maxCrossAxisExtent 自适应
-              // 双列（桌面内容区约 1200px → 每卡约 580px 宽），消除下方大留白。
-              // 用固定列数（单目标 1 列）而非 maxCrossAxisExtent 传超大值，
-              // 避免依赖 SDK 对极值的解析行为。
+              // 目标卡片流：单目标通栏大卡（避免孤卡占小角 + 大片留白，
+              // Dashboard 首页感）；多目标按内容区宽度自适应单/双列（沿用旧
+              // maxCrossAxisExtent 720 语义：内容区宽 >752 双列，每卡约
+              // 580px，消除下方大留白）。卡片按内容自适应高度（review：旧
+              // 固定 mainAxisExtent 268 在系统 textScaler 放大字号/标题两行时
+              // 会 RenderFlex overflow，旧 ListTile 是自适应的，固定高度是
+              // 回归）；Wrap 间距 12 与旧网格一致，一次性构建子项（目标数量
+              // 有限，个人工具，无懒加载需求）。
               Expanded(
-                child: GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  gridDelegate: goals.length == 1
-                      ? const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 1,
-                          mainAxisExtent: 268,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                        )
-                      : const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 720,
-                          mainAxisExtent: 268,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                        ),
-                  itemCount: goals.length,
-                  itemBuilder: (context, index) {
-                    return _GoalCard(
-                      goal: goals[index],
-                      completion: completion[goals[index].id],
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final width = constraints.maxWidth;
+                    final twoColumns = goals.length > 1 && width - 32 > 720;
+                    final cardWidth = twoColumns
+                        ? (width - 32 - 12) / 2
+                        : width - 32;
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          for (final goal in goals)
+                            SizedBox(
+                              width: cardWidth,
+                              child: _GoalCard(
+                                goal: goal,
+                                completion: completion[goal.id],
+                              ),
+                            ),
+                        ],
+                      ),
                     );
                   },
                 ),
@@ -273,13 +280,27 @@ class _EmptyView extends StatelessWidget {
 /// 每张卡以目标专属稳定色板区分，双列网格中靠色块快速定位目标。
 /// 描述刻意不在卡片展示（卡片信息密度优先，详情页可见），避免卡片
 /// 中部出现大段空白/冗余文本。
-class _GoalCard extends ConsumerWidget {
+class _GoalCard extends ConsumerStatefulWidget {
   const _GoalCard({required this.goal, this.completion});
 
   final Goal goal;
 
   /// 该目标任务完成统计（null = 数据未就绪，进度显示 0% 占位）。
   final ({int total, int done, int totalMinutes, int doneMinutes})? completion;
+
+  @override
+  ConsumerState<_GoalCard> createState() => _GoalCardState();
+}
+
+class _GoalCardState extends ConsumerState<_GoalCard> {
+  /// 详情页导航进行中标志（双击去重）：250ms 预取窗口内重复点击卡片/
+  /// 「查看详情」只 push 一次，避免压入两个相同详情页（需按两次返回）。
+  bool _navInFlight = false;
+
+  /// 转发到 widget 字段：保持下方方法体 `goal.`/`completion` 引用不变。
+  Goal get goal => widget.goal;
+  ({int total, int done, int totalMinutes, int doneMinutes})? get completion =>
+      widget.completion;
 
   static const _countdown = CountdownService();
 
@@ -297,7 +318,7 @@ class _GoalCard extends ConsumerWidget {
   ];
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final today = ref.watch(clockProvider)();
     final (phase, days) = _countdown.evaluate(
       deadlineDate: goal.deadlineDate,
@@ -506,9 +527,22 @@ class _GoalCard extends ConsumerWidget {
   /// （用户实测：点击卡片明显卡一下才进详情）。查询超慢（超大库）时
   /// 最多等 250ms 照常进入，详情页骨架兜底。
   Future<void> _openDetail(BuildContext context, WidgetRef ref) async {
-    await _prefetchDetail(ref, goal.id);
-    if (!context.mounted) return;
-    context.push('/goals/${goal.id}');
+    // 双击去重：预取 250ms 窗口内重复点击只 push 一次。
+    if (_navInFlight) return;
+    _navInFlight = true;
+    try {
+      try {
+        await _prefetchDetail(ref, goal.id);
+      } catch (_) {
+        // 预取失败（库损坏/IO 异常等）不阻断导航：详情页骨架屏兜底，
+        // 而非让点击无任何反馈（review：250ms 内 future reject 时
+        // Future.timeout 的 onTimeout 不会触发，异常直接冒泡）。
+      }
+      if (!context.mounted) return;
+      context.push('/goals/${goal.id}');
+    } finally {
+      _navInFlight = false;
+    }
   }
 
   /// 预热详情页数据源（P3.5 卡顿排查）。
@@ -523,13 +557,23 @@ class _GoalCard extends ConsumerWidget {
       ref.read(taskListProvider(goalId).future),
       ref.read(subjectListProvider(goalId).future),
       ref.read(milestoneListProvider(goalId).future),
+      // 详情页进入后立即依赖的次级数据源也一并预热：负载区
+      // （settingsProvider）与任务区重复模板标注
+      // （recurrenceTemplatesProvider）。此前漏预取 → 进入后二次查询
+      // 触发对应区块重建（骨架→内容跳变，感知为卡顿）。
+      ref.read(settingsProvider.future),
+      ref.read(recurrenceTemplatesProvider(goalId).future),
     ];
-    // 带超时兜底：查询慢（超大库）时最多等 250ms 就进入，不阻塞点击；
+    // 带超时兜底：查询慢（超大库）时最多等 800ms 就进入，不阻塞点击；
     // 已发出的查询继续在后台完成，详情页骨架屏兜底显示。
+    // 超时 250ms → 800ms：真实文件库查询耗时高于内存库（实测内存库
+    // 10000 条任务进详情 <200ms），250ms 常在真实库上触发超时兜底，
+    // 导致进入后「骨架 → 内容」跳变；800ms 覆盖绝大多数真实库规模，
+    // 同时不阻塞点击太久。
     // 用 Future.timeout 而非 Future.any：timeout 在完成时取消内部 Timer，
     // 不会在测试/退出时残留 pending timer。
     await Future.wait(futures).timeout(
-      const Duration(milliseconds: 250),
+      const Duration(milliseconds: 800),
       onTimeout: () => <Object?>[],
     );
   }

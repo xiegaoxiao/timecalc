@@ -61,6 +61,12 @@ logs/
 
 # Local tooling state
 .zcode/
+.reasonix/
+
+# 视觉测试调试产物（截图输出与测试图，不入库）
+.visr-shots/
+vision-test.bmp
+vision-test.png
 
 # DevTools 本地配置（构建/分析时生成，不随项目提交）
 devtools_options.yaml

@@ -383,10 +383,6 @@ class WebDavSyncService {
       );
     }
     _restoring = true;
-    // 恢复写入会触发 DatabaseChangeWatcher（3s 防抖）：抑制窗口覆盖「恢复
-    // 耗时 + 防抖 + 余量」，窗口内的 watcher 触发不置脏、不推送（S2 防回环）。
-    _suppressWatchUntil =
-        DateTime.now().add(const Duration(seconds: 15));
     final tempDir = await Directory.systemTemp.createTemp('timecalc-sync');
     final tempFile = File(
       '${tempDir.path}${Platform.pathSeparator}$syncSnapshotFile',
@@ -394,7 +390,11 @@ class WebDavSyncService {
     try {
       final bytes = await client.download('$syncFolder/$syncSnapshotFile');
       await tempFile.writeAsBytes(bytes);
-
+      // 下载成功、即将恢复写入时才设抑制窗口（防「恢复 → 回推」乒乓，
+      // 见 pushIfNeeded）；失败路径不残留——否则下载失败后 15s 内本地
+      // 真实变更会被静默跳过（review 反馈）。
+      _suppressWatchUntil =
+          DateTime.now().add(const Duration(seconds: 15));
       final safety = await backupService.restoreBackup(
         tempFile,
         mode: RestoreMode.overwrite,

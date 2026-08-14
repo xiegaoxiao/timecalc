@@ -389,6 +389,40 @@ void main() {
     expect(putCount, 2); // 快照 + meta 两次 PUT
   });
 
+  test('拉取下载失败后不残留抑制窗口：pushIfNeeded 不被静默跳过（review）', () async {
+    await enableSync();
+    await seedGoal('本地目标');
+
+    // 远端 meta 较新（seq=3）但快照下载失败（500）。
+    final client = MockClient((req) async {
+      final path = req.url.path;
+      if (req.method == 'MKCOL') return http.Response('', 201);
+      if (req.method == 'GET' &&
+          path.endsWith('/webdav_sync/timecalc-sync.meta.json')) {
+        return http.Response.bytes(utf8.encode(jsonEncode(meta(3))), 200);
+      }
+      if (req.method == 'GET' &&
+          path.endsWith('/webdav_sync/timecalc-sync.latest.timecalc')) {
+        return http.Response('快照下载失败', 500);
+      }
+      return http.Response('', 404);
+    });
+    final svc = service(client: client);
+
+    final pull = await svc.syncOnce();
+    expect(pull.pulled, isFalse);
+    expect(pull.error, contains('拉取失败'));
+
+    // 修复前：_pull 在下载前就设置 15s 抑制窗口 → 失败后 pushIfNeeded
+    // 被静默跳过（skipped: true），本地真实变更 15s 内不推送；
+    // 修复后：抑制窗口只在下载成功、即将恢复写入时设置 → 失败不残留，
+    // pushIfNeeded 正常置脏并走同步（skipped: false）。
+    final push = await svc.pushIfNeeded();
+    expect(push.skipped, isFalse,
+        reason: '拉取失败后抑制窗口不应残留，本地变更不能被静默跳过');
+    expect(push.skipReason, isNot(contains('同步恢复中')));
+  });
+
   test('并发调用时互斥（一次同步进行中，另一次跳过）', () async {
     await enableSync();
     await seedGoal('本地目标');

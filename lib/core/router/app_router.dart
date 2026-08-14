@@ -251,10 +251,15 @@ class _AppShellState extends ConsumerState<AppShell> {
     // 缺失实例）；用 ref.listen 订阅而不 watch：生成完成/后续失效不再导致
     // 整个根壳重建（M3）。结果不用于渲染。
     ref.listen(recurrenceBootstrapProvider, (_, _) {});
-    // 启动预热进度页的重数据源（26 周完成记录扫描）：同样用 listen 订阅，
-    // 使「每次任务变更 → invalidate completedTasksProvider」不再整壳重建
-    // （M3；此前 watch 会让每次勾选任务都重建根壳并重查 26 周）。
+    // 启动预热进度页的重数据源（26 周完成记录扫描 + 全部未完成任务）：
+    // 用 listen 订阅而非 watch，使「每次任务变更 → invalidate
+    // completedTasksProvider/allTodoTasksProvider」不再整壳重建（M3；
+    // 此前 watch 会让每次勾选任务都重建根壳并重查 26 周）。同时订阅即
+    // 触发查询：progressTasksProvider（进度页数据门）依赖这两个数据源，
+    // 启动即预热后首次切到进度页数据已就绪，不再「切页 → 触发查询 →
+    // 数据到达整页重建（含 3 个 fl_chart）」掉帧（性能复查）。
     ref.listen(completedTasksProvider, (_, _) {});
+    ref.listen(allTodoTasksProvider, (_, _) {});
 
     void onDestinationSelected(int index) {
       widget.navigationShell.goBranch(
@@ -265,14 +270,22 @@ class _AppShellState extends ConsumerState<AppShell> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        // RepaintBoundary：分支切换/滚动时内容区独立重绘，隔离 NavigationRail
+        // 或 NavigationBar 的重绘；IndexedStack 内各分支页面虽常驻 build，
+        // raster 各自独立，切页不再连带整壳 repaint（切页掉帧优化）。
+        final content = RepaintBoundary(
+          key: const ValueKey('shell-content'),
+          child: widget.navigationShell,
+        );
         if (constraints.maxWidth >= kDesktopNavigationBreakpoint) {
           return _DesktopShell(
             navigationShell: widget.navigationShell,
             onDestinationSelected: onDestinationSelected,
+            content: content,
           );
         }
         return Scaffold(
-          body: widget.navigationShell,
+          body: content,
           bottomNavigationBar: NavigationBar(
             selectedIndex: widget.navigationShell.currentIndex,
             onDestinationSelected: onDestinationSelected,
@@ -299,10 +312,14 @@ class _DesktopShell extends StatelessWidget {
   const _DesktopShell({
     required this.navigationShell,
     required this.onDestinationSelected,
+    required this.content,
   });
 
   final StatefulNavigationShell navigationShell;
   final ValueChanged<int> onDestinationSelected;
+
+  /// 内容区（已包 RepaintBoundary，隔离侧栏重绘）。
+  final Widget content;
 
   @override
   Widget build(BuildContext context) {
@@ -324,7 +341,7 @@ class _DesktopShell extends StatelessWidget {
             ],
           ),
           const VerticalDivider(width: 1, thickness: 1),
-          Expanded(child: navigationShell),
+          Expanded(child: content),
         ],
       ),
     );

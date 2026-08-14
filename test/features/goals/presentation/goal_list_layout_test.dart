@@ -50,9 +50,9 @@ void main() {
     await db.close();
   });
 
-  /// 目标页中唯一的目标卡片（Grid 内 Card）。
+  /// 目标页中唯一的目标卡片（Wrap 流内 Card）。
   Finder goalCardFinder() => find.descendant(
-    of: find.byType(GridView),
+    of: find.byType(Wrap),
     matching: find.byType(Card),
   );
 
@@ -165,5 +165,26 @@ void main() {
     final firstX = tester.getCenter(cards.at(0)).dx;
     final secondX = tester.getCenter(cards.at(1)).dx;
     expect((firstX - secondX).abs(), greaterThan(200));
+  });
+
+  testWidgets('系统放大字号（textScaler 2.0）：卡片按内容自适应高度，不溢出（回归）', (tester) async {
+    // review 反馈：旧固定 mainAxisExtent 268 在系统放大字号/标题两行时
+    // RenderFlex overflow（旧 ListTile 自适应，固定高度是回归）。
+    // 现在卡片随内容自然增高，放大字号下不得再抛布局溢出。
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await goals.create(
+      title: '考研数学 2027 全程规划（含强化与冲刺阶段）',
+      deadlineDate: '2026-12-20',
+    );
+    await pumpApp(tester);
+    await tapNavDestination(tester, '目标');
+
+    // 布局阶段不应有异常（RenderFlex overflow 会经 FlutterError 上报）。
+    expect(tester.takeException(), isNull);
+    expect(find.text('考研数学 2027 全程规划（含强化与冲刺阶段）'), findsOneWidget);
+    // 卡片仍通栏渲染且内容可见（「查看详情」未被挤出视口外不可见）。
+    expect(find.text('查看详情 →'), findsOneWidget);
   });
 }

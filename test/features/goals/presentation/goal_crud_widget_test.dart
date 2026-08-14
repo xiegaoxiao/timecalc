@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +10,8 @@ import 'package:timecalc/core/database/database.dart';
 import 'package:timecalc/core/database/database_provider.dart';
 import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
+import 'package:timecalc/features/goals/data/goal_repository_provider.dart';
+import 'package:timecalc/features/tasks/data/task_repository_provider.dart';
 
 import '../../../shared/nav_helper.dart';
 
@@ -205,6 +209,70 @@ void main() {
     // 回到目标页：目标卡片重新可见。
     expect(find.text('考研数学'), findsOneWidget);
     expect(find.byTooltip('创建目标'), findsOneWidget);
+  });
+
+  testWidgets('双击目标卡片只进入一个详情页（回归：预取窗口内去重）', (tester) async {
+    await repository.create(title: '考研数学', deadlineDate: '2026-12-20');
+    // 目标详情查询挂起：保证两次点击都落在 250ms 预取窗口内。
+    final gate = Completer<Goal?>();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          clockProvider.overrideWithValue(() => fixedNow),
+          goalDetailProvider.overrideWith((ref, id) => gate.future),
+        ],
+        child: const TimeCalcApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tapNavDestination(tester, '目标');
+    await tester.tap(find.text('考研数学'));
+    // 预取挂起中（_navInFlight=true），窗口内第二次点击应被去重。
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.text('考研数学'));
+    // 预取 250ms 超时兜底 → 照常 push 详情页。
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    // 只压入一个详情页：返回一次即回到目标页（若有第二个详情页，
+    // 返回后仍会停留在第一个详情页，「目标详情」仍可见）。
+    expect(find.text('目标详情'), findsOneWidget);
+    expect(find.byType(BackButton), findsOneWidget);
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(find.text('考研数学'), findsOneWidget);
+    expect(find.text('目标详情'), findsNothing);
+  });
+
+  testWidgets('详情预取失败仍进入详情页（回归：预取异常兜底）', (tester) async {
+    await repository.create(title: '考研数学', deadlineDate: '2026-12-20');
+    // 任务列表查询抛异常：_prefetchDetail 内 Future.wait 在 250ms 内
+    // reject（Future.timeout 的 onTimeout 只响应超时，不吞提前失败）。
+    // 修复前异常冒泡 → 点击卡片既不导航也无任何反馈；修复后仍 push，
+    // 详情页骨架/错误视图兜底。
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          clockProvider.overrideWithValue(() => fixedNow),
+          taskListProvider.overrideWith(
+            (ref, goalId) async => throw Exception('预取失败'),
+          ),
+        ],
+        child: const TimeCalcApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tapNavDestination(tester, '目标');
+    await tester.tap(find.text('考研数学'));
+    await tester.pumpAndSettle();
+
+    // 已进入详情页（返回键存在），而不是点击无反馈停留在目标页。
+    expect(find.byType(BackButton), findsOneWidget);
+    expect(find.text('目标详情'), findsOneWidget);
   });
 
   testWidgets('编辑目标后详情页即时显示新标题与截止日期（回归：详情刷新）', (tester) async {
