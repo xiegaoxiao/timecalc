@@ -196,6 +196,16 @@ class RecurrenceRepository {
         if (ruleError != null) {
           continue;
         }
+        // 脏数据防护（2026-08-14 审查 #4）：generatedThroughDate / startDate
+        // 非合法日期（如旧备份恢复的 ''、手工改库）时跳过本模板且不推进
+        // 窗口。此前 _plusDays 对非日期文本抛 FormatException 会让整个
+        // generateDue 事务失败，导致**所有** active 模板停止滚动生成；
+        // startDate 非法虽被 registry 兜底为空列表，但会静默推进窗口永久
+        // 跳过（同 M16 语义）。
+        if (!_dateFormat.hasMatch(template.generatedThroughDate) ||
+            !_dateFormat.hasMatch(template.startDate)) {
+          continue;
+        }
         final target = _minDate(_plusDays(todayStr, 30), template.endDate);
         final existingDates = existingByTemplate[template.id] ?? <String>{};
         // 用户删除过的实例日期（墓碑）：滚动生成时跳过，防止被删实例复活。
@@ -289,6 +299,18 @@ class RecurrenceRepository {
 
       // 更新模板规则、结束日期与基础信息，并重置生成窗口（未来实例按新规则生成）。
       final target = _minDate(_plusDays(todayStr, 30), endDate);
+      // 生成窗口记账（2026-08-14 审查 #5）：
+      // - future 应用时已按新规则从 today 生成到 target：直接把
+      //   generatedThroughDate 推进到 target，后续 generateDue 不再对同一
+      //   窗口重复重算（此前写 today-1 每次都要靠 existing 日期跳过，属
+      //   重复劳动）。
+      // - template 应用（不动实例）：若新 endDate 被缩短到旧窗口之前，把
+      //   generatedThroughDate 钳制到新 endDate，保持「窗口不越过结束日」的
+      //   记账一致（已生成实例仍保留，符合「仅修改模板不触碰实例」语义；
+      //   超窗实例不再由窗口推进逻辑生成）。
+      final generatedThrough = applyTo == RecurrenceApplyTo.future
+          ? target
+          : _minDate(template.generatedThroughDate, endDate);
       await (_db.update(_db.recurrenceTemplates)
             ..where((t) => t.id.equals(templateId)))
           .write(
@@ -301,15 +323,7 @@ class RecurrenceRepository {
               estimatedMinutes: estimatedMinutes ?? const Value.absent(),
               startDate:
                   startDate == null ? const Value.absent() : Value(startDate),
-              // future 应用时已按新规则从 today 生成到 target：直接把
-              // generatedThroughDate 推进到 target，后续 generateDue 不再
-              // 对同一窗口重复重算（此前写 today-1 每次都要靠 existing
-              // 日期跳过，属重复劳动）。template 应用（不动实例）保持原窗口。
-              generatedThroughDate: Value(
-                applyTo == RecurrenceApplyTo.future
-                    ? target
-                    : template.generatedThroughDate,
-              ),
+              generatedThroughDate: Value(generatedThrough),
               active: const Value(true),
               updatedAt: Value(DateTime.now().toUtc()),
             ),

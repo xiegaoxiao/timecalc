@@ -489,10 +489,15 @@ class SyncMeta {
     if (json['format'] != syncMetaFormat || json['version'] != syncMetaVersion) {
       return null;
     }
-    final seq = json['seq'] as int?;
-    final schema = json['appSchemaVersion'] as int?;
+    // 防御性解析（2026-08-14 审查 #6）：seq/schema 用类型判定而非
+    // `as int?` 强转——远端 meta 由第三方/手工构造产生 double（如 5.0）时
+    // 强转抛 TypeError（Error，上层只 catch WebDavException 捕不到，会冒泡
+    // 为未处理异步错误）。现在统一返回 null → 上层转「元数据版本不兼容，
+    // 已停止同步」可读错误。
+    final seq = json['seq'];
+    final schema = json['appSchemaVersion'];
     final at = DateTime.tryParse(json['syncedAtUtc'] as String? ?? '');
-    if (seq == null || schema == null || at == null) return null;
+    if (seq is! int || schema is! int || at == null) return null;
     return SyncMeta(
       format: syncMetaFormat,
       version: syncMetaVersion,

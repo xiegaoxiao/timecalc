@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/database_provider.dart';
 import '../../../core/providers/clock_provider.dart';
+import '../../../core/utils/date_text.dart';
 import '../data/task_repository.dart';
 
 /// 任务数据访问 Provider。
@@ -42,7 +43,8 @@ final tasksByMonthProvider =
 final tasksByWeekProvider =
     FutureProvider.family<List<Task>, String>((ref, mondayDate) {
   final monday = DateTime.parse(mondayDate);
-  final sunday = monday.add(const Duration(days: 6));
+  // 纯日历加法（date_text）：防 DST 切换日周日的日期错位（2026-08-14 审查 #3）。
+  final sunday = addLocalDays(monday, 6);
   return ref.watch(taskRepositoryProvider).byDateRange(
         DateFormat('yyyy-MM-dd').format(monday),
         DateFormat('yyyy-MM-dd').format(sunday),

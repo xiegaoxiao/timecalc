@@ -441,4 +441,29 @@ void main() {
     // 时间进度条（LinearProgressIndicator）已渲染。
     expect(find.byType(LinearProgressIndicator), findsWidgets);
   });
+
+  testWidgets('「延期到指定日期」禁止改期到过去（firstDate=今天，回归 #1）',
+      (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    await tasks.create(
+      goalId: goal.id,
+      title: '过期任务',
+      plannedDate: '2026-08-03', // 昨天，逾期
+    );
+
+    await pumpApp(tester);
+
+    // 过期任务在首屏外（今日概览常驻后），先滚动再打开任务菜单。
+    final more = find.byTooltip('任务操作');
+    await tester.ensureVisible(more);
+    await tester.pumpAndSettle();
+    await tester.tap(more);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(PopupMenuItem<String>, '延期…'));
+    await tester.pumpAndSettle();
+
+    // 与今日页 FR-3.7 横幅同口径（L40）：下界 = 今天，不再允许改期到过去。
+    final picker = tester.widget<CalendarDatePicker>(find.byType(CalendarDatePicker));
+    expect(picker.firstDate, DateTime(2026, 8, 5)); // 今天（注入时钟）
+  });
 }

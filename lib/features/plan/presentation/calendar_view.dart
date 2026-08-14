@@ -67,7 +67,10 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
   /// 所在周的周一（周一开头，与网格一致）。
   static DateTime _mondayOf(DateTime date) {
     final day = DateTime(date.year, date.month, date.day);
-    return day.subtract(Duration(days: day.weekday - 1));
+    // 纯日历加法（date_text）：Duration(days:) 在夏令时切换日偏移一小时，
+    // 周起点可能落到相邻日期（与 ganttWeekStarts/recentWeekStarts 同口径，
+    // 2026-08-14 审查 #3）。
+    return addLocalDays(day, -(day.weekday - 1));
   }
 
   @override
@@ -163,10 +166,8 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
       CalendarViewMode.week => (
           _weekTitle(_weekStart),
           todayStr == weekKey,
-          () => setState(
-              () => _weekStart = _weekStart.subtract(const Duration(days: 7))),
-          () => setState(
-              () => _weekStart = _weekStart.add(const Duration(days: 7))),
+          () => setState(() => _weekStart = addLocalDays(_weekStart, -7)),
+          () => setState(() => _weekStart = addLocalDays(_weekStart, 7)),
           () => setState(() {
             _weekStart = _mondayOf(today);
             _selectedDate = todayStr;
@@ -310,7 +311,7 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
 
   /// 当前视图的标题：周视图显示「8 月 25 日 – 31 日 · 第 34 周」。
   String _weekTitle(DateTime monday) {
-    final sunday = monday.add(const Duration(days: 6));
+    final sunday = addLocalDays(monday, 6);
     final sameMonth = monday.month == sunday.month;
     // 一年中的第几周（ISO 周数，周一为每周第一天）。
     final weekNumber = _isoWeekNumber(monday);
@@ -325,9 +326,17 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
   /// ISO 周数：本周周四所在年份的第几周。
   static int _isoWeekNumber(DateTime date) {
     // 将日期调整到本周四（ISO 周以周四定义所属年份）。
-    final thursday = date.add(Duration(days: 4 - date.weekday));
-    final yearStart = DateTime(thursday.year, 1, 1);
-    final dayDiff = thursday.difference(yearStart).inDays;
+    // 纯日历加法 + UTC 归一化天数差（2026-08-14 审查 #3/#8）：Duration/本地
+    // difference 在 DST 切换日可能差一天，导致跨年周的周号显示偏移。
+    final day = DateTime(date.year, date.month, date.day);
+    final thursday = addLocalDays(day, 4 - day.weekday);
+    final yearStartUtc = DateTime.utc(thursday.year, 1, 1);
+    final thursdayUtc = DateTime.utc(
+      thursday.year,
+      thursday.month,
+      thursday.day,
+    );
+    final dayDiff = thursdayUtc.difference(yearStartUtc).inDays;
     return (dayDiff ~/ 7) + 1;
   }
 
@@ -1053,7 +1062,9 @@ class _WeekGrid extends StatelessWidget {
                   child: _buildCell(
                     context,
                     scheme,
-                    date: weekStart.add(Duration(days: col)),
+                    // 纯日历加法（date_text）：防 DST 切换日周格日期错位
+                    // （2026-08-14 审查 #3）。
+                    date: addLocalDays(weekStart, col),
                   ),
                 ),
             ],

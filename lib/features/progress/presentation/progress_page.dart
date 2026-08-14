@@ -90,9 +90,22 @@ final progressOverviewProvider = Provider<({
   final todayTasks = ref.watch(tasksByDateProvider(todayStr)).valueOrNull;
   final tasks = ref.watch(progressTasksProvider).valueOrNull;
   if (todayTasks == null || tasks == null) return null;
+  // 目标剩余工作量只统计进行中目标（2026-08-14 审查 #2，与今天页 L13
+  // 口径一致）：已完成/放弃/归档目标的残留 todo 任务不再计入，避免
+  // 两页显示不同数字。燃尽/甘特图仍为全局趋势（不在此过滤）。
+  final activeGoalIds = {
+    for (final g in ref.watch(goalListProvider).valueOrNull ?? const <Goal>[])
+      if (g.status != GoalStatus.completed &&
+          g.status != GoalStatus.abandoned &&
+          g.status != GoalStatus.archived)
+        g.id,
+  };
+  final activeTodo = tasks.todo
+      .where((t) => activeGoalIds.contains(t.goalId))
+      .toList();
   return (
     stats: _progressStats.completionStats(todayTasks),
-    remainingMinutes: _progressStats.remainingMinutes(tasks.todo),
+    remainingMinutes: _progressStats.remainingMinutes(activeTodo),
     hasAnyTask: tasks.todo.isNotEmpty || tasks.completed.isNotEmpty,
   );
 });

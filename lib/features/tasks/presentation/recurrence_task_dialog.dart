@@ -210,7 +210,9 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
   }
 
   static String _plusDays(String yyyyMMdd, int days) {
-    final d = parseLocalDate(yyyyMMdd).add(Duration(days: days));
+    // 纯日历加法（date_text，2026-08-14 审查 #9）：Duration(days:) 在夏令时
+    // 切换日偏移一小时，与全库其余日期计算口径统一。
+    final d = addLocalDays(parseLocalDate(yyyyMMdd), days);
     return DateFormat('yyyy-MM-dd').format(d);
   }
 

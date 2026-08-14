@@ -252,11 +252,16 @@ class TaskTile extends ConsumerWidget {
   }
 
   Future<void> _deferPickDate(BuildContext context, WidgetRef ref) async {
-    final now = DateTime.now();
+    // 与 _deferToNextAvailable 一致：用注入时钟（clockProvider），保证
+    // 测试可固定日期、跨午夜行为正确（此前直接用 DateTime.now()）。
+    final now = ref.read(clockProvider)();
+    // 延期语义（与今日页 FR-3.7 横幅一致，L40 口径）：只允许今天及之后，
+    // 禁止改期到过去再次变逾期——此前 firstDate 为去年可把任务「延期」回
+    // 过去，与横幅行为分裂（2026-08-14 审查 #1）。
+    final first = DateUtils.dateOnly(now);
     // 任务计划日期可早于 firstDate（逾期一年以上是真实场景）：initialDate
     // 越界会在 debug 下触发 datepicker 断言、release 下落到错误初值，故钳制。
     final planned = parseLocalDate(task.plannedDate);
-    final first = DateTime(now.year - 1);
     final initial = planned.isBefore(first) ? first : planned;
     final picked = await showDatePicker(
       context: context,

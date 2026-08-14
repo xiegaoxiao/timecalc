@@ -127,6 +127,41 @@ void main() {
     );
   });
 
+  testWidgets('目标剩余工作量只统计进行中目标（口径与今天页一致，回归 #2）',
+      (tester) async {
+    final active = await goals.create(title: '进行中', deadlineDate: '2026-12-31');
+    await tasks.create(
+      goalId: active.id,
+      title: '进行中任务',
+      plannedDate: '2026-08-10',
+      estimatedMinutes: 60,
+    );
+    // 已结束目标残留的未完成任务：不应计入「目标剩余工作量」。
+    final ended = await goals.create(title: '已结束', deadlineDate: '2026-12-31');
+    await goals.update(
+      id: ended.id,
+      status: 'completed',
+      completedAt: DateTime.utc(2026, 8, 1),
+    );
+    await tasks.create(
+      goalId: ended.id,
+      title: '残留任务',
+      plannedDate: '2026-08-10',
+      estimatedMinutes: 120,
+    );
+
+    await pumpApp(tester);
+    await openProgress(tester);
+
+    // 只计进行中目标：60 分钟 = 1 小时；已结束目标的 120 分钟不计入
+    // （修复前两目标合计 3 小时）。限定在概览卡内断言（Y 轴也有时长刻度）。
+    final overviewCard = find.widgetWithText(Card, '今日概览');
+    expect(
+      find.descendant(of: overviewCard, matching: find.text('1 小时')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('热力图 LeetCode 配色：图例文本与 tooltip（FR-7.2）', (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
     // 本周完成 2 项（本地 2026-08-03 周一当周）→ level 1（1-3 档）。

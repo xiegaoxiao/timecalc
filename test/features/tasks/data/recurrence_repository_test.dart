@@ -159,6 +159,61 @@ void main() {
       expect(await recurrence.generateDue(today: later), 0);
       expect((await tasks.byGoal(goal.id)).length, 31); // 实例保留
     });
+
+    test('脏 generatedThroughDate（非日期文本）不中断其余模板（回归 #4）', () async {
+      final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+      final dirty = await recurrence.create(
+        goalId: goal.id,
+        title: '脏模板',
+        rule: rule('daily', const {}),
+        startDate: '2026-08-05',
+        today: fixedToday,
+      );
+      final clean = await recurrence.create(
+        goalId: goal.id,
+        title: '干净模板',
+        rule: rule('daily', const {}),
+        startDate: '2026-08-05',
+        today: fixedToday,
+      );
+      // 模拟旧备份恢复等路径写入的空 generatedThroughDate（codec ?? '' 兜底）。
+      await (db.update(db.recurrenceTemplates)
+            ..where((t) => t.id.equals(dirty.id)))
+          .write(
+            RecurrenceTemplatesCompanion(generatedThroughDate: const Value('')),
+          );
+
+      // 修复前：_plusDays('') 抛 FormatException 使整个 generateDue 事务
+      // 失败，所有 active 模板停止滚动生成。
+      final later = DateTime(2026, 8, 15, 12);
+      expect(await recurrence.generateDue(today: later), 10); // 干净模板补齐 10 条
+      final cleanInstances = (await tasks.byGoal(goal.id))
+          .where((t) => t.recurrenceTemplateId == clean.id);
+      expect(cleanInstances, hasLength(41)); // 31 + 10
+      // 脏模板被跳过且窗口未推进（下次启动仍会重试，而非永久跳过）。
+      expect((await recurrence.byId(dirty.id))?.generatedThroughDate, '');
+    });
+
+    test('脏 startDate（非日期文本）跳过且不推进窗口（回归 #4）', () async {
+      final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+      final dirty = await recurrence.create(
+        goalId: goal.id,
+        title: '脏起始日模板',
+        rule: rule('daily', const {}),
+        startDate: '2026-08-05',
+        today: fixedToday,
+      );
+      await (db.update(db.recurrenceTemplates)
+            ..where((t) => t.id.equals(dirty.id)))
+          .write(
+            RecurrenceTemplatesCompanion(startDate: const Value('')),
+          );
+
+      // 脏 startDate 被跳过，不抛异常、不推进窗口。
+      final later = DateTime(2026, 8, 15, 12);
+      expect(await recurrence.generateDue(today: later), 0);
+      expect((await recurrence.byId(dirty.id))?.generatedThroughDate, '2026-09-04');
+    });
   });
 
   group('updateRule（FR-4.4）', () {
@@ -309,6 +364,33 @@ void main() {
 
       final generated = await recurrence.generateDue(today: fixedToday);
       expect(generated, 0); // 窗口已完整，无新增实例。
+    });
+
+    test('仅修改模板缩短 endDate：generatedThroughDate 钳制到新结束日（回归 #5）', () async {
+      final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+      final template = await recurrence.create(
+        goalId: goal.id,
+        title: '背单词',
+        rule: rule('daily', const {}),
+        startDate: '2026-08-05',
+        today: fixedToday,
+      );
+      expect(template.generatedThroughDate, '2026-09-04'); // 08-05 + 30
+
+      // 仅修改模板：结束日缩短到 08-20（早于旧窗口 09-04）。
+      await recurrence.updateRule(
+        templateId: template.id,
+        rule: rule('daily', const {}),
+        endDate: '2026-08-20',
+        applyTo: RecurrenceApplyTo.template,
+        today: fixedToday,
+      );
+
+      // 窗口记账钳制到新结束日；实例保留（31 条不变，符合「仅修改模板
+      // 不触碰实例」语义，超窗实例不再由窗口推进逻辑生成）。
+      final updated = await recurrence.byId(template.id);
+      expect(updated?.generatedThroughDate, '2026-08-20');
+      expect((await tasks.byGoal(goal.id)).length, 31);
     });
   });
 

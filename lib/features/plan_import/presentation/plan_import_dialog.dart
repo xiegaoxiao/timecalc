@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/providers/clock_provider.dart';
 import '../../../core/providers/app_refresh.dart';
+import '../../../core/utils/date_text.dart';
 import '../../../services/duration_format.dart';
 import '../data/plan_import_repository_provider.dart';
 import '../data/plan_json_picker.dart';
@@ -74,12 +75,8 @@ class _PlanImportDialogState extends ConsumerState<PlanImportDialog> {
   String _buildSample() {
     final today = ref.read(clockProvider)();
     final todayStr = DateFormat('yyyy-MM-dd').format(today);
-    final tomorrow = DateFormat('yyyy-MM-dd').format(
-      today.add(const Duration(days: 1)),
-    );
-    final weekEnd = DateFormat('yyyy-MM-dd').format(
-      today.add(const Duration(days: 6)),
-    );
+    final tomorrow = DateFormat('yyyy-MM-dd').format(addLocalDays(today, 1));
+    final weekEnd = DateFormat('yyyy-MM-dd').format(addLocalDays(today, 6));
     return '''
 {
   "plan_name": "示例：考研数学备考计划",
