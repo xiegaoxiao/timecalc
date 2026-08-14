@@ -60,7 +60,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 超出格同时有红色文本与警告图标（非颜色提示）。
-    expect(find.text('超出30m'), findsOneWidget);
+    expect(find.text('30m'), findsOneWidget);
     expect(find.byIcon(Icons.warning_amber_rounded), findsWidgets);
   });
 

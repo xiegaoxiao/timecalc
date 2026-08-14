@@ -35,6 +35,29 @@ final tasksByMonthProvider =
       );
 });
 
+/// 指定周（周一日期 yyyy-MM-dd）的全部任务（日历周视图用）。
+///
+/// 范围 = 周一 00:00 ~ 周日 23:59（含跨月周：周一起点在上一月/下一月时
+/// 正常查询，按 plannedDate 字典序整周覆盖）。
+final tasksByWeekProvider =
+    FutureProvider.family<List<Task>, String>((ref, mondayDate) {
+  final monday = DateTime.parse(mondayDate);
+  final sunday = monday.add(const Duration(days: 6));
+  return ref.watch(taskRepositoryProvider).byDateRange(
+        DateFormat('yyyy-MM-dd').format(monday),
+        DateFormat('yyyy-MM-dd').format(sunday),
+      );
+});
+
+/// 指定年份（yyyy）的全部任务（日历年视图用）。
+final tasksByYearProvider =
+    FutureProvider.family<List<Task>, int>((ref, year) {
+  return ref.watch(taskRepositoryProvider).byDateRange(
+        '$year-01-01',
+        '$year-12-31',
+      );
+});
+
 /// 计划日期早于指定日期（yyyy-MM-dd）且未完成的任务（FR-3.7）。
 final unfinishedBeforeProvider =
     FutureProvider.family<List<Task>, String>((ref, date) {

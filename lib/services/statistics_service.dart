@@ -82,6 +82,25 @@ class StatisticsService {
     return byDate;
   }
 
+  /// 按完成月份（本地年-月）统计完成任务数量（年视图月格）。
+  ///
+  /// 口径与 [completedCountsByLocalDate] 一致（status=done 且 completedAt
+  /// 非空，按本地日期归月），返回以 `yyyy-MM` 为键的数量映射，无完成
+  /// 记录的月份不出现在映射中。
+  Map<String, int> completedCountsByMonth(List<Task> tasks) {
+    final counts = <String, int>{};
+    for (final task in tasks) {
+      if (task.status != TaskStatus.done) continue;
+      final completedAt = task.completedAt;
+      if (completedAt == null) continue;
+      final local = completedAt.toLocal();
+      final key =
+          '${local.year}-${local.month.toString().padLeft(2, '0')}';
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    return counts;
+  }
+
   /// 单日完成概览（FR-7.1）：完成数 / 总数 / 已完成任务预估时长之和。
   ///
   /// 无预估时长的任务只计入任务数，不计入时长（FR-7.4）。

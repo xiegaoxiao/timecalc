@@ -10,6 +10,7 @@ import '../../../core/providers/app_refresh.dart';
 import '../../../core/theme/app_semantic_colors.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../services/load_service.dart';
+import '../../../services/statistics_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/chart_empty_state.dart';
 import '../../../shared/widgets/page_skeletons.dart';
@@ -24,7 +25,10 @@ import '../../tasks/presentation/task_tile.dart';
 /// 选日面板标题（含星期，中文），复用单一实例避免每帧重建 DateFormat。
 final _dayLabelFormat = DateFormat('yyyy-MM-dd EEEE', 'zh_CN');
 
-/// 日历视图（FR-3.4）：月历网格 + 选日任务面板。
+/// 日历视图模式（周 / 月 / 年）。
+enum CalendarViewMode { week, month, year }
+
+/// 日历视图（FR-3.4）：周/月/年网格 + 选日任务面板。
 ///
 /// - 网格展示每日任务数（已完成/总数）、预估时长与「超出 Y 分钟」；
 /// - 无任务日期保持中性（不显示过载或 0/0）；
@@ -41,15 +45,29 @@ class CalendarView extends ConsumerStatefulWidget {
 class _CalendarViewState extends ConsumerState<CalendarView> {
   static const _load = LoadService();
 
+  late CalendarViewMode _mode; // 周/月/年视图
   late DateTime _month; // 年/月（day 固定 1）
+  late DateTime _weekStart; // 周一（周视图）
+  late int _year; // 年视图
   late String _selectedDate; // yyyy-MM-dd
+  late bool _monthHideCompleted; // 月视图：隐藏已完成任务
 
   @override
   void initState() {
     super.initState();
     final today = ref.read(clockProvider)();
+    _mode = CalendarViewMode.month; // 默认月视图（与现状一致）
     _month = DateTime(today.year, today.month);
+    _weekStart = _mondayOf(today);
+    _year = today.year;
     _selectedDate = formatLocalDate(today);
+    _monthHideCompleted = false;
+  }
+
+  /// 所在周的周一（周一开头，与网格一致）。
+  static DateTime _mondayOf(DateTime date) {
+    final day = DateTime(date.year, date.month, date.day);
+    return day.subtract(Duration(days: day.weekday - 1));
   }
 
   @override
@@ -58,10 +76,13 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
     final todayStr = formatLocalDate(today);
     final monthKey =
         '${_month.year}-${_month.month.toString().padLeft(2, '0')}';
+    final weekKey = formatLocalDate(_weekStart);
 
     final goalsAsync = ref.watch(goalListProvider);
     final settingsAsync = ref.watch(settingsProvider);
-    final tasksAsync = ref.watch(tasksByMonthProvider(monthKey));
+    final monthTasksAsync = ref.watch(tasksByMonthProvider(monthKey));
+    final weekTasksAsync = ref.watch(tasksByWeekProvider(weekKey));
+    final yearTasksAsync = ref.watch(tasksByYearProvider(_year));
     final selectedTasksAsync = ref.watch(tasksByDateProvider(_selectedDate));
 
     // 核心数据（目标/设置）：仅首次加载或出错时整页占位；此后刷新期间
@@ -99,12 +120,24 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
     );
     // 月份任务：换月/刷新期间 valueOrNull 保留旧值（首次换到新月份时兜底
     // 空表），网格始终渲染不塌陷；聚合只随已就绪数据重算。
-    final monthTasks = tasksAsync.valueOrNull ?? const <Task>[];
-    final aggregate = _load.calendarAggregate(
-      tasks: monthTasks,
+    final monthTasks = monthTasksAsync.valueOrNull ?? const <Task>[];
+    final weekTasks = weekTasksAsync.valueOrNull ?? const <Task>[];
+    final yearTasks = yearTasksAsync.valueOrNull ?? const <Task>[];
+    final monthAggregate = _load.calendarAggregate(
+      tasks: _monthHideCompleted
+          ? monthTasks.where((t) => t.status != TaskStatus.done).toList()
+          : monthTasks,
       availableMinutes: settings.dailyAvailableMinutes,
       availableWeekdays: weekdays,
     );
+    final weekAggregate = _load.calendarAggregate(
+      tasks: weekTasks,
+      availableMinutes: settings.dailyAvailableMinutes,
+      availableWeekdays: weekdays,
+    );
+    // 年视图月完成数：按 completedAt 归月（口径与进度页热力图一致）。
+    const stats = StatisticsService();
+    final yearMonthCounts = stats.completedCountsByMonth(yearTasks);
 
     // 选日任务的科目名：父级一次性预取（按 goalId 去重），避免每个 TaskTile
     // 各自 watch(subjectListProvider) + 线性扫描（N+1）。
@@ -115,53 +148,126 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
             ref.watch(subjectListProvider(gid)).valueOrNull ?? const <Subject>[],
     };
 
+    // 头部标题与前后切换单位（随视图模式变化）。
+    final (title, isCurrent, onPrev, onNext, onBackToToday) = switch (_mode) {
+      CalendarViewMode.month => (
+          '${_month.year}年${_month.month}月',
+          todayStr.startsWith(monthKey),
+          () => setState(() => _month = DateTime(_month.year, _month.month - 1)),
+          () => setState(() => _month = DateTime(_month.year, _month.month + 1)),
+          () => setState(() {
+            _month = DateTime(today.year, today.month);
+            _selectedDate = todayStr;
+          }),
+        ),
+      CalendarViewMode.week => (
+          _weekTitle(_weekStart),
+          todayStr == weekKey,
+          () => setState(
+              () => _weekStart = _weekStart.subtract(const Duration(days: 7))),
+          () => setState(
+              () => _weekStart = _weekStart.add(const Duration(days: 7))),
+          () => setState(() {
+            _weekStart = _mondayOf(today);
+            _selectedDate = todayStr;
+          }),
+        ),
+      CalendarViewMode.year => (
+          '$_year年',
+          _year == today.year,
+          () => setState(() => _year--),
+          () => setState(() => _year++),
+          () => setState(() {
+            _year = today.year;
+            _selectedDate = todayStr;
+          }),
+        ),
+    };
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _MonthHeader(
-            month: _month,
-            isCurrentMonth: todayStr.startsWith(monthKey),
-            onPrev: () => setState(() {
-              _month = DateTime(_month.year, _month.month - 1);
-            }),
-            onNext: () => setState(() {
-              _month = DateTime(_month.year, _month.month + 1);
-            }),
-            onBackToToday: () => setState(() {
-              _month = DateTime(today.year, today.month);
-              _selectedDate = todayStr;
-            }),
+          _CalendarHeader(
+            mode: _mode,
+            title: title,
+            isCurrent: isCurrent,
+            onModeChanged: (m) => setState(() => _mode = m),
+            onPrev: onPrev,
+            onNext: onNext,
+            onBackToToday: onBackToToday,
+            hideCompleted: _monthHideCompleted,
+            onHideCompletedChanged: _mode == CalendarViewMode.month
+                ? (value) => setState(() => _monthHideCompleted = value)
+                : null,
           ),
           const SizedBox(height: 8),
-          // 月份数据加载/出错：网格区顶部细进度条或局部错误提示，不整页塌陷。
-          if (monthTasks.isEmpty)
-            if (tasksAsync.hasError)
+          // 当前视图数据加载/出错：网格区顶部细进度条或局部错误提示，
+          // 不整页塌陷。
+          if (_viewTasks().isEmpty)
+            if (_viewAsync().hasError)
               _SectionError(
-                error: tasksAsync.error!,
-                onRetry: () => ref.invalidate(tasksByMonthProvider),
+                error: _viewAsync().error!,
+                onRetry: () {
+                  // 按当前视图失效对应数据族（family 无参整族失效）。
+                  switch (_mode) {
+                    case CalendarViewMode.month:
+                      ref.invalidate(tasksByMonthProvider);
+                    case CalendarViewMode.week:
+                      ref.invalidate(tasksByWeekProvider);
+                    case CalendarViewMode.year:
+                      ref.invalidate(tasksByYearProvider);
+                  }
+                },
               )
-            else if (tasksAsync.isLoading)
+            else if (_viewAsync().isLoading)
               const Padding(
                 padding: EdgeInsets.only(bottom: 4),
                 child: LinearProgressIndicator(minHeight: 2),
               ),
-          // 月份切换淡入淡出（keyed by month；刷新原位更新，不触发动画）。
+          // 视图/单元切换淡入淡出（keyed by 视图+单元；刷新原位更新，
+          // 不触发动画）。
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 200),
-            child: _MonthGrid(
-              key: ValueKey(monthKey),
-              month: _month,
-              todayStr: todayStr,
-              selectedDate: _selectedDate,
-              weekdays: weekdays,
-              aggregate: aggregate,
-              onSelect: (dateStr) =>
-                  setState(() => _selectedDate = dateStr),
-              // FR-5.1：把任务拖到某一天改期。
-              onDropTask: (task, date) => _handleTaskDropped(task, date),
-            ),
+            child: switch (_mode) {
+              CalendarViewMode.month => _MonthGrid(
+                  key: ValueKey('month-$monthKey'),
+                  month: _month,
+                  todayStr: todayStr,
+                  selectedDate: _selectedDate,
+                  weekdays: weekdays,
+                  aggregate: monthAggregate,
+                  onSelect: (dateStr) =>
+                      setState(() => _selectedDate = dateStr),
+                  // FR-5.1：把任务拖到某一天改期。
+                  onDropTask: (task, date) => _handleTaskDropped(task, date),
+                ),
+              CalendarViewMode.week => _WeekGrid(
+                  key: ValueKey('week-$weekKey'),
+                  weekStart: _weekStart,
+                  todayStr: todayStr,
+                  selectedDate: _selectedDate,
+                  weekdays: weekdays,
+                  aggregate: weekAggregate,
+                  // 周视图格内直接展示当日任务条（与月视图的聚合数字区分：
+                  // 周视图的价值是「一周安排一览」，而非仅负载概览）。
+                  tasksByDate: _groupTasksByDate(weekTasks),
+                  onSelect: (dateStr) =>
+                      setState(() => _selectedDate = dateStr),
+                  onDropTask: (task, date) => _handleTaskDropped(task, date),
+                ),
+              CalendarViewMode.year => _YearGrid(
+                  key: ValueKey('year-$_year'),
+                  year: _year,
+                  todayStr: todayStr,
+                  monthCounts: yearMonthCounts,
+                  onSelectMonth: (month) => setState(() {
+                    _mode = CalendarViewMode.month;
+                    _month = DateTime(_year, month);
+                  }),
+                ),
+            },
           ),
           const Divider(height: 32),
           // 选日面板：换日淡入淡出（keyed by date），加载/错误只影响面板区。
@@ -192,6 +298,64 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
       ),
     );
   }
+
+  /// 任务按计划日期分组（周视图格内任务条用）。
+  static Map<String, List<Task>> _groupTasksByDate(List<Task> tasks) {
+    final map = <String, List<Task>>{};
+    for (final t in tasks) {
+      map.putIfAbsent(t.plannedDate, () => []).add(t);
+    }
+    return map;
+  }
+
+  /// 当前视图的标题：周视图显示「8 月 25 日 – 31 日 · 第 34 周」。
+  String _weekTitle(DateTime monday) {
+    final sunday = monday.add(const Duration(days: 6));
+    final sameMonth = monday.month == sunday.month;
+    // 一年中的第几周（ISO 周数，周一为每周第一天）。
+    final weekNumber = _isoWeekNumber(monday);
+    if (sameMonth) {
+      return '${monday.month}月${monday.day}日 – ${sunday.day}日 · '
+          '第 $weekNumber 周';
+    }
+    return '${monday.month}月${monday.day}日 – ${sunday.month}月'
+        '${sunday.day}日 · 第 $weekNumber 周';
+  }
+
+  /// ISO 周数：本周周四所在年份的第几周。
+  static int _isoWeekNumber(DateTime date) {
+    // 将日期调整到本周四（ISO 周以周四定义所属年份）。
+    final thursday = date.add(Duration(days: 4 - date.weekday));
+    final yearStart = DateTime(thursday.year, 1, 1);
+    final dayDiff = thursday.difference(yearStart).inDays;
+    return (dayDiff ~/ 7) + 1;
+  }
+
+  /// 当前视图对应的任务列表（加载/聚合共用）。
+  List<Task> _viewTasks() => switch (_mode) {
+        CalendarViewMode.month =>
+          ref.read(tasksByMonthProvider(
+            '${_month.year}-${_month.month.toString().padLeft(2, '0')}',
+          )).valueOrNull ??
+              const <Task>[],
+        CalendarViewMode.week =>
+          ref.read(tasksByWeekProvider(formatLocalDate(_weekStart)))
+                  .valueOrNull ??
+              const <Task>[],
+        CalendarViewMode.year =>
+          ref.read(tasksByYearProvider(_year)).valueOrNull ?? const <Task>[],
+      };
+
+  AsyncValue<List<Task>> _viewAsync() => switch (_mode) {
+        CalendarViewMode.month => ref.read(
+            tasksByMonthProvider(
+              '${_month.year}-${_month.month.toString().padLeft(2, '0')}',
+            ),
+          ),
+        CalendarViewMode.week =>
+          ref.read(tasksByWeekProvider(formatLocalDate(_weekStart))),
+        CalendarViewMode.year => ref.read(tasksByYearProvider(_year)),
+      };
 
   /// 数据变更后的统一刷新（FR-3 验收：日历月视图、选日列表、今日页与
   /// 目标详情在同一操作周期内同步更新）。公共集合见 invalidateAppData
@@ -375,46 +539,139 @@ class _SectionError extends StatelessWidget {
   }
 }
 
-/// 月份切换头部：上一月 / 标题（当前月份显示「回到今天」）/ 下一月。
-class _MonthHeader extends StatelessWidget {
-  const _MonthHeader({
-    required this.month,
-    required this.isCurrentMonth,
+/// 日历头部：视图切换器（周/月/年）+ 标题 + 上一单元/下一单元 + 回到今天。
+class _CalendarHeader extends StatelessWidget {
+  const _CalendarHeader({
+    required this.mode,
+    required this.title,
+    required this.isCurrent,
+    required this.onModeChanged,
     required this.onPrev,
     required this.onNext,
     required this.onBackToToday,
+    this.hideCompleted = false,
+    this.onHideCompletedChanged,
   });
 
-  final DateTime month;
-  final bool isCurrentMonth;
+  final CalendarViewMode mode;
+  final String title;
+  final bool isCurrent;
+  final ValueChanged<CalendarViewMode> onModeChanged;
   final VoidCallback onPrev;
   final VoidCallback onNext;
   final VoidCallback onBackToToday;
 
+  /// 仅月视图：「隐藏已完成」开关的当前值。
+  final bool hideCompleted;
+
+  /// 仅月视图：「隐藏已完成」开关变更回调；非月视图传 null。
+  final ValueChanged<bool>? onHideCompletedChanged;
+
+  /// 当前是否为月视图（决定工具是否展示）。
+  bool get _isMonthView => onHideCompletedChanged != null;
+
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
       children: [
-        IconButton(
-          tooltip: '上一月',
-          onPressed: onPrev,
-          icon: const Icon(Icons.chevron_left),
+        // 第一行：视图切换器（左）+ 月视图工具（中）+ 前后切换（右）。
+        Row(
+          children: [
+            SegmentedButton<CalendarViewMode>(
+              segments: const [
+                ButtonSegment(
+                  value: CalendarViewMode.week,
+                  label: Text('周'),
+                  icon: Icon(Icons.view_week_outlined),
+                ),
+                ButtonSegment(
+                  value: CalendarViewMode.month,
+                  label: Text('月'),
+                  icon: Icon(Icons.calendar_month_outlined),
+                ),
+                ButtonSegment(
+                  value: CalendarViewMode.year,
+                  label: Text('年'),
+                  icon: Icon(Icons.calendar_view_month_outlined),
+                ),
+              ],
+              selected: {mode},
+              showSelectedIcon: false,
+              onSelectionChanged: (selection) =>
+                  onModeChanged(selection.first),
+            ),
+            // 月视图专属：隐藏已完成开关。
+            if (mode == CalendarViewMode.month && _isMonthView) ...[
+              const SizedBox(width: 8),
+              _HideCompletedChip(
+                value: hideCompleted,
+                onChanged: onHideCompletedChanged!,
+              ),
+            ],
+            const Spacer(),
+            IconButton(
+              tooltip: '上一单元',
+              onPressed: onPrev,
+              icon: const Icon(Icons.chevron_left),
+            ),
+            IconButton(
+              tooltip: '下一单元',
+              onPressed: onNext,
+              icon: const Icon(Icons.chevron_right),
+            ),
+          ],
         ),
-        Expanded(
-          child: Text(
-            '${month.year}年${month.month}月',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-        ),
-        if (!isCurrentMonth)
-          TextButton(onPressed: onBackToToday, child: const Text('回到今天')),
-        IconButton(
-          tooltip: '下一月',
-          onPressed: onNext,
-          icon: const Icon(Icons.chevron_right),
+        // 第二行：标题 + 回到今天。
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            if (!isCurrent)
+              FilledButton.tonal(
+                onPressed: onBackToToday,
+                child: const Text('回到今天'),
+              )
+            else
+              // 当前单元也保留占位，避免标题行高度跳动。
+              const SizedBox.shrink(),
+          ],
         ),
       ],
+    );
+  }
+}
+
+/// 「隐藏已完成」开关小_chip。
+class _HideCompletedChip extends StatelessWidget {
+  const _HideCompletedChip({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ActionChip(
+      avatar: Icon(
+        value ? Icons.check_box : Icons.check_box_outline_blank,
+        size: 18,
+        color: value ? scheme.primary : scheme.onSurfaceVariant,
+      ),
+      label: const Text('隐藏已完成'),
+      labelStyle: const TextStyle(fontSize: 12),
+      padding: EdgeInsets.zero,
+      side: BorderSide.none,
+      backgroundColor:
+          value ? scheme.primaryContainer : scheme.surfaceContainerHighest,
+      onPressed: () => onChanged(!value),
     );
   }
 }
@@ -592,43 +849,52 @@ class _MonthGrid extends StatelessWidget {
                 ],
               ),
               if (agg.totalCount > 0) ...[
-                Text(
-                  '${agg.doneCount}/${agg.totalCount}',
-                  style: TextStyle(fontSize: 11, color: textColor),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                const SizedBox(height: 2),
+                // 小型完成进度条：直观展示当天完成比例。
+                _MonthDayProgressBar(
+                  done: agg.doneCount,
+                  total: agg.totalCount,
+                  color: textColor,
                 ),
-                Text(
-                  _compactDuration(agg.loadMinutes),
-                  style: TextStyle(fontSize: 11, color: textColor),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (agg.overMinutes > 0)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // 非颜色状态（NFR-4）：超载格在警告色文本外附警告图标。
-                      Icon(
-                        Icons.warning_amber_rounded,
-                        size: 11,
-                        color: warning,
+                const SizedBox(height: 4),
+                // 时长与超载信息。
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        _compactDuration(agg.loadMinutes),
+                        style: TextStyle(fontSize: 10, color: textColor),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(width: 2),
+                    ),
+                    if (agg.overMinutes > 0)
                       Flexible(
-                        child: Text(
-                          '超出${_compactDuration(agg.overMinutes)}',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: warning,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.warning_amber_rounded,
+                              size: 10,
+                              color: warning,
+                            ),
+                            Flexible(
+                              child: Text(
+                                _compactDuration(agg.overMinutes),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: warning,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
+                  ],
+                ),
               ],
             ],
           ),
@@ -653,6 +919,577 @@ class _MonthGrid extends StatelessWidget {
             : const BoxDecoration(),
         child: cell,
       ),
+    );
+  }
+}
+
+/// 月视图日格完成进度条：细条形，已完成比例一目了然。
+///
+/// 全部完成时显示勾选徽标而非实心条，避免 100% 时前景与背景融为一条
+/// 粗黑线（withValues alpha 仅 0.2，但颜色饱和度高时仍显脏）。
+class _MonthDayProgressBar extends StatelessWidget {
+  const _MonthDayProgressBar({
+    required this.done,
+    required this.total,
+    required this.color,
+  });
+
+  final int done;
+  final int total;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isAllDone = total > 0 && done >= total;
+    if (isAllDone) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.check_circle, size: 11, color: scheme.primary),
+          const SizedBox(width: 3),
+          Text(
+            '完成',
+            style: TextStyle(fontSize: 10, color: scheme.primary),
+          ),
+        ],
+      );
+    }
+
+    final fraction = total == 0 ? 0.0 : done / total;
+    return Container(
+      height: 4,
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(2),
+      ),
+      alignment: Alignment.centerLeft,
+      clipBehavior: Clip.antiAlias,
+      child: FractionallySizedBox(
+        alignment: Alignment.centerLeft,
+        widthFactor: fraction,
+        child: Container(
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 周视图网格（格子样式）：7 列（周一~周日）× 1 行，展示当周每日任务。
+///
+/// 单元格视觉与 [_MonthGrid] 完全一致（三态/置灰/负载聚合），仅网格为
+/// 当周 7 天；跨月的周正常显示相邻月日期号（不加灰）。
+class _WeekGrid extends StatelessWidget {
+  const _WeekGrid({
+    super.key,
+    required this.weekStart,
+    required this.todayStr,
+    required this.selectedDate,
+    required this.weekdays,
+    required this.aggregate,
+    required this.tasksByDate,
+    required this.onSelect,
+    this.onDropTask,
+  });
+
+  final DateTime weekStart; // 周一
+  final String todayStr;
+  final String selectedDate;
+  final Set<int> weekdays;
+  final Map<String, DayAggregate> aggregate;
+  final Map<String, List<Task>> tasksByDate;
+  final ValueChanged<String> onSelect;
+  final void Function(Task task, String date)? onDropTask;
+
+  static const _weekdayLabels = ['一', '二', '三', '四', '五', '六', '日'];
+
+  /// 单个格子最多展示的任务条数。
+  static const int _maxTaskPills = 3;
+
+  /// 任务条高度（含上下 margin）。
+  static const double _pillHeight = 18;
+
+  /// 紧凑时长（与月网格同口径）。
+  static String _compactDuration(int minutes) {
+    final hours = minutes ~/ 60;
+    final rest = minutes % 60;
+    if (hours == 0) return '${rest}m';
+    if (rest == 0) return '${hours}h';
+    return '${hours}h${rest}m';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 星期表头。
+        Row(
+          children: [
+            for (final label in _weekdayLabels)
+              Expanded(
+                child: Center(
+                  child: Text(
+                    label,
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        // 7 天格子：固定高度以容纳任务条预览。
+        SizedBox(
+          height: 180,
+          child: Row(
+            children: [
+              for (var col = 0; col < 7; col++)
+                Expanded(
+                  child: _buildCell(
+                    context,
+                    scheme,
+                    date: weekStart.add(Duration(days: col)),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCell(
+    BuildContext context,
+    ColorScheme scheme, {
+    required DateTime date,
+  }) {
+    final dateStr = formatLocalDate(date);
+    final agg = aggregate[dateStr] ?? DayAggregate.empty;
+    final isAvailable = weekdays.contains(date.weekday);
+    final isToday = dateStr == todayStr;
+    final isSelected = dateStr == selectedDate;
+    final hasTask = agg.totalCount > 0;
+
+    // 三态视觉优先级（选中 > 今天 > 有任务；NFR-4 不只依赖颜色）：
+    // 与月网格完全一致（选中主色实心块、今天描边+粗体、有任务圆点）。
+    final baseTextColor =
+        isAvailable ? scheme.onSurface : scheme.outlineVariant;
+    final textColor = isSelected
+        ? scheme.onPrimary
+        : (isToday ? scheme.primary : baseTextColor);
+    final background = isSelected
+        ? scheme.primary
+        : scheme.surfaceContainerLow;
+    final border = isToday && !isSelected
+        ? Border.all(color: scheme.primary, width: 1.5)
+        : null;
+    final dotColor = isSelected ? scheme.onPrimary : scheme.primary;
+
+    // 屏幕阅读器可读的单元格描述（NFR-4）：日期 + 完成数/总数 + 时长。
+    final label = StringBuffer(
+      '$dateStr，完成 ${agg.doneCount}/${agg.totalCount}',
+    );
+    if (agg.loadMinutes > 0) {
+      label.write('，时长 ${_compactDuration(agg.loadMinutes)}');
+    }
+    if (agg.overMinutes > 0) {
+      label.write('，超出 ${_compactDuration(agg.overMinutes)}');
+    }
+
+    final dayTasks = tasksByDate[dateStr] ?? const <Task>[];
+
+    final cell = Semantics(
+      label: label.toString(),
+      button: true,
+      child: InkWell(
+        onTap: () => onSelect(dateStr),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          height: 170,
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(8),
+            border: border,
+          ),
+          padding: const EdgeInsets.all(6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 日期行 + 完成进度徽标。
+              Row(
+                children: [
+                  Text(
+                    '${date.day}',
+                    style: TextStyle(
+                      color: textColor,
+                      fontWeight: isToday ? FontWeight.bold : null,
+                    ),
+                  ),
+                  if (hasTask) ...[
+                    const SizedBox(width: 4),
+                    Container(
+                      width: 5,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: dotColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ],
+                  const Spacer(),
+                  if (agg.totalCount > 0)
+                    _CompletionBadge(
+                      done: agg.doneCount,
+                      total: agg.totalCount,
+                      color: textColor,
+                    ),
+                ],
+              ),
+              // 任务条预览（周视图核心价值）。
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: _TaskPills(
+                    tasks: dayTasks,
+                    textColor: textColor,
+                  ),
+                ),
+              ),
+              // 底部负载/超载信息条。
+              if (agg.totalCount > 0)
+                _DayLoadBar(aggregate: agg, textColor: textColor),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final drop = onDropTask;
+    if (drop == null) return cell;
+    return DragTarget<Task>(
+      onWillAcceptWithDetails: (details) =>
+          details.data.status != TaskStatus.done,
+      onAcceptWithDetails: (details) => drop(details.data, dateStr),
+      builder: (context, candidate, rejected) => DecoratedBox(
+        decoration: candidate.isNotEmpty
+            ? BoxDecoration(
+                border: Border.all(color: scheme.primary, width: 2),
+                borderRadius: BorderRadius.circular(8),
+              )
+            : const BoxDecoration(),
+        child: cell,
+      ),
+    );
+  }
+}
+
+/// 完成进度徽标（e.g. 2/5）。
+class _CompletionBadge extends StatelessWidget {
+  const _CompletionBadge({
+    required this.done,
+    required this.total,
+    required this.color,
+  });
+
+  final int done;
+  final int total;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        '$done/$total',
+        style: TextStyle(
+          fontSize: 10,
+          color: color,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+/// 任务条预览：最多展示 [_WeekGrid._maxTaskPills] 条，超出显示 "+n"。
+class _TaskPills extends StatelessWidget {
+  const _TaskPills({
+    required this.tasks,
+    required this.textColor,
+  });
+
+  final List<Task> tasks;
+  final Color textColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final display = tasks.take(_WeekGrid._maxTaskPills).toList();
+    final overflow = tasks.length - display.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final task in display)
+          Container(
+            height: _WeekGrid._pillHeight - 2,
+            margin: const EdgeInsets.only(bottom: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            decoration: BoxDecoration(
+              color: task.status == TaskStatus.done
+                  ? scheme.surfaceContainerHighest
+                  : scheme.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            alignment: Alignment.centerLeft,
+            child: Row(
+              children: [
+                Icon(
+                  task.status == TaskStatus.done
+                      ? Icons.check_circle
+                      : Icons.circle,
+                  size: 8,
+                  color: task.status == TaskStatus.done
+                      ? scheme.outline
+                      : scheme.primary,
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    task.title,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: textColor,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (overflow > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              '+$overflow 项',
+              style: TextStyle(
+                fontSize: 10,
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// 底部负载信息条：时长 + 超载提示（如存在）。
+class _DayLoadBar extends StatelessWidget {
+  const _DayLoadBar({
+    required this.aggregate,
+    required this.textColor,
+  });
+
+  final DayAggregate aggregate;
+  final Color textColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final warning = AppSemanticColors.of(context).warning;
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            _WeekGrid._compactDuration(aggregate.loadMinutes),
+            style: TextStyle(fontSize: 10, color: textColor),
+          ),
+          if (aggregate.overMinutes > 0)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.warning_amber_rounded,
+                  size: 10,
+                  color: warning,
+                ),
+                const SizedBox(width: 2),
+                Text(
+                  _WeekGrid._compactDuration(aggregate.overMinutes),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: warning,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 年视图月格强度色板（5 档，与进度页热力图 LeetCode 色板同语义）。
+const _heatColors = <Color>[
+  Color(0xFFEBEDF0),
+  Color(0xFF9BE9A8),
+  Color(0xFF40C463),
+  Color(0xFF30A14E),
+  Color(0xFF216E39),
+];
+
+/// 年视图网格（12 月概览）：3×4 月格，每月显示完成强度与完成数。
+///
+/// - 月格：月份标题 + 5 档强度色点行（复用 [StatisticsService.heatLevel]
+///   语义，按当月完成数分档）+ 「N 完成」文本（NFR-4 不只依赖颜色）；
+/// - 点击月格 → 切到月视图并定位该月（滴答语义：年 → 月下钻）；
+/// - 当前月高亮边框，未来月正常显示（完成 0）。
+class _YearGrid extends StatelessWidget {
+  const _YearGrid({
+    super.key,
+    required this.year,
+    required this.todayStr,
+    required this.monthCounts,
+    required this.onSelectMonth,
+  });
+
+  final int year;
+  final String todayStr;
+  final Map<String, int> monthCounts; // 'yyyy-MM' -> 完成数
+  final ValueChanged<int> onSelectMonth;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final today = DateTime.parse(todayStr);
+    final todayYear = today.year;
+    final todayMonth = today.month;
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 4,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        childAspectRatio: 1.45,
+      ),
+      itemCount: 12,
+      itemBuilder: (context, index) {
+        final month = index + 1;
+        final key = '$year-${month.toString().padLeft(2, '0')}';
+        final count = monthCounts[key] ?? 0;
+        final level = StatisticsService.heatLevel(count);
+        final isCurrentMonth = year == todayYear && month == todayMonth;
+        final isFutureMonth =
+            year > todayYear || (year == todayYear && month > todayMonth);
+
+        return Material(
+          color: isFutureMonth
+              ? scheme.surfaceContainerLowest
+              : scheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(12),
+          elevation: isCurrentMonth ? 1 : 0,
+          child: InkWell(
+            onTap: () => onSelectMonth(month),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: isCurrentMonth
+                    ? Border.all(color: scheme.primary, width: 1.5)
+                    : null,
+              ),
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '$month 月',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: isCurrentMonth
+                                  ? scheme.primary
+                                  : scheme.onSurface,
+                            ),
+                      ),
+                      // 当前月小徽标。
+                      if (isCurrentMonth)
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: scheme.primary,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                    ],
+                  ),
+                  // 完成数大数字 + 描述。
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '$count',
+                        style: Theme.of(context)
+                            .textTheme
+                            .headlineSmall
+                            ?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: isCurrentMonth
+                                  ? scheme.primary
+                                  : scheme.onSurface,
+                              height: 1,
+                            ),
+                      ),
+                      const SizedBox(width: 4),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Text(
+                          '完成',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                    ],
+                  ),
+                  // 强度色点行：5 档（与进度页热力图同语义）。
+                  Row(
+                    children: [
+                      for (var i = 0; i < 5; i++)
+                        Container(
+                          width: 10,
+                          height: 10,
+                          margin: const EdgeInsets.only(right: 3),
+                          decoration: BoxDecoration(
+                            color: i < level
+                                ? _heatColors[level]
+                                : scheme.surfaceContainerHighest,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

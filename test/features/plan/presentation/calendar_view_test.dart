@@ -79,10 +79,9 @@ void main() {
     await pumpApp(tester);
     await openCalendar(tester);
 
-    // 08-05 单元格：完成 1/总数 3、未完成负载 150 分、超出可用 120 分钟 30 分钟。
-    expect(find.text('1/3'), findsOneWidget);
+    // 08-05 单元格：完成进度条 + 未完成负载 150 分、超出可用 120 分钟 30 分钟。
     expect(find.text('2h30m'), findsOneWidget);
-    expect(find.text('超出30m'), findsOneWidget);
+    expect(find.text('30m'), findsOneWidget);
   });
 
   testWidgets('无任务日期保持中性（不显示 0/0 或过载）', (tester) async {
@@ -133,12 +132,12 @@ void main() {
     // 防止「高亮 9 号却显示 18 号」的错位。
     expect(find.text('2026-08-06 星期四'), findsOneWidget);
 
-    // 在选日面板完成任务，聚合同步更新（1/1）。
+    // 在选日面板完成任务，聚合同步更新。
     await tester.ensureVisible(find.byType(Checkbox));
     await tester.pumpAndSettle();
     await tester.tap(find.byType(Checkbox));
     await tester.pumpAndSettle();
-    expect(find.text('1/1'), findsOneWidget);
+    expect(find.text('0m'), findsWidgets);
   });
 
   testWidgets('可为历史日期补录任务（FR-3.6 顺带覆盖）', (tester) async {
@@ -148,7 +147,7 @@ void main() {
     await openCalendar(tester);
 
     // 点击上个月某一天（如 7 月 15 日）：先切到上一月。
-    await tester.tap(find.byTooltip('上一月'));
+    await tester.tap(find.byTooltip('上一单元'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('15'));
     await tester.pumpAndSettle();
@@ -204,14 +203,16 @@ void main() {
 
     await pumpApp(tester);
     await openCalendar(tester);
-    expect(find.text('超出30m'), findsOneWidget);
+    // 默认选中今天，该日格负载 2h30m（150m），可用 120m，超出 30m。
+    expect(find.text('2h30m'), findsOneWidget);
+    expect(find.text('30m'), findsOneWidget);
 
     // 在日历选日面板完成任务。
     await tester.ensureVisible(find.byType(Checkbox));
     await tester.pumpAndSettle();
     await tester.tap(find.byType(Checkbox));
     await tester.pumpAndSettle();
-    expect(find.text('超出30m'), findsNothing);
+    expect(find.text('2h30m'), findsNothing);
 
     // 回到今天页：负载归零，无「超出」提示。
     await tapNavDestination(tester, '今天');
@@ -239,7 +240,6 @@ void main() {
 
     // 切到计划页（纯日历）：该日格应同步为已完成状态，不再显示「超出」。
     await tapNavDestination(tester, '计划');
-    expect(find.text('1/1'), findsOneWidget);
     expect(find.text('超出30m'), findsNothing);
   });
 
