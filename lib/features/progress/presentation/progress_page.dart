@@ -272,19 +272,19 @@ class ProgressPage extends ConsumerWidget {
               // 计划偏好入口卡：偏好是解读进度（今日概览完成率/剩余工作量）
               // 的上下文，点击进入独立编辑页（设置页已移除该区块）。
               _PlanPreferenceEntryCard(),
-              SizedBox(height: 8),
+              SizedBox(height: 12),
               _TodayOverviewCard(),
-              SizedBox(height: 8),
+              SizedBox(height: 12),
               // 空态 CTA（无可归属目标时不显示按钮）：燃尽/耗时图需要
               // 「带预估时长」的数据，点「去设置预估时长」跳转到计划页排期，
               // 语义比「随便加个任务」更贴合图表；热力图无完成记录时
               // 渲染全灰网格，不放引导按钮。
               _BurndownSection(ctaLabel: '去设置预估时长'),
-              SizedBox(height: 8),
+              SizedBox(height: 12),
               _HeatmapSection(),
-              SizedBox(height: 8),
+              SizedBox(height: 12),
               _GanttSection(ctaLabel: '去设置预估时长'),
-              SizedBox(height: 8),
+              SizedBox(height: 12),
               // 数据统计说明：默认折叠，点击展开（不霸占底部留白）。
               _StatNote(),
             ],
@@ -399,35 +399,77 @@ class _PlanPreferenceEntryCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
     final settingsAsync = ref.watch(settingsProvider);
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: settingsAsync.when(
-          loading: () =>
-              const ListTile(title: Text('计划偏好'), subtitle: Text('加载中…')),
-          error: (error, _) => ListTile(
-            title: const Text('计划偏好'),
-            subtitle: Text('加载失败：$error'),
-          ),
-          data: (settings) {
-            final weekdays = SettingsRepository.decodeWeekdays(
-              settings.availableWeekdays,
-            );
-            final weekdayText = weekdays.length == 7
-                ? '每周 7 天'
-                : '每周 ${weekdays.map(_weekdayShort).join('、')}';
-            return ListTile(
-              leading: const Icon(Icons.tune),
-              title: const Text('计划偏好'),
-              subtitle: Text(
-                '每日可用 ${DurationFormat.minutes(settings.dailyAvailableMinutes)} · $weekdayText',
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.push('/plan-preference'),
-            );
-          },
+      clipBehavior: Clip.antiAlias,
+      child: settingsAsync.when(
+        loading: () =>
+            const ListTile(title: Text('计划偏好'), subtitle: Text('加载中…')),
+        error: (error, _) => ListTile(
+          title: const Text('计划偏好'),
+          subtitle: Text('加载失败：$error'),
         ),
+        data: (settings) {
+          final weekdays = SettingsRepository.decodeWeekdays(
+            settings.availableWeekdays,
+          );
+          final weekdayText = weekdays.length == 7
+              ? '每周 7 天'
+              : '每周 ${weekdays.map(_weekdayShort).join('、')}';
+          return InkWell(
+            onTap: () => context.push('/plan-preference'),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: scheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      Icons.tune,
+                      size: 18,
+                      color: scheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '计划偏好',
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '每日可用 ${DurationFormat.minutes(settings.dailyAvailableMinutes)} · $weekdayText',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right,
+                    size: 20,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -556,24 +598,47 @@ class _StatItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: 18, color: scheme.primary),
-            const SizedBox(width: 6),
-            Text(label, style: Theme.of(context).textTheme.bodySmall),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-        ),
-      ],
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 15, color: scheme.primary),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  height: 1.1,
+                  fontSize: 22,
+                ),
+          ),
+        ],
+      ),
     );
   }
 }

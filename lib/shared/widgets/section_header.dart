@@ -30,13 +30,25 @@ class SectionHeader extends StatelessWidget {
           children: [
             Icon(icon, size: 20, color: scheme.primary),
             const SizedBox(width: 8),
-            Expanded(child: Text(title, style: textTheme.titleMedium)),
+            Expanded(
+              child: Text(
+                title,
+                style: textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ),
             ?trailing,
           ],
         ),
         if (subtitle != null) ...[
           const SizedBox(height: 4),
-          Text(subtitle!, style: textTheme.bodySmall),
+          Text(
+            subtitle!,
+            style: textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+          ),
         ],
       ],
     );
