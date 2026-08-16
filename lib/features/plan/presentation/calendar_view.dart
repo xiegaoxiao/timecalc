@@ -509,40 +509,54 @@ class _DayPanel extends StatelessWidget {
               ),
             )
         else
-          for (final task in selectedTasks)
-            // FR-5.1：长按任务条目即可拖动到网格中的目标日期改期。
-            // 按任务身份 key 复用 element：勾选/删除导致列表收缩时，
-            // 划线/透明度动画不会错播到相邻任务上（幻影动画）。
-            LongPressDraggable<Task>(
-              key: ValueKey('day-task-${task.id}'),
-              data: task,
-              feedback: Material(
-                elevation: 4,
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Text(
-                    task.title,
-                    style: const TextStyle(fontSize: 12),
+          // 单卡分组行（2026-08-16 视觉升级）：一张卡片承载当日全部任务行，
+          // 行间细分隔线；行内容由 TaskTile（自身无卡）提供。
+          Card(
+            margin: const EdgeInsets.only(top: 4),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                for (var i = 0; i < selectedTasks.length; i++) ...[
+                  if (i > 0)
+                    const Divider(height: 1, indent: 12, endIndent: 12),
+                  // FR-5.1：长按任务条目即可拖动到网格中的目标日期改期。
+                  // 按任务身份 key 复用 element：勾选/删除导致列表收缩时，
+                  // 划线/透明度动画不会错播到相邻任务上（幻影动画）。
+                  LongPressDraggable<Task>(
+                    key: ValueKey('day-task-${selectedTasks[i].id}'),
+                    data: selectedTasks[i],
+                    feedback: Material(
+                      elevation: 4,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Text(
+                          selectedTasks[i].title,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ),
+                    childWhenDragging: Opacity(
+                      opacity: 0.4,
+                      child: TaskTile(
+                        task: selectedTasks[i],
+                        goalTitle:
+                            goalsById[selectedTasks[i].goalId]?.title,
+                        subjects: subjectsByGoal[selectedTasks[i].goalId],
+                        onChanged: onChanged,
+                      ),
+                    ),
+                    child: TaskTile(
+                      task: selectedTasks[i],
+                      goalTitle: goalsById[selectedTasks[i].goalId]?.title,
+                      subjects: subjectsByGoal[selectedTasks[i].goalId],
+                      onChanged: onChanged,
+                    ),
                   ),
-                ),
-              ),
-              childWhenDragging: Opacity(
-                opacity: 0.4,
-                child: TaskTile(
-                  task: task,
-                  goalTitle: goalsById[task.goalId]?.title,
-                  subjects: subjectsByGoal[task.goalId],
-                  onChanged: onChanged,
-                ),
-              ),
-              child: TaskTile(
-                task: task,
-                goalTitle: goalsById[task.goalId]?.title,
-                subjects: subjectsByGoal[task.goalId],
-                onChanged: onChanged,
-              ),
+                ],
+              ],
             ),
+          )
       ],
     );
   }

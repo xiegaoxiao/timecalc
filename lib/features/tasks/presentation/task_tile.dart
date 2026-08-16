@@ -188,86 +188,100 @@ class _TaskTileState extends ConsumerState<TaskTile> {
             .map((s) => s.name)
             .firstOrNull;
 
+    // 副标题元信息 chips（2026-08-16 视觉升级）：目标/科目/计划日期/时长
+    // 由「· 拼接长文本」改为小 chip，替代 Material 默认的密集文字感。
+    final metaChips = <Widget>[
+      if (widget.goalTitle != null) _MetaChip(label: widget.goalTitle!),
+      if (widget.showPlannedDate)
+        _MetaChip(
+          label: formatLocalDate(parseLocalDate(widget.task.plannedDate)),
+        ),
+      if (subjectName != null) _MetaChip(label: subjectName),
+      if (widget.task.estimatedMinutes != null)
+        _MetaChip(label: DurationFormat.minutes(widget.task.estimatedMinutes!)),
+    ];
+    final hasNote = widget.task.note?.isNotEmpty ?? false;
+
     return AnimatedOpacity(
       // 完成态整行轻微降透明（配合划线），过渡 200ms 平滑不跳变。
       duration: const Duration(milliseconds: 200),
       opacity: done ? 0.72 : 1.0,
-      child: Card(
-        margin: const EdgeInsets.only(bottom: 8),
-        child: ListTile(
-          leading: Checkbox(
-            value: done,
-            // 读屏可读的名称（NFR-4）：任务完成复选框不依赖相邻文本推断。
-            semanticLabel: done ? '标记未完成' : '标记完成',
-            onChanged: _toggle,
+      // 单卡列表行（2026-08-16 视觉升级）：TaskTile 自身不再包 Card，
+      // 由外层列表容器提供统一卡片 + 行间分隔线（今天页/计划页/目标页）。
+      child: ListTile(
+        leading: Checkbox(
+          value: done,
+          // 读屏可读的名称（NFR-4）：任务完成复选框不依赖相邻文本推断。
+          semanticLabel: done ? '标记未完成' : '标记完成',
+          onChanged: _toggle,
+          // Things 式圆环勾选（保持 Checkbox 类型与语义，tap 测试不受影响）：
+          // 圆形描边 → 品牌绿实心填充 + 白勾。
+          shape: const CircleBorder(),
+          side: BorderSide(
+            width: 1.5,
+            color: Theme.of(context).colorScheme.outline,
           ),
-          title: Row(
-            children: [
-              Flexible(
-                child: AnimatedDefaultTextStyle(
-                  // 完成划线 + 颜色过渡：勾选后平滑地划掉，而非跳变。
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeOut,
-                  style: done
-                      ? TextStyle(
-                          decoration: TextDecoration.lineThrough,
-                          color: Theme.of(context).colorScheme.outline,
-                        )
-                      : TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
-                  child: Text(
-                    widget.task.title,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
-              if (widget.task.recurrenceTemplateId != null) ...[
-                const SizedBox(width: 6),
-                const Tooltip(
-                  message: '重复任务',
-                  child: Icon(Icons.autorenew, size: 16),
-                ),
-              ],
-            ],
-          ),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                [
-                  ?widget.goalTitle,
-                  if (widget.showPlannedDate)
-                    formatLocalDate(parseLocalDate(widget.task.plannedDate)),
-                  ?subjectName,
-                  if (widget.task.estimatedMinutes != null)
-                    DurationFormat.minutes(widget.task.estimatedMinutes!),
-                ].join(' · '),
-              ),
-              if (widget.task.note?.isNotEmpty ?? false)
-                Text(
-                  widget.task.note!,
-                  maxLines: 1,
+        ),
+        title: Row(
+          children: [
+            Flexible(
+              child: AnimatedDefaultTextStyle(
+                // 完成划线 + 颜色过渡：勾选后平滑地划掉，而非跳变。
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+                style: done
+                    ? TextStyle(
+                        decoration: TextDecoration.lineThrough,
+                        color: Theme.of(context).colorScheme.outline,
+                      )
+                    : TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                child: Text(
+                  widget.task.title,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall,
                 ),
+              ),
+            ),
+            if (widget.task.recurrenceTemplateId != null) ...[
+              const SizedBox(width: 6),
+              const Tooltip(
+                message: '重复任务',
+                child: Icon(Icons.autorenew, size: 16),
+              ),
             ],
-          ),
-          trailing: PopupMenuButton<String>(
-            tooltip: '任务操作',
-            onSelected: (action) => _handleAction(context, ref, action),
-            itemBuilder: (_) => [
-              const PopupMenuItem(value: 'edit', child: Text('编辑')),
-              const PopupMenuItem(value: 'checklist', child: Text('检查项…')),
-              const PopupMenuItem(value: 'deferNext', child: Text('延期至下一可用日')),
-              const PopupMenuItem(value: 'deferPick', child: Text('延期…')),
-              if (widget.task.recurrenceTemplateId != null) ...[
-                const PopupMenuItem(value: 'editRecurrence', child: Text('编辑重复规则')),
-                const PopupMenuItem(value: 'stopRecurrence', child: Text('停止重复')),
-              ],
-              const PopupMenuItem(value: 'delete', child: Text('删除')),
+          ],
+        ),
+        subtitle: (metaChips.isNotEmpty || hasNote)
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (metaChips.isNotEmpty)
+                    Wrap(spacing: 4, runSpacing: 4, children: metaChips),
+                  if (hasNote)
+                    Text(
+                      widget.task.note!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                ],
+              )
+            : null,
+        trailing: PopupMenuButton<String>(
+          tooltip: '任务操作',
+          onSelected: (action) => _handleAction(context, ref, action),
+          itemBuilder: (_) => [
+            const PopupMenuItem(value: 'edit', child: Text('编辑')),
+            const PopupMenuItem(value: 'checklist', child: Text('检查项…')),
+            const PopupMenuItem(value: 'deferNext', child: Text('延期至下一可用日')),
+            const PopupMenuItem(value: 'deferPick', child: Text('延期…')),
+            if (widget.task.recurrenceTemplateId != null) ...[
+              const PopupMenuItem(value: 'editRecurrence', child: Text('编辑重复规则')),
+              const PopupMenuItem(value: 'stopRecurrence', child: Text('停止重复')),
             ],
-          ),
+            const PopupMenuItem(value: 'delete', child: Text('删除')),
+          ],
         ),
       ),
     );
@@ -407,6 +421,32 @@ class _TaskTileState extends ConsumerState<TaskTile> {
       action: () => repo.delete(widget.task.id),
     );
     if (ok) widget.onChanged();
+  }
+}
+
+/// 任务行元信息小 chip：目标/科目/计划日期/时长（2026-08-16 视觉升级）。
+///
+/// 替代此前副标题的「· 拼接长文本」：小字号 + 浅底 + 4px 圆角，
+/// 信息密度不变但视觉更轻、更有层次。
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+      ),
+    );
   }
 }
 

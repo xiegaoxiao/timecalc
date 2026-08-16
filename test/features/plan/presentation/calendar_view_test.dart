@@ -216,8 +216,9 @@ void main() {
 
     // 回到今天页：负载归零，无「超出」提示。
     await tapNavDestination(tester, '今天');
-    expect(find.text('今日任务总计 0 分'), findsOneWidget);
-    expect(find.text('可用 2 小时'), findsOneWidget);
+    expect(find.text('今日总计'), findsOneWidget);
+    expect(find.text('0 分'), findsWidgets);
+    expect(find.text('2 小时'), findsWidgets);
   });
 
   testWidgets('今天页完成任务后日历格负载与超出同步更新（跨页一致）', (tester) async {
@@ -230,15 +231,15 @@ void main() {
     );
 
     await pumpApp(tester);
-    // 今天页：150 分超可用 120 分。
-    expect(find.text('超出 30 分，请调整任务或可用时间'), findsOneWidget);
+    // 今天页：150 分超可用 120 分（警示 chip，2026-08-16 仪表盘化）。
+    expect(find.text('超出 30 分'), findsOneWidget);
 
     // 在今天页勾选完成（进入 5 秒撤回批次），5 秒定稿后负载归零。
     await tester.tap(find.byType(Checkbox));
     await tester.pumpAndSettle();
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
-    expect(find.text('今日任务总计 0 分'), findsOneWidget);
+    expect(find.text('0 分'), findsWidgets);
 
     // 切到计划页（纯日历）：该日格应同步为已完成状态，不再显示「超出」。
     await tapNavDestination(tester, '计划');

@@ -380,12 +380,12 @@ void main() {
       expect(find.text('停止重复'), findsNothing);
     });
 
-    testWidgets('懒加载：展开后仅实例化视口内的子任务行（性能回归）', (tester) async {
+    testWidgets('展开后渲染全部子任务行（单卡全量构建，2026-08-16 视觉升级取舍）', (tester) async {
       await seedDailyTemplate();
       final total = (await tasks.byGoal(goalId)).length;
       expect(total, greaterThanOrEqualTo(30), reason: 'daily 模板应生成 30+ 实例');
 
-      // 用小视口模拟真实窗口：SliverList 应只构建视口内的行。
+      // 用小视口模拟真实窗口（展开/收起与滚动定位仍需正常工作）。
       tester.view.physicalSize = const Size(500, 600);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
@@ -396,7 +396,7 @@ void main() {
       // 展开前：无子任务行（无复选框）。
       expect(find.byType(Checkbox), findsNothing);
 
-      // 滚动到父卡片可见后展开。
+      // 滚动到组头可见后展开。
       await tester.scrollUntilVisible(
         find.byTooltip('展开重复任务'),
         100,
@@ -406,15 +406,16 @@ void main() {
       await tester.tap(find.byTooltip('展开重复任务'));
       await tester.pumpAndSettle();
 
-      // 展开后：小视口下实例化的 ListTile 数必须远小于实例总数（懒加载，
-      // 而非一次性全量实例化 30+ 行）。
-      final instantiated = tester.widgetList(find.byType(ListTile)).length;
+      // 单卡分组行改版（2026-08-16）：任务区为一张卡片内全量构建的行，
+      // 此前的 SliverList 视口内懒加载为本次改版的有意取舍（行构建成本低，
+      // 换取与今天页/计划页一致的整卡视觉形态）。展开后全部实例行随卡片
+      // 一次性构建（IndexedStack 常驻的今天页可能另有任务复选框，取下界）。
+      final checkboxes = tester.widgetList(find.byType(Checkbox)).length;
       expect(
-        instantiated,
-        lessThan(total),
-        reason: '展开后不应一次性实例化全部 $total 个子任务行（性能回归）',
+        checkboxes,
+        greaterThanOrEqualTo(total),
+        reason: '展开后应构建全部 $total 个子任务行',
       );
-      expect(find.byType(Checkbox), findsWidgets);
     });
   });
 }

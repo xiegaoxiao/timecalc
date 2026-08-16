@@ -10,6 +10,7 @@ import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/goals/data/subject_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
+import 'package:timecalc/features/tasks/presentation/task_tile.dart';
 
 import '../../../shared/nav_helper.dart';
 
@@ -64,8 +65,12 @@ void main() {
     await pumpApp(tester);
 
     expect(find.text('背单词'), findsOneWidget);
-    expect(find.text('今日任务总计 1 小时 30 分'), findsOneWidget);
-    expect(find.text('可用 2 小时'), findsOneWidget);
+    // 负载概览仪表盘化（2026-08-16）：整句文案改为指标格 label + value，
+    // 时长值与任务行时长 chip 可能同文案，用 findsWidgets。
+    expect(find.text('今日总计'), findsOneWidget);
+    expect(find.text('1 小时 30 分'), findsWidgets);
+    expect(find.text('可用时长'), findsOneWidget);
+    expect(find.text('2 小时'), findsWidgets);
 
     // 勾选：立即反馈为勾选态，但进入 5 秒撤回批次——负载不变、数据库仍 todo。
     await tester.tap(find.byType(Checkbox));
@@ -74,15 +79,15 @@ void main() {
 
     expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
     expect(find.textContaining('已勾选 1 项任务'), findsOneWidget);
-    expect(find.text('今日任务总计 1 小时 30 分'), findsOneWidget);
+    expect(find.text('1 小时 30 分'), findsWidgets);
     expect((await tasks.byId(created.id))?.status, 'todo');
 
     // 5 秒定稿：负载归零、状态 done、列表保留（划线）。
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
 
-    expect(find.text('今日任务总计 0 分'), findsOneWidget);
-    expect(find.text('可用 2 小时'), findsOneWidget);
+    expect(find.text('今日总计'), findsOneWidget);
+    expect(find.text('0 分'), findsWidgets); // 今日总计/目标剩余均归零
     expect((await tasks.byId(created.id))?.status, 'done');
     expect(find.text('背单词'), findsOneWidget);
   });
@@ -104,9 +109,9 @@ void main() {
 
     await pumpApp(tester);
 
-    expect(find.text('今日任务总计 2 小时 30 分'), findsOneWidget);
-    expect(find.text('可用 2 小时'), findsOneWidget);
-    expect(find.text('超出 30 分，请调整任务或可用时间'), findsOneWidget);
+    expect(find.text('2 小时 30 分'), findsWidgets);
+    expect(find.text('2 小时'), findsWidgets);
+    expect(find.text('超出 30 分'), findsOneWidget);
   });
 
   testWidgets('任务可快捷延期至下一可用日（FR-3.3）', (tester) async {
@@ -321,9 +326,27 @@ void main() {
     // 列表较长时第二个任务在视口外，滚动后再断言。
     await tester.scrollUntilVisible(find.text('写引言'), 100);
     expect(find.text('写引言'), findsOneWidget);
-    // 副标题标注目标名（考研卡片标题外，任务条目中也出现）。
-    expect(find.textContaining('考研 · 1 小时 30 分'), findsOneWidget);
-    expect(find.textContaining('论文 · 1 小时'), findsOneWidget);
+    // 副标题 chips 化（2026-08-16）：目标名/时长为任务行内的独立 chip，
+    // 以 TaskTile 为界断言（目标名同时出现在倒计时卡标题上）。
+    expect(
+      find.descendant(of: find.byType(TaskTile), matching: find.text('考研')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(TaskTile),
+        matching: find.text('1 小时 30 分'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: find.byType(TaskTile), matching: find.text('论文')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: find.byType(TaskTile), matching: find.text('1 小时')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('今日任务条目展示归属科目名（FR-1.5）', (tester) async {
@@ -350,10 +373,28 @@ void main() {
 
     await pumpApp(tester);
 
-    // 有科目的任务展示「目标 · 科目 · 时长」。
-    expect(find.textContaining('考研 · 数学 · 1 小时 30 分'), findsOneWidget);
-    // 无科目的任务不展示科目段。
-    expect(find.textContaining('考研 · 30 分'), findsOneWidget);
+    // 有科目的任务展示「目标 / 科目 / 时长」三个 chip（两个任务同属
+    // 「考研」，目标 chip 各出现一次）。
+    expect(
+      find.descendant(of: find.byType(TaskTile), matching: find.text('考研')),
+      findsNWidgets(2),
+    );
+    expect(
+      find.descendant(of: find.byType(TaskTile), matching: find.text('数学')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(TaskTile),
+        matching: find.text('1 小时 30 分'),
+      ),
+      findsOneWidget,
+    );
+    // 无科目的任务没有科目 chip（时长 chip 仍在）。
+    expect(
+      find.descendant(of: find.byType(TaskTile), matching: find.text('30 分')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('没有任务的日期不显示过载（空态中性）', (tester) async {
@@ -378,7 +419,8 @@ void main() {
     await pumpApp(tester);
     // 今天页初始展示该任务。
     expect(find.text('背单词'), findsOneWidget);
-    expect(find.text('今日任务总计 1 小时 30 分'), findsOneWidget);
+    expect(find.text('今日总计'), findsOneWidget);
+    expect(find.text('1 小时 30 分'), findsWidgets);
 
     // 切到目标页，删除目标（二次确认）。
     await tapNavDestination(tester, '目标');
@@ -392,7 +434,7 @@ void main() {
     // 回到今天页：任务与负载卡都不再显示。
     await tapNavDestination(tester, '今天');
     expect(find.text('背单词'), findsNothing);
-    expect(find.textContaining('今日任务总计'), findsNothing);
+    expect(find.text('今日负载'), findsNothing);
   });
 
   testWidgets('FR-3.7 横幅不被空态遮蔽：无活跃目标+无今日任务但有逾期任务（回归）', (tester) async {
@@ -439,9 +481,10 @@ void main() {
     await pumpApp(tester);
 
     // 今日概览常驻（有活跃目标即显示）：无任务用 `--` 无数据语义。
-    expect(find.text('今日任务总计 -- 分'), findsOneWidget);
-    expect(find.textContaining('完成 -- / --'), findsOneWidget);
-    expect(find.textContaining('目标剩余 -- 分'), findsOneWidget);
+    expect(find.text('今日总计'), findsOneWidget);
+    expect(find.text('-- 分'), findsWidgets); // 今日总计/目标剩余均为 --
+    expect(find.text('--'), findsOneWidget); // 进度环中心
+    expect(find.text('目标剩余'), findsOneWidget);
 
     // 空态 + 引导小字；标题行不再出现重复的右上角「添加任务」。
     expect(find.text('今天没有安排'), findsOneWidget);
@@ -512,7 +555,7 @@ void main() {
     expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isFalse);
     expect(find.text('撤回'), findsNothing);
     expect((await tasks.byId(created.id))?.status, 'todo');
-    expect(find.text('今日任务总计 1 小时 30 分'), findsOneWidget);
+    expect(find.text('1 小时 30 分'), findsWidgets);
   });
 
   testWidgets('撤回 SnackBar 显示倒计时：每秒递减，到时定稿完成', (tester) async {

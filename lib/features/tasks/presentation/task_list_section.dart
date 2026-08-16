@@ -15,8 +15,11 @@ import 'task_tile.dart';
 /// 任务列表区域（FR-3.1/FR-3.2）：创建、编辑、删除、完成任务。
 ///
 /// 以单个 [SliverMainAxisGroup] 的形式嵌入页面 [CustomScrollView]（任务区
-/// 作为一条 sliver），任务列表使用 [SliverList.builder] **懒加载**——只构建
-/// 视口内的任务行，避免几十个重复实例行一次性全量实例化。
+/// 作为一条 sliver）。任务列表为**单卡分组行**（2026-08-16 视觉升级）：
+/// 一张卡片承载全部行（单任务/组头/组实例），行间细分隔线，行内容由
+/// TaskTile / RecurrenceGroupTile（自身无卡）提供。取舍：放弃此前
+/// SliverList.builder 的懒加载——行构建成本低、桌面端一次性构建可接受，
+/// 换取与今天页/计划页一致的整卡视觉形态。
 ///
 /// 手风琴展开状态在本组件内部维护（[State]），点展开/收起只重建任务区
 /// slivers，不重建页面其他区块（里程碑/负载/科目），避免卡顿。
@@ -118,10 +121,22 @@ class _TaskListSectionState extends ConsumerState<TaskListSection> {
         else
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            sliver: SliverList.builder(
-              itemCount: rows.length,
-              itemBuilder: (context, index) =>
-                  _buildRow(context, rows, templatesById, index),
+            sliver: SliverToBoxAdapter(
+              // 单卡分组行（2026-08-16 视觉升级）：单任务/组头/组实例
+              // 全部行共用一张卡片，行间细分隔线。
+              child: Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  children: [
+                    for (var i = 0; i < rows.length; i++) ...[
+                      if (i > 0)
+                        const Divider(height: 1, indent: 12, endIndent: 12),
+                      _buildRow(context, rows, templatesById, i),
+                    ],
+                  ],
+                ),
+              ),
             ),
           ),
       ],
@@ -231,8 +246,7 @@ class _TaskListSectionState extends ConsumerState<TaskListSection> {
     );
   }
 
-  /// 把扁平行 index 映射到具体行 widget（懒加载的 itemBuilder 每次只构建
-  /// 可见的那几行，滚动时才按需实例化其余行）。
+  /// 把扁平行 index 映射到具体行 widget（宿主单卡 Column 逐行构建）。
   ///
   /// [rows] 是 [build] 里一次性展开的行计划（见 [_flattenRows]），此处按
   /// index 直接定位，O(1)——旧版对每个可见行从头线性扫描全部 units。
@@ -328,11 +342,11 @@ class _RowPlan {
   bool get isInstance => unit.isGroup && task != null;
 }
 
-/// 重复任务折叠父卡片头（FR-4 迭代：手风琴折叠）。
+/// 重复任务折叠组头行（FR-4 迭代：手风琴折叠）。
 ///
-/// 仅渲染父卡片一行（标题 + 日期区间 + N 个任务 + 展开/收起图标 + 模板级
-/// 操作菜单）。展开后的实例行由宿主 [SliverList] 懒加载渲染，本组件不做
-/// 全量子列表，避免几十个实例行一次性实例化导致卡顿。
+/// 仅渲染组头一行（标题 + 日期区间 + N 个任务 + 展开/收起图标 + 模板级
+/// 操作菜单）。展开后的实例行由宿主列表渲染为同卡内的后续行。
+/// 单卡分组行（2026-08-16 视觉升级）：本组件不再自包 Card。
 ///
 /// 模板级菜单：编辑重复规则、停止重复（已停止时隐藏）、删除整个重复
 /// （模板 + 全部实例，二次确认）。
@@ -378,59 +392,58 @@ class RecurrenceGroupTile extends ConsumerWidget {
     final first = parseLocalDate(instances.first.plannedDate);
     final last = parseLocalDate(instances.last.plannedDate);
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        onTap: onToggle,
-        leading: const Tooltip(
-          message: '重复任务',
-          child: Icon(Icons.autorenew, size: 20),
-        ),
-        title: Text(
-          title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Text(
-          '${DateFormat('yyyy-MM-dd').format(first)} ~ '
-          '${DateFormat('yyyy-MM-dd').format(last)} · '
-          '${instances.length} 个任务'
-          '${stopped ? ' · 已停止' : ''}',
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              // NFR-4：展开/收起状态以图标旋转 + tooltip 双重表达。
-              tooltip: expanded ? '收起重复任务' : '展开重复任务',
-              onPressed: onToggle,
-              icon: AnimatedRotation(
-                turns: expanded ? 0.25 : 0,
-                duration: const Duration(milliseconds: 150),
-                child: const Icon(Icons.chevron_right, size: 20),
+    // 单卡分组行（2026-08-16 视觉升级）：组头不再自包 Card，作为宿主
+    // 单张任务卡内的一行（与单任务行同形态，行间分隔线由宿主提供）。
+    return ListTile(
+      onTap: onToggle,
+      leading: const Tooltip(
+        message: '重复任务',
+        child: Icon(Icons.autorenew, size: 20),
+      ),
+      title: Text(
+        title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        '${DateFormat('yyyy-MM-dd').format(first)} ~ '
+        '${DateFormat('yyyy-MM-dd').format(last)} · '
+        '${instances.length} 个任务'
+        '${stopped ? ' · 已停止' : ''}',
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            // NFR-4：展开/收起状态以图标旋转 + tooltip 双重表达。
+            tooltip: expanded ? '收起重复任务' : '展开重复任务',
+            onPressed: onToggle,
+            icon: AnimatedRotation(
+              turns: expanded ? 0.25 : 0,
+              duration: const Duration(milliseconds: 150),
+              child: const Icon(Icons.chevron_right, size: 20),
+            ),
+          ),
+          PopupMenuButton<String>(
+            tooltip: '任务操作',
+            onSelected: (action) => _handleAction(context, ref, action),
+            itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'editRecurrence',
+                child: Text('编辑重复规则'),
               ),
-            ),
-            PopupMenuButton<String>(
-              tooltip: '任务操作',
-              onSelected: (action) => _handleAction(context, ref, action),
-              itemBuilder: (_) => [
+              if (!stopped)
                 const PopupMenuItem(
-                  value: 'editRecurrence',
-                  child: Text('编辑重复规则'),
+                  value: 'stopRecurrence',
+                  child: Text('停止重复'),
                 ),
-                if (!stopped)
-                  const PopupMenuItem(
-                    value: 'stopRecurrence',
-                    child: Text('停止重复'),
-                  ),
-                const PopupMenuItem(
-                  value: 'deleteAll',
-                  child: Text('删除'),
-                ),
-              ],
-            ),
-          ],
-        ),
+              const PopupMenuItem(
+                value: 'deleteAll',
+                child: Text('删除'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

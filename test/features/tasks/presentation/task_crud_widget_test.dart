@@ -110,10 +110,11 @@ void main() {
     await tester.tap(find.text('创建').last);
     await tester.pumpAndSettle();
 
-    // 任务出现在目标详情（任务条目标注预估时长）。创建对话框默认计划日期
-    // 为注入时钟的今天（2026-08-05，clockProvider 固定）。
+    // 任务出现在目标详情（任务条目以 chip 标注计划日期与预估时长）。创建
+    // 对话框默认计划日期为注入时钟的今天（2026-08-05，clockProvider 固定）。
     expect(find.text('完成第一章'), findsOneWidget);
-    expect(find.text('2026-08-05 · 2 小时'), findsOneWidget);
+    expect(find.text('2026-08-05'), findsOneWidget);
+    expect(find.text('2 小时'), findsWidgets);
   });
 
   testWidgets('预估时长步进与无时长切换（FR-3 验收）', (tester) async {
@@ -414,10 +415,12 @@ void main() {
     await pumpApp(tester);
     await openGoalDetail(tester);
 
-    // 导入前：应用无任务，今日页「目标剩余」显示 `-- 分`。
+    // 导入前：应用无任务，今日页「目标剩余」显示 `-- 分`
+    //（2026-08-16 仪表盘化：label 与 value 为两个独立文本）。
     await goBack(tester);
     await goTab(tester, '今天');
-    expect(find.textContaining('目标剩余 -- 分'), findsOneWidget);
+    expect(find.text('目标剩余'), findsOneWidget);
+    expect(find.text('-- 分'), findsWidgets);
 
     // 回到目标详情，JSON 导入一个 180 分钟任务（固定时钟 2026-08-05，
     // 日期用明天，满足「不得早于今天」校验）。
@@ -440,7 +443,8 @@ void main() {
     // （修复前缓存陈旧，须完成一个任务后才会出现）。
     await goBack(tester);
     await goTab(tester, '今天');
-    expect(find.textContaining('目标剩余 3 小时'), findsOneWidget);
+    expect(find.text('目标剩余'), findsOneWidget);
+    expect(find.text('3 小时'), findsWidgets);
 
     // 进度页「目标剩余工作量」同步为 3 小时（修复前停留在陈旧 `-- 分`）。
     await goTab(tester, '进度');

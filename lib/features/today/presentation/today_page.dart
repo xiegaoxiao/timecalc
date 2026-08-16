@@ -221,6 +221,8 @@ class _TodayPageState extends ConsumerState<TodayPage> {
     final availableMinutes = settings.dailyAvailableMinutes;
     final load = _load.dayLoad(todayTasks);
     final over = _load.overMinutes(load: load, available: availableMinutes);
+    // 今日完成统计：负载概览仪表盘与「今日任务」区块头计数共用一次计算。
+    final todayStats = _stats.completionStats(todayTasks);
     final weekdays = SettingsRepository.decodeWeekdays(
       settings.availableWeekdays,
     );
@@ -266,7 +268,7 @@ class _TodayPageState extends ConsumerState<TodayPage> {
                   load: load,
                   available: availableMinutes,
                   over: over,
-                  stats: _stats.completionStats(todayTasks),
+                  stats: todayStats,
                   remainingMinutes: _stats.remainingMinutes(activeTodoTasks),
                   hasAnyTask: hasAnyTask,
                 ),
@@ -335,28 +337,43 @@ class _TodayPageState extends ConsumerState<TodayPage> {
                 ),
                 const SizedBox(height: 8),
               ],
-              Row(
-                children: [
-                  Text('今日任务', style: Theme.of(context).textTheme.titleMedium),
-                  // 空态时不重复右上角按钮：唯一的「添加任务」入口由空态大按钮承担。
-                  if (!todayEmpty) ...[
-                    const Spacer(),
-                    TextButton.icon(
-                      onPressed: addGoals.isEmpty
-                          ? null
-                          : () async {
-                              await QuickTaskFormDialog.show(
-                                context,
-                                date: today,
-                                goals: addGoals,
-                              );
-                              onChanged();
-                            },
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('添加任务'),
-                    ),
-                  ],
-                ],
+              // 区块头统一（2026-08-16 视觉升级）：与进度页同一 SectionHeader
+              // 语言，trailing 承载完成计数与「添加任务」入口。
+              // 空态时不重复右上角按钮：唯一的「添加任务」入口由空态大按钮承担。
+              SectionHeader(
+                icon: Icons.checklist_rounded,
+                title: '今日任务',
+                trailing: todayEmpty
+                    ? null
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '${todayStats.doneCount}/${todayTasks.length}',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(
+                                  color: Theme.of(context).colorScheme.outline,
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures(),
+                                  ],
+                                ),
+                          ),
+                          TextButton.icon(
+                            onPressed: addGoals.isEmpty
+                                ? null
+                                : () async {
+                                    await QuickTaskFormDialog.show(
+                                      context,
+                                      date: today,
+                                      goals: addGoals,
+                                    );
+                                    onChanged();
+                                  },
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text('添加任务'),
+                          ),
+                        ],
+                      ),
               ),
               if (todayTasks.isEmpty && tasksLoading)
                 const Padding(
@@ -385,24 +402,35 @@ class _TodayPageState extends ConsumerState<TodayPage> {
             ]),
           ),
         ),
-        // 今日任务列表：懒加载（视口内按需构建 + 滚动回收）。
+        // 今日任务列表：单卡分组行（2026-08-16 视觉升级）——一张卡片承载
+        // 全部任务行，行间细分隔线，行内容由 TaskTile（自身无卡）提供。
+        // 取舍：放弃此前 SliverList.builder 的懒加载——单日任务量有限、
+        // 勾选扇出已由 select 收窄覆盖，换取整卡一致的视觉形态。
         if (todayTasks.isNotEmpty)
           SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            sliver: SliverList.builder(
-              itemCount: todayTasks.length,
-              itemBuilder: (context, index) {
-                final task = todayTasks[index];
-                return TaskTile(
-                  key: ValueKey('today-task-${task.id}'),
-                  task: task,
-                  goalTitle: goalsById[task.goalId]?.title,
-                  subjects: subjectsByGoal[task.goalId],
-                  onChanged: onChanged,
-                  // 今日任务勾选走 5 秒撤回（Telegram 式）。
-                  enableCompleteUndo: true,
-                );
-              },
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            sliver: SliverToBoxAdapter(
+              child: Card(
+                margin: EdgeInsets.zero,
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  children: [
+                    for (var i = 0; i < todayTasks.length; i++) ...[
+                      if (i > 0)
+                        const Divider(height: 1, indent: 12, endIndent: 12),
+                      TaskTile(
+                        key: ValueKey('today-task-${todayTasks[i].id}'),
+                        task: todayTasks[i],
+                        goalTitle: goalsById[todayTasks[i].goalId]?.title,
+                        subjects: subjectsByGoal[todayTasks[i].goalId],
+                        onChanged: onChanged,
+                        // 今日任务勾选走 5 秒撤回（Telegram 式）。
+                        enableCompleteUndo: true,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
           ),
       ],
@@ -450,62 +478,186 @@ class _LoadOverviewCard extends StatelessWidget {
     // 无数据语义：今日无任务时「总计/完成」用 `--`，避免 0/0 误导；
     // 应用完全无任务时「目标剩余」也用 `--`（区分「没计划」与「已排完」）。
     final hasTodayTask = stats.totalCount > 0;
+    final progress = hasTodayTask ? stats.doneCount / stats.totalCount : 0.0;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 区块标题：与进度页统计卡同一视觉语言（SectionHeader）。
+            // 区块标题：与进度页统计卡同一视觉语言（SectionHeader）；
+            // 超载时右侧警示 chip（图标 + 文案，不只依赖颜色）。
             SectionHeader(
               icon: over > 0 ? Icons.warning_amber_rounded : Icons.balance,
               title: '今日负载',
-            ),
-            const SizedBox(height: 12),
-            // 核心信息：今日任务总计（大字）。
-            Text(
-              '今日任务总计 ${hasTodayTask ? DurationFormat.minutes(load) : '-- 分'}',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 4),
-            // 可用时长 + 超时警告（状态不只依赖颜色）。
-            Row(
-              children: [
-                Icon(Icons.schedule, size: 14, color: scheme.outline),
-                const SizedBox(width: 4),
-                Text(
-                  '可用 ${DurationFormat.minutes(available)}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                if (over > 0) ...[
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      '超出 ${DurationFormat.minutes(over)}，请调整任务或可用时间',
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(
-                        color: semantics.warning,
-                        fontWeight: FontWeight.w600,
+              trailing: over > 0
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
                       ),
-                    ),
-                  ),
-                ],
-              ],
+                      decoration: BoxDecoration(
+                        color: semantics.warning.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            size: 14,
+                            color: semantics.warning,
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              '超出 ${DurationFormat.minutes(over)}',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: semantics.warning,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : null,
             ),
             const SizedBox(height: 12),
-            const Divider(height: 1),
-            const SizedBox(height: 8),
-            Text(
-              '完成 ${hasTodayTask ? '${stats.doneCount}/${stats.totalCount}' : '-- / --'} · '
-              '已完成 ${hasTodayTask ? DurationFormat.minutes(stats.doneMinutes) : '-- 分'} · '
-              '目标剩余 ${hasAnyTask ? DurationFormat.minutes(remainingMinutes) : '-- 分'}',
-              style: Theme.of(context).textTheme.bodySmall,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // 今日完成进度环：品牌绿圆头弧 + 中心「N/M 完成」，
+                // 值变化经 TweenAnimationBuilder 平滑过渡（勾选定稿后
+                // 环会从旧比例滑到新比例，而非跳变）。
+                SizedBox(
+                  width: 72,
+                  height: 72,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Positioned.fill(
+                        child: TweenAnimationBuilder<double>(
+                          tween: Tween(end: progress),
+                          duration: AppTokens.motionSlow,
+                          curve: AppTokens.motionCurve,
+                          builder: (context, value, _) =>
+                              CircularProgressIndicator(
+                                value: hasTodayTask ? value : 0,
+                                strokeWidth: 6,
+                                strokeCap: StrokeCap.round,
+                                backgroundColor:
+                                    scheme.surfaceContainerHighest,
+                                valueColor: AlwaysStoppedAnimation(
+                                  scheme.primary,
+                                ),
+                              ),
+                        ),
+                      ),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // 中心 N/M（等宽数字）：FittedBox 防系统放大字号时
+                          // 撑爆 72px 固定环；环 + 分数即「完成比例」语义，
+                          // 无需再叠「完成」小标签（与指标格「已完成」互补）。
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              hasTodayTask
+                                  ? '${stats.doneCount}/${stats.totalCount}'
+                                  : '--',
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                // 指标格 2×2：label + value（等宽数字，数值变化不抖动）。
+                Expanded(
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          _MetricCell(
+                            label: '今日总计',
+                            value: hasTodayTask
+                                ? DurationFormat.minutes(load)
+                                : '-- 分',
+                          ),
+                          _MetricCell(
+                            label: '可用时长',
+                            value: DurationFormat.minutes(available),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          _MetricCell(
+                            label: '已完成',
+                            value: hasTodayTask
+                                ? DurationFormat.minutes(stats.doneMinutes)
+                                : '-- 分',
+                          ),
+                          _MetricCell(
+                            label: '目标剩余',
+                            value: hasAnyTask
+                                ? DurationFormat.minutes(remainingMinutes)
+                                : '-- 分',
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 负载概览指标格：小标签 + 等宽数字数值（2026-08-16 仪表盘化）。
+class _MetricCell extends StatelessWidget {
+  const _MetricCell({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: scheme.outline),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -559,8 +711,9 @@ class _UnfinishedBanner extends StatelessWidget {
               style: TextStyle(color: scheme.onErrorContainer),
             ),
             const SizedBox(height: 8),
-            // 三个按钮统一为 FilledButton 家族（实心主操作 + tonal 次操作），
-            // 避免混用 FilledButton/Outlined/TextButton 造成高度与视觉宽度不齐。
+            // 三个操作分两级行动（2026-08-16 降噪）：主操作「延期至下一
+            // 可用日」实心、次操作「选择日期」tonal，「保留原日期」为最弱
+            // 的 TextButton——它是「暂不处理」，不该与延期同等抢眼。
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -573,8 +726,11 @@ class _UnfinishedBanner extends StatelessWidget {
                   onPressed: onDeferPickDate,
                   child: const Text('选择日期…'),
                 ),
-                FilledButton.tonal(
+                TextButton(
                   onPressed: onKeepOriginal,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.onErrorContainer,
+                  ),
                   child: const Text('保留原日期'),
                 ),
               ],
@@ -652,12 +808,14 @@ class _OverdueTasksSection extends StatelessWidget {
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 4),
-            for (final task in tasks) ...[
+            for (var i = 0; i < tasks.length; i++) ...[
+              // 单卡分组行：任务之间细分隔线（与今日任务列表同形态）。
+              if (i > 0) const Divider(height: 1, indent: 12, endIndent: 12),
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
-                  '原计划 ${formatLocalDate(parseLocalDate(task.plannedDate))}'
-                  ' · 已逾期 ${_overdueDays(today, task.plannedDate)} 天',
+                  '原计划 ${formatLocalDate(parseLocalDate(tasks[i].plannedDate))}'
+                  ' · 已逾期 ${_overdueDays(today, tasks[i].plannedDate)} 天',
                   style: Theme.of(
                     context,
                   ).textTheme.bodySmall?.copyWith(color: scheme.error),
@@ -666,10 +824,10 @@ class _OverdueTasksSection extends StatelessWidget {
               TaskTile(
                 // 按任务身份复用 element：定稿后区块收缩时，划线/透明度
                 // 动画不会错播到相邻任务上（幻影动画）。
-                key: ValueKey('overdue-task-${task.id}'),
-                task: task,
-                goalTitle: goalsById[task.goalId]?.title,
-                subjects: subjectsByGoal[task.goalId],
+                key: ValueKey('overdue-task-${tasks[i].id}'),
+                task: tasks[i],
+                goalTitle: goalsById[tasks[i].goalId]?.title,
+                subjects: subjectsByGoal[tasks[i].goalId],
                 onChanged: onChanged,
                 // 过期任务勾选同样走 5 秒撤回：期间保持勾选显示，5 秒后才消失。
                 enableCompleteUndo: true,
@@ -935,6 +1093,8 @@ class _CountdownCard extends ConsumerWidget {
                         color: onHero,
                         fontWeight: FontWeight.w700,
                         fontSize: 22,
+                        // 等宽数字：倒计时天数逐日变化时数字列对齐不抖动。
+                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
                   ],

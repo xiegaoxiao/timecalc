@@ -160,8 +160,8 @@ void main() {
     );
 
     await pumpApp(tester);
-    // 默认 120 分钟：今日负载 150 超 30。
-    expect(find.text('超出 30 分，请调整任务或可用时间'), findsOneWidget);
+    // 默认 120 分钟：今日负载 150 超 30（警示 chip，2026-08-16 仪表盘化）。
+    expect(find.text('超出 30 分'), findsOneWidget);
 
     // 偏好页用步进器改为 3 小时（小时加 1）。
     await openPlanPreference(tester);
@@ -177,8 +177,8 @@ void main() {
     await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
     await tapNavDestination(tester, '今天');
-    expect(find.text('今日任务总计 2 小时 30 分'), findsOneWidget);
-    expect(find.text('可用 3 小时'), findsOneWidget);
+    expect(find.text('2 小时 30 分'), findsWidgets);
+    expect(find.text('3 小时'), findsWidgets);
     expect(find.textContaining('超出'), findsNothing);
   });
 
@@ -280,8 +280,8 @@ void main() {
     await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
     await tapNavDestination(tester, '今天');
-    expect(find.text('今日任务总计 1 小时'), findsOneWidget);
-    expect(find.text('可用 5 小时'), findsOneWidget);
+    expect(find.text('1 小时'), findsWidgets);
+    expect(find.text('5 小时'), findsWidgets);
   });
 
   testWidgets('编辑输入超出范围时夹取到边界（小时 30 → 24）', (tester) async {
