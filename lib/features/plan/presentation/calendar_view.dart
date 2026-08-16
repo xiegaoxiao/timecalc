@@ -14,6 +14,7 @@ import '../../../services/statistics_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/chart_empty_state.dart';
 import '../../../shared/widgets/page_skeletons.dart';
+import '../../../shared/widgets/progressive_rows.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../../goals/data/subject_repository_provider.dart';
 import '../../settings/data/settings_repository.dart';
@@ -510,13 +511,15 @@ class _DayPanel extends StatelessWidget {
             )
         else
           // 单卡分组行（2026-08-16 视觉升级）：一张卡片承载当日全部任务行，
-          // 行间细分隔线；行内容由 TaskTile（自身无卡）提供。
+          // 行间细分隔线；行内容由 TaskTile（自身无卡）提供，经
+          // ProgressiveRows 分块渐进构建（选日任务无上限，防首帧全量 build）。
           Card(
             margin: const EdgeInsets.only(top: 4),
             clipBehavior: Clip.antiAlias,
-            child: Column(
-              children: [
-                for (var i = 0; i < selectedTasks.length; i++) ...[
+            child: ProgressiveRows(
+              itemCount: selectedTasks.length,
+              itemBuilder: (context, i) => Column(
+                children: [
                   if (i > 0)
                     const Divider(height: 1, indent: 12, endIndent: 12),
                   // FR-5.1：长按任务条目即可拖动到网格中的目标日期改期。
@@ -554,7 +557,7 @@ class _DayPanel extends StatelessWidget {
                     ),
                   ),
                 ],
-              ],
+              ),
             ),
           )
       ],

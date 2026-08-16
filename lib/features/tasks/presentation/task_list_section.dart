@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/utils/date_text.dart';
+import '../../../shared/widgets/progressive_rows.dart';
 import '../../../shared/widgets/section_header.dart';
 import '../data/recurrence_repository_provider.dart';
 import 'batch_task_form_dialog.dart';
@@ -124,18 +125,22 @@ class _TaskListSectionState extends ConsumerState<TaskListSection> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             sliver: SliverToBoxAdapter(
               // 单卡分组行（2026-08-16 视觉升级）：单任务/组头/组实例
-              // 全部行共用一张卡片，行间细分隔线。
+              // 全部行共用一张卡片，行间细分隔线。行经 ProgressiveRows
+              // 分块渐进构建（同日修复）：SliverToBoxAdapter 会被
+              // cacheExtent 整体触碰，大任务量目标若一次性全量构建，
+              // 进入页面的首帧会卡住（1000 条实测 4s+）。
               child: Card(
                 margin: const EdgeInsets.only(bottom: 8),
                 clipBehavior: Clip.antiAlias,
-                child: Column(
-                  children: [
-                    for (var i = 0; i < rows.length; i++) ...[
+                child: ProgressiveRows(
+                  itemCount: rows.length,
+                  itemBuilder: (context, i) => Column(
+                    children: [
                       if (i > 0)
                         const Divider(height: 1, indent: 12, endIndent: 12),
                       _buildRow(context, rows, templatesById, i),
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),

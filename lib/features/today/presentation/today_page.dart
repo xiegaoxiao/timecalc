@@ -21,6 +21,7 @@ import '../../../services/statistics_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/celebration_overlay.dart';
 import '../../../shared/widgets/page_skeletons.dart';
+import '../../../shared/widgets/progressive_rows.dart';
 import '../../../shared/widgets/section_header.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../../goals/data/milestone_repository_provider.dart';
@@ -404,8 +405,8 @@ class _TodayPageState extends ConsumerState<TodayPage> {
         ),
         // 今日任务列表：单卡分组行（2026-08-16 视觉升级）——一张卡片承载
         // 全部任务行，行间细分隔线，行内容由 TaskTile（自身无卡）提供。
-        // 取舍：放弃此前 SliverList.builder 的懒加载——单日任务量有限、
-        // 勾选扇出已由 select 收窄覆盖，换取整卡一致的视觉形态。
+        // 取舍：放弃此前 SliverList.builder 的懒加载——行构建经
+        // ProgressiveRows 分块渐进（大任务量导入不会卡进入首帧）。
         if (todayTasks.isNotEmpty)
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -413,9 +414,10 @@ class _TodayPageState extends ConsumerState<TodayPage> {
               child: Card(
                 margin: EdgeInsets.zero,
                 clipBehavior: Clip.antiAlias,
-                child: Column(
-                  children: [
-                    for (var i = 0; i < todayTasks.length; i++) ...[
+                child: ProgressiveRows(
+                  itemCount: todayTasks.length,
+                  itemBuilder: (context, i) => Column(
+                    children: [
                       if (i > 0)
                         const Divider(height: 1, indent: 12, endIndent: 12),
                       TaskTile(
@@ -428,7 +430,7 @@ class _TodayPageState extends ConsumerState<TodayPage> {
                         enableCompleteUndo: true,
                       ),
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -808,31 +810,38 @@ class _OverdueTasksSection extends StatelessWidget {
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 4),
-            for (var i = 0; i < tasks.length; i++) ...[
-              // 单卡分组行：任务之间细分隔线（与今日任务列表同形态）。
-              if (i > 0) const Divider(height: 1, indent: 12, endIndent: 12),
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  '原计划 ${formatLocalDate(parseLocalDate(tasks[i].plannedDate))}'
-                  ' · 已逾期 ${_overdueDays(today, tasks[i].plannedDate)} 天',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: scheme.error),
-                ),
+            ProgressiveRows(
+              itemCount: tasks.length,
+              // 单卡分组行：任务之间细分隔线（与今日任务列表同形态），
+              // 分块渐进构建（过期任务无上限，防首帧全量 build）。
+              itemBuilder: (context, i) => Column(
+                children: [
+                  if (i > 0)
+                    const Divider(height: 1, indent: 12, endIndent: 12),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      '原计划 ${formatLocalDate(parseLocalDate(tasks[i].plannedDate))}'
+                      ' · 已逾期 ${_overdueDays(today, tasks[i].plannedDate)} 天',
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: scheme.error),
+                    ),
+                  ),
+                  TaskTile(
+                    // 按任务身份复用 element：定稿后区块收缩时，划线/透明度
+                    // 动画不会错播到相邻任务上（幻影动画）。
+                    key: ValueKey('overdue-task-${tasks[i].id}'),
+                    task: tasks[i],
+                    goalTitle: goalsById[tasks[i].goalId]?.title,
+                    subjects: subjectsByGoal[tasks[i].goalId],
+                    onChanged: onChanged,
+                    // 过期任务勾选同样走 5 秒撤回：期间保持勾选显示，5 秒后才消失。
+                    enableCompleteUndo: true,
+                  ),
+                ],
               ),
-              TaskTile(
-                // 按任务身份复用 element：定稿后区块收缩时，划线/透明度
-                // 动画不会错播到相邻任务上（幻影动画）。
-                key: ValueKey('overdue-task-${tasks[i].id}'),
-                task: tasks[i],
-                goalTitle: goalsById[tasks[i].goalId]?.title,
-                subjects: subjectsByGoal[tasks[i].goalId],
-                onChanged: onChanged,
-                // 过期任务勾选同样走 5 秒撤回：期间保持勾选显示，5 秒后才消失。
-                enableCompleteUndo: true,
-              ),
-            ],
+            ),
           ],
         ),
       ),
