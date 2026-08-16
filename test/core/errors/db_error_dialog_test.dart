@@ -14,11 +14,14 @@ import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository_provider.dart';
 
+import '../../shared/nav_helper.dart';
+
 /// 数据库写入异常对话框测试（PRD §8：停止继续写入，提示恢复或导出诊断）。
 ///
-/// override 一个 `setDone` 必抛异常的 TaskRepository → 今天页点完成 →
-/// 断言「数据保存失败」对话框出现、任务状态未变（未写入）、
-/// 导出诊断/前往恢复入口存在。
+/// override 一个 `setDone` 必抛异常的 TaskRepository → 在「计划」页选日面板
+/// 点完成（该处为即时写入路径）→ 断言「数据保存失败」对话框出现、任务状态
+/// 未变（未写入）、导出诊断/前往恢复入口存在。
+/// （今天页勾选已改走 5 秒撤回批次，不立即写库，故错误守卫在此验证。）
 void main() {
   late AppDatabase db;
   late GoalRepository goals;
@@ -63,10 +66,14 @@ void main() {
     );
 
     await pumpApp(tester);
-    expect(find.text('背单词'), findsOneWidget);
 
-    // 点完成 → setDone 抛异常 → 弹数据库错误对话框。
-    await tester.tap(find.byType(Checkbox));
+    // 「计划」页选日面板的勾选为即时写入路径：点完成 → setDone 抛异常 →
+    // 弹数据库错误对话框。（今天页已改走 5 秒撤回批次，不在此路径上。）
+    await tapNavDestination(tester, '计划');
+    final checkbox = find.byType(Checkbox);
+    await tester.ensureVisible(checkbox);
+    await tester.pumpAndSettle();
+    await tester.tap(checkbox);
     await tester.pumpAndSettle();
 
     expect(find.text('数据保存失败'), findsOneWidget);
@@ -82,6 +89,7 @@ void main() {
     await tester.tap(find.text('知道了'));
     await tester.pumpAndSettle();
     expect(find.text('数据保存失败'), findsNothing);
+    await tapNavDestination(tester, '今天');
     expect(find.text('背单词'), findsOneWidget);
   });
 }

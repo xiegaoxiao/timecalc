@@ -181,6 +181,36 @@ void main() {
       expect(fetched?.status, 'todo');
       expect(fetched?.completedAt, isNull);
     });
+
+    test('setDoneMany 批量完成/取消完成：单事务、空列表 no-op（5 秒撤回定稿用）', () async {
+      final goal = await goals.create(title: '目标', deadlineDate: '2026-01-01');
+      final a = await tasks.create(goalId: goal.id, title: 'A', plannedDate: '2026-01-01');
+      final b = await tasks.create(goalId: goal.id, title: 'B', plannedDate: '2026-01-01');
+      final c = await tasks.create(goalId: goal.id, title: 'C', plannedDate: '2026-01-01');
+
+      await tasks.setDoneMany([a.id, b.id], true);
+      var list = await tasks.byGoal(goal.id);
+      expect(
+        list.where((t) => t.status == 'done').map((t) => t.title).toSet(),
+        {'A', 'B'},
+      );
+      expect(
+        list.where((t) => t.status == 'done').every((t) => t.completedAt != null),
+        isTrue,
+      );
+      expect(list.firstWhere((t) => t.id == c.id).status, 'todo');
+
+      // 空列表为 no-op（不抛错、不写库）。
+      await tasks.setDoneMany(const [], false);
+      expect((await tasks.byGoal(goal.id)).length, 3);
+
+      // 批量取消完成：状态回 todo、completedAt 清空，不影响未在列表中的任务。
+      await tasks.setDoneMany([a.id], false);
+      final fa = await tasks.byId(a.id);
+      expect(fa?.status, 'todo');
+      expect(fa?.completedAt, isNull);
+      expect((await tasks.byId(b.id))?.status, 'done');
+    });
   });
 
   group('按日期查询（M2：今日任务与日历）', () {

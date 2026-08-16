@@ -233,8 +233,10 @@ void main() {
     // 今天页：150 分超可用 120 分。
     expect(find.text('超出 30 分，请调整任务或可用时间'), findsOneWidget);
 
-    // 在今天页完成任务。
+    // 在今天页勾选完成（进入 5 秒撤回批次），5 秒定稿后负载归零。
     await tester.tap(find.byType(Checkbox));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
     expect(find.text('今日任务总计 0 分'), findsOneWidget);
 

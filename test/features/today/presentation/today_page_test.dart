@@ -52,7 +52,7 @@ void main() {
     await db.close();
   });
 
-  testWidgets('今日任务展示，完成任务后负载与列表同步更新（FR-3.2/FR-5.2）', (tester) async {
+  testWidgets('今日任务展示，勾选进入 5 秒撤回，定稿后负载归零（FR-3.2/FR-5.2）', (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
     final created = await tasks.create(
       goalId: goal.id,
@@ -67,13 +67,24 @@ void main() {
     expect(find.text('今日任务总计 1 小时 30 分'), findsOneWidget);
     expect(find.text('可用 2 小时'), findsOneWidget);
 
-    // 完成任务：列表保留（划线），负载归零。
+    // 勾选：立即反馈为勾选态，但进入 5 秒撤回批次——负载不变、数据库仍 todo。
     await tester.tap(find.byType(Checkbox));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
+    expect(find.textContaining('已勾选 1 项任务'), findsOneWidget);
+    expect(find.text('今日任务总计 1 小时 30 分'), findsOneWidget);
+    expect((await tasks.byId(created.id))?.status, 'todo');
+
+    // 5 秒定稿：负载归零、状态 done、列表保留（划线）。
+    await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
 
     expect(find.text('今日任务总计 0 分'), findsOneWidget);
     expect(find.text('可用 2 小时'), findsOneWidget);
     expect((await tasks.byId(created.id))?.status, 'done');
+    expect(find.text('背单词'), findsOneWidget);
   });
 
   testWidgets('当日负载超过可用时长时显示「超出 X 分钟」（FR-3.5）', (tester) async {
@@ -190,7 +201,7 @@ void main() {
     expect(find.textContaining('已逾期'), findsNothing);
   });
 
-  testWidgets('区块内完成过期任务后区块与红条联动消失（FR-3.7 扩展）', (tester) async {
+  testWidgets('区块内完成过期任务：5 秒撤回窗口内保持显示，定稿后区块与红条联动消失（FR-3.7 扩展）', (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
     final old = await tasks.create(
       goalId: goal.id,
@@ -208,6 +219,15 @@ void main() {
     await tester.ensureVisible(checkbox);
     await tester.pumpAndSettle();
     await tester.tap(checkbox);
+    await tester.pump();
+
+    // 撤回窗口内：任务保持勾选显示，区块与红条仍在，数据库仍 todo。
+    expect(find.text('过期任务'), findsOneWidget);
+    expect(find.text('昨日及更早有 1 个未完成任务'), findsOneWidget);
+    expect((await tasks.byId(old.id))?.status, 'todo');
+
+    // 5 秒定稿：过期任务从区块与红条中消失（联动）。
+    await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
 
     expect(find.text('过期任务'), findsNothing);
@@ -465,5 +485,157 @@ void main() {
     // 与今日页 FR-3.7 横幅同口径（L40）：下界 = 今天，不再允许改期到过去。
     final picker = tester.widget<CalendarDatePicker>(find.byType(CalendarDatePicker));
     expect(picker.firstDate, DateTime(2026, 8, 5)); // 今天（注入时钟）
+  });
+
+  testWidgets('勾选后 5 秒内可整批撤回：任务恢复未勾选、数据库保持 todo', (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    final created = await tasks.create(
+      goalId: goal.id,
+      title: '背单词',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 90,
+    );
+
+    await pumpApp(tester);
+
+    await tester.tap(find.byType(Checkbox));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
+    expect(find.text('撤回'), findsOneWidget);
+
+    // 点「撤回」：任务恢复未勾选、数据库仍 todo、SnackBar 收起、负载不变。
+    await tester.tap(find.text('撤回'));
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isFalse);
+    expect(find.text('撤回'), findsNothing);
+    expect((await tasks.byId(created.id))?.status, 'todo');
+    expect(find.text('今日任务总计 1 小时 30 分'), findsOneWidget);
+  });
+
+  testWidgets('撤回 SnackBar 显示倒计时：每秒递减，到时定稿完成', (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    final created = await tasks.create(
+      goalId: goal.id,
+      title: '背单词',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 90,
+    );
+
+    await pumpApp(tester);
+
+    await tester.tap(find.byType(Checkbox));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // 初始显示 5 秒倒计时。
+    expect(find.textContaining('5 秒后自动完成'), findsOneWidget);
+
+    // 每秒递减：4 → 1。
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.textContaining('4 秒后自动完成'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 3));
+    expect(find.textContaining('1 秒后自动完成'), findsOneWidget);
+
+    // 第 5 秒定稿：任务完成、SnackBar 收起。
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+
+    expect((await tasks.byId(created.id))?.status, 'done');
+    expect(find.textContaining('秒后自动完成'), findsNothing);
+  });
+
+  testWidgets('5 秒内勾选多个任务：可整批撤回，全部恢复未勾选', (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    await tasks.create(goalId: goal.id, title: '任务A', plannedDate: '2026-08-05', estimatedMinutes: 30);
+    await tasks.create(goalId: goal.id, title: '任务B', plannedDate: '2026-08-05', estimatedMinutes: 30);
+
+    await pumpApp(tester);
+
+    await tester.tap(find.byType(Checkbox).at(0));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Checkbox).at(1));
+    await tester.pumpAndSettle();
+
+    // 同一 5 秒窗口内的多次勾选并入同一批次，撤回 SnackBar 显示总数。
+    expect(find.textContaining('已勾选 2 项任务'), findsOneWidget);
+    expect(tester.widget<Checkbox>(find.byType(Checkbox).at(0)).value, isTrue);
+    expect(tester.widget<Checkbox>(find.byType(Checkbox).at(1)).value, isTrue);
+
+    // 整批撤回：两任务全部恢复未勾选，数据库仍 todo。
+    await tester.tap(find.text('撤回'));
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<Checkbox>(find.byType(Checkbox).at(0)).value, isFalse);
+    expect(tester.widget<Checkbox>(find.byType(Checkbox).at(1)).value, isFalse);
+    final list = await tasks.byDate('2026-08-05');
+    expect(list.every((t) => t.status == 'todo'), isTrue);
+  });
+
+  testWidgets('5 秒内勾选多个任务且未撤回：到期全部完成', (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    final a = await tasks.create(goalId: goal.id, title: '任务A', plannedDate: '2026-08-05', estimatedMinutes: 30);
+    final b = await tasks.create(goalId: goal.id, title: '任务B', plannedDate: '2026-08-05', estimatedMinutes: 30);
+
+    await pumpApp(tester);
+
+    await tester.tap(find.byType(Checkbox).at(0));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.byType(Checkbox).at(1));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.textContaining('已勾选 2 项任务'), findsOneWidget);
+
+    // 无撤回：5 秒后整批定稿为完成（今日列表保留，划线态）。
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+
+    expect((await tasks.byId(a.id))?.status, 'done');
+    expect((await tasks.byId(b.id))?.status, 'done');
+    expect(find.text('任务A'), findsOneWidget);
+    expect(find.text('任务B'), findsOneWidget);
+  });
+
+  testWidgets('过期任务勾选后撤回：区块与红条保留，任务恢复未勾选', (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    final old = await tasks.create(
+      goalId: goal.id,
+      title: '昨日任务',
+      plannedDate: '2026-08-04',
+      estimatedMinutes: 30,
+    );
+
+    await pumpApp(tester);
+    expect(find.text('过期任务'), findsOneWidget);
+
+    final checkbox = find.byType(Checkbox);
+    await tester.ensureVisible(checkbox);
+    await tester.pumpAndSettle();
+    await tester.tap(checkbox);
+    await tester.pump();
+    await tester.pumpAndSettle(); // 撤回 SnackBar 完全滑入后再点按钮
+
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
+
+    await tester.tap(find.text('撤回'));
+    await tester.pumpAndSettle();
+
+    // 撤回后：过期任务仍在区块与红条中，且恢复未勾选、数据库 todo。
+    expect(find.text('过期任务'), findsOneWidget);
+    expect(find.text('昨日及更早有 1 个未完成任务'), findsOneWidget);
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isFalse);
+    expect((await tasks.byId(old.id))?.status, 'todo');
   });
 }

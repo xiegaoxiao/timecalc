@@ -397,6 +397,27 @@ class TaskRepository {
     });
   }
 
+  /// 批量完成任务状态切换（todo <-> done），单事务（NFR-2）。
+  ///
+  /// 供「勾选完成 + 5 秒撤回」定稿时一次性写入整批任务；空列表为 no-op。
+  /// id 过多时按 [kMaxInListSize] 分批执行（L1：SQLite 绑定变量数上限），
+  /// 各批仍在同一事务内。completedAt 统一取同一时刻。
+  Future<void> setDoneMany(List<int> ids, bool done) {
+    if (ids.isEmpty) return Future.value();
+    return _db.transaction(() async {
+      final now = DateTime.now().toUtc();
+      for (final batch in _chunkIds(ids)) {
+        await (_db.update(_db.tasks)..where((t) => t.id.isIn(batch))).write(
+          TasksCompanion(
+            status: Value(done ? TaskStatus.done : TaskStatus.todo),
+            completedAt: Value(done ? now : null),
+            updatedAt: Value(now),
+          ),
+        );
+      }
+    });
+  }
+
   /// 更新任务字段。字符串字段为 null 表示不修改；
   /// 可置空字段（[note]、[estimatedMinutes]、[subjectId]）用 `Value` 包装，
   /// 传 `Value(null)` 表示显式置空，不传（null）表示不修改。

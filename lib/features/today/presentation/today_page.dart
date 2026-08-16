@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,6 +28,7 @@ import '../../goals/data/subject_repository_provider.dart';
 import '../../goals/presentation/goal_form_dialog.dart';
 import '../../settings/data/settings_repository.dart';
 import '../../settings/data/settings_repository_provider.dart';
+import '../../tasks/data/task_completion_controller.dart';
 import '../../tasks/data/task_repository_provider.dart';
 import '../../tasks/presentation/quick_task_form_dialog.dart';
 import '../../tasks/presentation/task_tile.dart';
@@ -57,8 +60,51 @@ class _TodayPageState extends ConsumerState<TodayPage> {
   /// 避免每次刷新/操作重复播放骚扰用户。
   bool _celebratedDone = false;
 
+  /// Telegram 式撤回 SnackBar 控制器：仅精确关闭本撤回条，避免误关
+  /// 其它页面/流程弹出的 SnackBar（IndexedStack 下各页常驻，App 级
+  /// ScaffoldMessenger 全局共享）。
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _undoSnackBar;
+
   @override
   Widget build(BuildContext context) {
+    // 勾选完成 → 进入 5 秒撤回批次：监听批次变化弹「已勾选 N 项 · 撤回」
+    // SnackBar，批次清空（到期定稿 / 整批撤回）时收起。SnackBar 时长与
+    // 控制器计时同为 [TaskCompletionController.undoWindow]，天然同步。
+    ref.listen<Set<int>>(taskCompletionControllerProvider, (previous, next) {
+      final messenger = ScaffoldMessenger.of(context);
+      final current = _undoSnackBar;
+      if (current != null) {
+        // 只关闭本撤回条，不影响其它页面/流程的 SnackBar；
+        // 若已自行关闭（到期/点撤回）则 close 为 no-op。
+        _undoSnackBar = null;
+        current.close();
+      }
+      if (next.isEmpty) return;
+      final snack = messenger.showSnackBar(
+        SnackBar(
+          duration: TaskCompletionController.undoWindow,
+          content: _UndoCountdownText(
+            count: next.length,
+            totalSeconds: TaskCompletionController.undoWindow.inSeconds,
+          ),
+          action: SnackBarAction(
+            label: '撤回',
+            onPressed: () {
+              _undoSnackBar = null;
+              ref.read(taskCompletionControllerProvider.notifier).undo();
+            },
+          ),
+        ),
+      );
+      _undoSnackBar = snack;
+      // 无论何种原因关闭（到期/撤回/手动关），都清理引用，避免再对其 close。
+      unawaited(
+        snack.closed.whenComplete(() {
+          if (identical(_undoSnackBar, snack)) _undoSnackBar = null;
+        }),
+      );
+    });
+
     final today = ref.watch(clockProvider)();
     final todayStr = formatLocalDate(today);
 
@@ -342,6 +388,8 @@ class _TodayPageState extends ConsumerState<TodayPage> {
                   goalTitle: goalsById[task.goalId]?.title,
                   subjects: subjectsByGoal[task.goalId],
                   onChanged: onChanged,
+                  // 今日任务勾选走 5 秒撤回（Telegram 式）。
+                  enableCompleteUndo: true,
                 );
               },
             ),
@@ -609,12 +657,59 @@ class _OverdueTasksSection extends StatelessWidget {
                 goalTitle: goalsById[task.goalId]?.title,
                 subjects: subjectsByGoal[task.goalId],
                 onChanged: onChanged,
+                // 过期任务勾选同样走 5 秒撤回：期间保持勾选显示，5 秒后才消失。
+                enableCompleteUndo: true,
               ),
             ],
           ],
         ),
       ),
     );
+  }
+}
+
+/// 撤回 SnackBar 的倒计时文案：每秒递减「N 秒后自动完成」，到 0 停止。
+///
+/// 与 [TaskCompletionController] 的 5 秒定稿计时并行（同一窗口），仅作
+/// 视觉反馈；定稿本身仍由控制器的计时器负责，本组件不参与触发。
+class _UndoCountdownText extends StatefulWidget {
+  const _UndoCountdownText({required this.count, required this.totalSeconds});
+
+  /// 批次内已勾选任务数。
+  final int count;
+
+  /// 撤回窗口总时长（秒）。
+  final int totalSeconds;
+
+  @override
+  State<_UndoCountdownText> createState() => _UndoCountdownTextState();
+}
+
+class _UndoCountdownTextState extends State<_UndoCountdownText> {
+  late int _remaining;
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _remaining = widget.totalSeconds;
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      setState(() {
+        if (_remaining > 0) _remaining--;
+        if (_remaining == 0) _ticker?.cancel();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Text('已勾选 ${widget.count} 项任务 · $_remaining 秒后自动完成');
   }
 }
 

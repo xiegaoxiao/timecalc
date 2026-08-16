@@ -137,10 +137,12 @@ void main() {
     await tester.pumpAndSettle();
     expect((await tasks.byId(taskId))?.status, 'todo');
 
-    // 再次勾选 → 确认完成 → 任务完成，检查项保留。
+    // 再次勾选 → 确认完成 → 进入 5 秒撤回批次，定稿后任务完成，检查项保留。
     await tester.tap(find.byType(Checkbox).first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('确定完成'));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
     expect((await tasks.byId(taskId))?.status, 'done');
     expect(await checklist.byTask(taskId), hasLength(1));
@@ -154,6 +156,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('完成任务？'), findsNothing);
+    // 无检查项 → 不弹确认，直接进入 5 秒撤回批次；5 秒定稿后任务完成。
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
     expect((await tasks.byId(taskId))?.status, 'done');
   });
 

@@ -12,6 +12,7 @@ import '../../goals/data/subject_repository_provider.dart';
 import '../../settings/data/settings_repository.dart';
 import '../../settings/data/settings_repository_provider.dart';
 import '../data/recurrence_repository_provider.dart';
+import '../data/task_completion_controller.dart';
 import '../data/task_repository_provider.dart';
 import 'checklist_dialog.dart';
 import 'recurrence_task_dialog.dart';
@@ -36,6 +37,7 @@ class TaskTile extends ConsumerStatefulWidget {
     this.goalTitle,
     this.subjects,
     this.showPlannedDate = false,
+    this.enableCompleteUndo = false,
   });
 
   final Task task;
@@ -53,6 +55,12 @@ class TaskTile extends ConsumerStatefulWidget {
   /// 是否在副标题展示计划日期（目标内列表需要，跨目标列表冗余）。
   final bool showPlannedDate;
 
+  /// 是否启用「勾选完成 + 5 秒撤回」交互（今天页专用）。
+  ///
+  /// 启用后勾选不立即写库，先进入 [taskCompletionControllerProvider] 的
+  /// 待完成批次，5 秒内可整批撤回、到期才定稿；其余页面保持即时完成。
+  final bool enableCompleteUndo;
+
   @override
   ConsumerState<TaskTile> createState() => _TaskTileState();
 }
@@ -65,7 +73,8 @@ class _TaskTileState extends ConsumerState<TaskTile> {
   /// 猛然划线」的掉帧/延迟感。数据刷新确认后由 [didUpdateWidget] 清除。
   bool? _optimisticDone;
 
-  /// 当前展示的完成态：乐观态优先，未覆盖时以真实数据为准。
+  /// 真实/乐观完成态（不含「5 秒撤回」待定稿批次：后者在 build 中单独并入，
+  /// [_toggle] 里按批次成员单独判断，避免在非 build 上下文里 watch）。
   bool get _done => _optimisticDone ?? widget.task.status == TaskStatus.done;
 
   @override
@@ -79,15 +88,56 @@ class _TaskTileState extends ConsumerState<TaskTile> {
     }
   }
 
-  /// 完成/取消完成切换：乐观更新 + 数据落地后统一刷新。
+  /// 完成/取消完成切换：
+  ///
+  /// - 今天页（[widget.enableCompleteUndo]）：勾选进入 5 秒撤回批次（不写库，
+  ///   由 [TaskCompletionController] 统一定稿/撤回）；再点取消勾选待完成任务
+  ///   直接移出批次，取消勾选已定稿任务才写库。
+  /// - 其余页面：乐观更新 + 数据落地后统一刷新（原行为）。
   Future<void> _toggle(bool? value) async {
+    final target = value ?? false;
+    final controller = ref.read(taskCompletionControllerProvider.notifier);
+
+    if (widget.enableCompleteUndo) {
+      final statusDone = widget.task.status == TaskStatus.done;
+      final pendingThis = controller.isPending(widget.task.id);
+      if (target) {
+        if (!statusDone && !pendingThis) {
+          // FR-4.1：勾选完成且存在未完成检查项时二次确认。
+          final proceed = await confirmCompleteTask(context, ref, widget.task);
+          if (!proceed) return;
+          if (!mounted) return;
+          controller.check(widget.task.id);
+        }
+      } else {
+        if (pendingThis) {
+          // 撤回该单个任务（未写库，移出批次即可）。
+          controller.remove(widget.task.id);
+        } else if (statusDone) {
+          // 已定稿完成 → 写库取消完成。
+          setState(() => _optimisticDone = false);
+          final repo = ref.read(taskRepositoryProvider);
+          final ok = await runDbAction(
+            context,
+            action: () => repo.setDone(widget.task.id, false),
+          );
+          if (ok) {
+            widget.onChanged();
+          } else if (mounted) {
+            setState(() => _optimisticDone = null);
+          }
+        }
+      }
+      return;
+    }
+
+    // 非今天页：原即时完成/取消逻辑（乐观更新 + 写库 + 刷新）。
     if (value == true && !_done) {
       // FR-4.1：勾选完成且存在未完成检查项时二次确认。
       final proceed = await confirmCompleteTask(context, ref, widget.task);
       if (!proceed) return;
       if (!mounted) return;
     }
-    final target = value ?? false;
     setState(() => _optimisticDone = target); // 立即反馈，不等数据库往返
     final repo = ref.read(taskRepositoryProvider);
     final ok = await runDbAction(
@@ -103,7 +153,12 @@ class _TaskTileState extends ConsumerState<TaskTile> {
 
   @override
   Widget build(BuildContext context) {
-    final done = _done;
+    // 今天页「5 秒撤回」：勾选后先进入待完成批次（不写库），批次内视为
+    // 已勾选显示；其余页面不启用该行为，维持原即时完成逻辑。
+    final statusDone = widget.task.status == TaskStatus.done;
+    final pendingThis = widget.enableCompleteUndo &&
+        ref.watch(taskCompletionControllerProvider).contains(widget.task.id);
+    final done = _optimisticDone ?? (pendingThis || statusDone);
 
     // 科目名：优先用父级传入列表（N+1 优化）；否则 watch 自查。
     final subjectName = widget.subjects != null
