@@ -404,9 +404,9 @@ class _TodayPageState extends ConsumerState<TodayPage> {
           ),
         ),
         // 今日任务列表：单卡分组行（2026-08-16 视觉升级）——一张卡片承载
-        // 全部任务行，行间细分隔线，行内容由 TaskTile（自身无卡）提供。
-        // 取舍：放弃此前 SliverList.builder 的懒加载——行构建经
-        // ProgressiveRows 分块渐进（大任务量导入不会卡进入首帧）。
+        // 全部任务行，行间细分隔线，行内容由 TaskTile（自身无卡）提供；
+        // 行经 ProgressiveRows 视口驱动懒构建（同日二次卡顿修复 v2），
+        // 大任务量导入不卡首帧、滚动按需构建。
         if (todayTasks.isNotEmpty)
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),

@@ -19,9 +19,9 @@ import 'task_tile.dart';
 /// 以单个 [SliverMainAxisGroup] 的形式嵌入页面 [CustomScrollView]（任务区
 /// 作为一条 sliver）。任务列表为**单卡分组行**（2026-08-16 视觉升级）：
 /// 一张卡片承载全部行（单任务/组头/组实例），行间细分隔线，行内容由
-/// TaskTile / RecurrenceGroupTile（自身无卡）提供。取舍：放弃此前
-/// SliverList.builder 的懒加载——行构建成本低、桌面端一次性构建可接受，
-/// 换取与今天页/计划页一致的整卡视觉形态。
+/// TaskTile / RecurrenceGroupTile（自身无卡）提供；行经 [ProgressiveRows]
+/// **视口驱动懒构建**（v2）——仅构建视口 + 预加载边距内的行，滚动接近
+/// 底部才扩展下一批，大任务量目标（批量/JSON 导入）进入与滚动都不卡。
 ///
 /// 手风琴展开状态在本组件内部维护（[State]），点展开/收起只重建任务区
 /// slivers，不重建页面其他区块（里程碑/负载/科目），避免卡顿。

@@ -9,6 +9,7 @@ import 'package:timecalc/core/database/database_provider.dart';
 import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/tasks/data/recurrence_repository.dart';
+import 'package:timecalc/features/tasks/presentation/task_list_section.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 import 'package:timecalc/features/tasks/domain/recurrence/recurrence_rule.dart';
 
@@ -380,17 +381,19 @@ void main() {
       expect(find.text('停止重复'), findsNothing);
     });
 
-    testWidgets('展开后渲染全部子任务行（单卡全量构建，2026-08-16 视觉升级取舍）', (tester) async {
+    testWidgets('懒加载：展开后仅构建视口附近的行，滚动到底才构建全部（2026-08-16 v2）', (tester) async {
       await seedDailyTemplate();
+
+      await pumpApp(tester);
+      // pumpApp 内部把视口放大到 800×1800（便于 find）；懒加载断言需要
+      // 视口小于列表，pump 后再压缩并重排。
+      tester.view.physicalSize = const Size(500, 400);
+      await tester.pumpAndSettle();
+      // 实例数在应用启动后再读：滚动生成会把模板补齐到完整窗口
+      // （seed 后立即读会拿到过时的较小值）。
       final total = (await tasks.byGoal(goalId)).length;
       expect(total, greaterThanOrEqualTo(30), reason: 'daily 模板应生成 30+ 实例');
 
-      // 用小视口模拟真实窗口（展开/收起与滚动定位仍需正常工作）。
-      tester.view.physicalSize = const Size(500, 600);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-
-      await pumpApp(tester);
       await openGoalDetail(tester);
 
       // 展开前：无子任务行（无复选框）。
@@ -406,15 +409,31 @@ void main() {
       await tester.tap(find.byTooltip('展开重复任务'));
       await tester.pumpAndSettle();
 
-      // 单卡分组行改版（2026-08-16）：任务区为一张卡片内全量构建的行，
-      // 此前的 SliverList 视口内懒加载为本次改版的有意取舍（行构建成本低，
-      // 换取与今天页/计划页一致的整卡视觉形态）。展开后全部实例行随卡片
-      // 一次性构建（IndexedStack 常驻的今天页可能另有任务复选框，取下界）。
-      final checkboxes = tester.widgetList(find.byType(Checkbox)).length;
+      // 展开后未滚动：任务区为单卡 + ProgressiveRows 视口驱动懒构建
+      // （2026-08-16 v2：仅构建视口 + 预加载边距内的行，替代此前的
+      // 「逐帧全量构建」）——小视口下实例化的复选框数应远小于总数。
+      // （IndexedStack 常驻的今天页另有任务复选框，限定任务区内计数。）
+      final sectionCheckboxes = find.descendant(
+        of: find.byType(TaskListSection),
+        matching: find.byType(Checkbox),
+      );
       expect(
-        checkboxes,
+        sectionCheckboxes.evaluate().length,
+        lessThan(total),
+        reason: '未滚动时不应构建全部 $total 个子任务行（懒加载语义）',
+      );
+
+      // 滚动到底：视口驱动逐步补齐，最终全部行构建完成。
+      final scrollable = find.byType(Scrollable).first;
+      for (var i = 0; i < 40; i++) {
+        if (sectionCheckboxes.evaluate().length >= total) break;
+        await tester.drag(scrollable, const Offset(0, -400));
+        await tester.pumpAndSettle();
+      }
+      expect(
+        sectionCheckboxes.evaluate().length,
         greaterThanOrEqualTo(total),
-        reason: '展开后应构建全部 $total 个子任务行',
+        reason: '滚动到底后应构建全部 $total 个子任务行',
       );
     });
   });
