@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
+import '../../../core/theme/accent_palette.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/chart_empty_state.dart';
 import '../data/subject_repository_provider.dart';
@@ -98,12 +99,20 @@ class SubjectManager extends ConsumerWidget {
     if (!context.mounted) return;
 
     final repo = ref.read(subjectRepositoryProvider);
+    // 默认色跟随当前主题色系（绿/蓝，2026-08-16 解耦）；库存色随主题
+    // 不迁移，仅影响新建科目。M1 曾固定 #3F6C51。
+    final accentHex = Theme.of(context)
+        .extension<AccentPalette>()!
+        .seed
+        .toARGB32()
+        .toRadixString(16)
+        .substring(2);
     final ok = await runDbAction(
       context,
       action: () => repo.create(
         goalId: goalId,
         name: name,
-        color: '#3F6C51', // M1 使用默认颜色，自定义颜色后续迭代提供。
+        color: '#$accentHex',
       ),
     );
     if (!ok) return;

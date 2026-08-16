@@ -231,6 +231,14 @@ class Settings extends Table {
   TextColumn get themeMode =>
       text().withDefault(const Constant('system'))();
 
+  /// 主题色系（2026-08-16 色系解耦，schema v14 引入）。
+  ///
+  /// 取值见 [AccentPalette.id]：`green`（默认）或 `blue`。设备级外观配置
+  /// （同 theme_mode），不进入业务数据备份（FR-9.5），覆盖恢复时保留
+  /// 本设备选择。
+  TextColumn get accentColor =>
+      text().withDefault(const Constant('green'))();
+
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
 

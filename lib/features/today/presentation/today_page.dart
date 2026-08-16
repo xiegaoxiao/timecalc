@@ -9,9 +9,9 @@ import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../core/providers/app_refresh.dart';
+import '../../../core/theme/accent_palette.dart';
 import '../../../core/theme/app_semantic_colors.dart';
 import '../../../core/theme/app_tokens.dart';
-import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../services/countdown_service.dart';
 import '../../../services/defer_service.dart';
@@ -1056,7 +1056,11 @@ class _CountdownCard extends ConsumerWidget {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: const [kTimeCalcBrandDeep, kTimeCalcBrandBright],
+            // 渐变取当前色系（绿色/蓝色主题各自变化，2026-08-16 解耦）。
+            colors: [
+              Theme.of(context).extension<AccentPalette>()!.brandDeep,
+              Theme.of(context).extension<AccentPalette>()!.brandBright,
+            ],
           ),
         ),
         child: InkWell(

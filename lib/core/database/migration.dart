@@ -2613,6 +2613,249 @@ class Shape14 extends i0.VersionedTable {
       columnsByName['updated_at']! as i1.GeneratedColumn<int>;
 }
 
+final class Schema14 extends i0.VersionedSchema {
+  Schema14({required super.database}) : super(version: 14);
+  @override
+  late final List<i1.DatabaseSchemaEntity> entities = [
+    goals,
+    subjects,
+    milestones,
+    recurrenceTemplates,
+    tasks,
+    settings,
+    checklistItems,
+    subjectsGoalIdx,
+    milestonesGoalIdx,
+    tasksGoalArchivedIdx,
+    tasksPlannedDateIdx,
+    tasksStatusArchivedIdx,
+    tasksStatusCompletedIdx,
+    recurrenceTemplatesGoalIdx,
+    checklistItemsTaskIdx,
+  ];
+  late final Shape0 goals = Shape0(
+    source: i0.VersionedTable(
+      entityName: 'goals',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_1,
+        _column_2,
+        _column_3,
+        _column_4,
+        _column_5,
+        _column_6,
+        _column_7,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape1 subjects = Shape1(
+    source: i0.VersionedTable(
+      entityName: 'subjects',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_6,
+        _column_7,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape9 milestones = Shape9(
+    source: i0.VersionedTable(
+      entityName: 'milestones',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_8,
+        _column_1,
+        _column_31,
+        _column_16,
+        _column_11,
+        _column_6,
+        _column_7,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape7 recurrenceTemplates = Shape7(
+    source: i0.VersionedTable(
+      entityName: 'recurrence_templates',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_8,
+        _column_12,
+        _column_1,
+        _column_15,
+        _column_22,
+        _column_23,
+        _column_24,
+        _column_25,
+        _column_26,
+        _column_27,
+        _column_6,
+        _column_7,
+        _column_29,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape6 tasks = Shape6(
+    source: i0.VersionedTable(
+      entityName: 'tasks',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_8,
+        _column_12,
+        _column_1,
+        _column_13,
+        _column_14,
+        _column_15,
+        _column_16,
+        _column_5,
+        _column_11,
+        _column_6,
+        _column_7,
+        _column_17,
+        _column_21,
+        _column_28,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape15 settings = Shape15(
+    source: i0.VersionedTable(
+      entityName: 'settings',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_18,
+        _column_19,
+        _column_20,
+        _column_30,
+        _column_34,
+        _column_35,
+        _column_39,
+        _column_43,
+        _column_44,
+        _column_6,
+        _column_7,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape10 checklistItems = Shape10(
+    source: i0.VersionedTable(
+      entityName: 'checklist_items',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_32,
+        _column_1,
+        _column_33,
+        _column_11,
+        _column_6,
+        _column_7,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  final i1.Index subjectsGoalIdx = i1.Index(
+    'subjects_goal_idx',
+    'CREATE INDEX subjects_goal_idx ON subjects (goal_id)',
+  );
+  final i1.Index milestonesGoalIdx = i1.Index(
+    'milestones_goal_idx',
+    'CREATE INDEX milestones_goal_idx ON milestones (goal_id)',
+  );
+  final i1.Index tasksGoalArchivedIdx = i1.Index(
+    'tasks_goal_archived_idx',
+    'CREATE INDEX tasks_goal_archived_idx ON tasks (goal_id, archived_at)',
+  );
+  final i1.Index tasksPlannedDateIdx = i1.Index(
+    'tasks_planned_date_idx',
+    'CREATE INDEX tasks_planned_date_idx ON tasks (planned_date)',
+  );
+  final i1.Index tasksStatusArchivedIdx = i1.Index(
+    'tasks_status_archived_idx',
+    'CREATE INDEX tasks_status_archived_idx ON tasks (status, archived_at)',
+  );
+  final i1.Index tasksStatusCompletedIdx = i1.Index(
+    'tasks_status_completed_idx',
+    'CREATE INDEX tasks_status_completed_idx ON tasks (status, completed_at)',
+  );
+  final i1.Index recurrenceTemplatesGoalIdx = i1.Index(
+    'recurrence_templates_goal_idx',
+    'CREATE INDEX recurrence_templates_goal_idx ON recurrence_templates (goal_id)',
+  );
+  final i1.Index checklistItemsTaskIdx = i1.Index(
+    'checklist_items_task_idx',
+    'CREATE INDEX checklist_items_task_idx ON checklist_items (task_id)',
+  );
+}
+
+class Shape15 extends i0.VersionedTable {
+  Shape15({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<int> get id =>
+      columnsByName['id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get dailyAvailableMinutes =>
+      columnsByName['daily_available_minutes']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get availableWeekdays =>
+      columnsByName['available_weekdays']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get closeBehavior =>
+      columnsByName['close_behavior']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get autoBackupEnabled =>
+      columnsByName['auto_backup_enabled']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get localBackupFolder =>
+      columnsByName['local_backup_folder']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get lastAutoBackupAt =>
+      columnsByName['last_auto_backup_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get themeMode =>
+      columnsByName['theme_mode']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get accentColor =>
+      columnsByName['accent_color']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get createdAt =>
+      columnsByName['created_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get updatedAt =>
+      columnsByName['updated_at']! as i1.GeneratedColumn<int>;
+}
+
+i1.GeneratedColumn<String> _column_44(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'accent_color',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL DEFAULT \'green\'',
+      defaultValue: const i1.CustomExpression('\'green\''),
+    );
 i0.MigrationStepWithVersion migrationSteps({
   required Future<void> Function(i1.Migrator m, Schema2 schema) from1To2,
   required Future<void> Function(i1.Migrator m, Schema3 schema) from2To3,
@@ -2626,6 +2869,7 @@ i0.MigrationStepWithVersion migrationSteps({
   required Future<void> Function(i1.Migrator m, Schema11 schema) from10To11,
   required Future<void> Function(i1.Migrator m, Schema12 schema) from11To12,
   required Future<void> Function(i1.Migrator m, Schema13 schema) from12To13,
+  required Future<void> Function(i1.Migrator m, Schema14 schema) from13To14,
 }) {
   return (currentVersion, database) async {
     switch (currentVersion) {
@@ -2689,6 +2933,11 @@ i0.MigrationStepWithVersion migrationSteps({
         final migrator = i1.Migrator(database, schema);
         await from12To13(migrator, schema);
         return 13;
+      case 13:
+        final schema = Schema14(database: database);
+        final migrator = i1.Migrator(database, schema);
+        await from13To14(migrator, schema);
+        return 14;
       default:
         throw ArgumentError.value('Unknown migration from $currentVersion');
     }
@@ -2708,6 +2957,7 @@ i1.OnUpgrade stepByStep({
   required Future<void> Function(i1.Migrator m, Schema11 schema) from10To11,
   required Future<void> Function(i1.Migrator m, Schema12 schema) from11To12,
   required Future<void> Function(i1.Migrator m, Schema13 schema) from12To13,
+  required Future<void> Function(i1.Migrator m, Schema14 schema) from13To14,
 }) => i0.VersionedSchema.stepByStepHelper(
   step: migrationSteps(
     from1To2: from1To2,
@@ -2722,5 +2972,6 @@ i1.OnUpgrade stepByStep({
     from10To11: from10To11,
     from11To12: from11To12,
     from12To13: from12To13,
+    from13To14: from13To14,
   ),
 );

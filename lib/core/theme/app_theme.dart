@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
+import 'accent_palette.dart';
 import 'app_semantic_colors.dart';
 import 'app_tokens.dart';
 
-/// TimeCalc 品牌种子色（深绿）。
+/// TimeCalc 默认品牌种子色（深绿，即 [greenAccent] 的 seed）。
 ///
-/// 主题派生与启动错误屏共用，避免硬编码多处漂移。
+/// 2026-08-16 色系解耦后种子色按 [AccentPalette] 注册表取用
+/// （`AppTheme.light(accent: ...)`），本常量保留为**默认色系**的便捷别名，
+/// 供无 context 场景（启动错误屏）使用。
 const Color kTimeCalcSeedColor = Color(0xFF3F6C51);
 
 /// 浅色模式页面底色（token：中性冷灰，卡片留白更干净）。
@@ -14,10 +17,10 @@ const Color kTimeCalcLightBackground = AppTokens.neutralBgLight;
 /// 浅色模式分割线色（token：中性细边框）。
 const Color kTimeCalcLightDivider = AppTokens.neutralBorderLight;
 
-/// 品牌渐变深端（hero 卡片背景起点，同 seed 色相）。
+/// 默认色系 hero 渐变深端（同 [greenAccent.brandDeep]）。
 const Color kTimeCalcBrandDeep = AppTokens.brandDeep;
 
-/// 品牌渐变浅端（同色相提亮变体，模板 A「同色深浅表达层次」手法）。
+/// 默认色系 hero 渐变浅端（同 [greenAccent.brandBright]）。
 const Color kTimeCalcBrandBright = AppTokens.brandBright;
 
 /// TimeCalc 主题定义。
@@ -33,18 +36,23 @@ const Color kTimeCalcBrandBright = AppTokens.brandBright;
 /// - 按钮/分割线/SnackBar/对话框统一圆角档位；
 /// - [NavigationBarThemeData]：底导航指示器圆角/标签规格统一；
 /// - [AppSemanticColors]：警告/成功/信息语义色 token 随主题注册；
-/// - 品牌渐变（[kTimeCalcBrandDeep]→[kTimeCalcBrandBright]）+ 统一路由
-///   过渡（页面入场动画），给 hero 卡片与页面切换注入品牌感。
+/// - [AccentPalette]：当前色系（seed 驱动 M3 派生，brand 色供 hero 渐变）
+///   随主题注册，页面经 `Theme.of(context).extension<AccentPalette>()` 读取；
+/// - 品牌渐变 + 统一路由过渡（页面入场动画），给 hero 卡片与页面切换
+///   注入品牌感。
 ///
 /// 字体保持系统默认（Roboto），仅建立统一的主题档位，不引入字体资源。
 abstract final class AppTheme {
-  static ThemeData light() => _base(Brightness.light);
+  /// 构造指定色系的主题；[accent] 为空时用默认绿色（[greenAccent]）。
+  static ThemeData light({AccentPalette? accent}) =>
+      _base(Brightness.light, accent ?? greenAccent);
 
-  static ThemeData dark() => _base(Brightness.dark);
+  static ThemeData dark({AccentPalette? accent}) =>
+      _base(Brightness.dark, accent ?? greenAccent);
 
-  static ThemeData _base(Brightness brightness) {
+  static ThemeData _base(Brightness brightness, AccentPalette accent) {
     final colorScheme = ColorScheme.fromSeed(
-      seedColor: kTimeCalcSeedColor,
+      seedColor: accent.seed,
       brightness: brightness,
     );
     final isDark = brightness == Brightness.dark;
@@ -86,9 +94,12 @@ abstract final class AppTheme {
       textTheme: textTheme,
       // 中性底色（深色用 M3 派生 surface），卡片留白更清晰。
       scaffoldBackgroundColor: scaffoldBackground,
-      // 语义色 token 随主题注册，页面经 AppSemanticColors.of(context) 读取。
+      // 语义色 token 随主题注册，页面经 AppSemanticColors.of(context) 读取；
+      // 当前色系（seed + brand 渐变）随主题注册，hero 卡片取渐变不依赖
+      // 全局常量，蓝色主题下倒计时卡/目标头部自动变蓝。
       extensions: [
         isDark ? AppSemanticColors.dark() : AppSemanticColors.light(),
+        accent,
       ],
       // AppBar：去 M3 默认表面色晕染与阴影，背景贴合页面底色。
       appBarTheme: AppBarTheme(

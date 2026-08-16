@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:timecalc/core/theme/accent_palette.dart';
 import 'package:timecalc/core/theme/app_semantic_colors.dart';
 import 'package:timecalc/core/theme/app_theme.dart';
 
@@ -11,16 +12,23 @@ import 'package:timecalc/core/theme/app_theme.dart';
 /// 对浅色/深色主题的关键「前景/背景」色对计算对比度，断言 ≥ 4.5:1
 /// （普通文本 AA 标准）。数值同时记录到 M4 里程碑验收记录。
 ///
+/// 2026-08-16 色系解耦：默认绿 + 专业藏蓝两套色系均须满足 AA，
+/// 任一色系的派生色板回归（明暗两态）都会在此暴露。
+///
 /// 说明：热力图/甘特图色块为装饰性图形，信息由 tooltip 与图例文本承载
 /// （M3 已落实，不在此对比度断言范围）。
 void main() {
-  for (final (name, theme) in [
-    ('浅色', AppTheme.light()),
-    ('深色', AppTheme.dark()),
+  for (final (accentName, accent) in [
+    ('绿', greenAccent),
+    ('蓝', blueAccent),
   ]) {
-    final scheme = theme.colorScheme;
-    final semantics = theme.extension<AppSemanticColors>()!;
-    group('$name主题关键色对对比度（WCAG 2.1 AA ≥ 4.5）', () {
+    for (final (brightnessName, theme) in [
+      ('浅色', AppTheme.light(accent: accent)),
+      ('深色', AppTheme.dark(accent: accent)),
+    ]) {
+      final scheme = theme.colorScheme;
+      final semantics = theme.extension<AppSemanticColors>()!;
+      group('$accentName$brightnessName主题关键色对对比度（WCAG 2.1 AA ≥ 4.5）', () {
       test('正文文本 onSurface/surface', () {
         expect(
           _contrast(scheme.onSurface, scheme.surface),
@@ -99,7 +107,8 @@ void main() {
           greaterThanOrEqualTo(4.5),
         );
       });
-    });
+      });
+    }
   }
 }
 

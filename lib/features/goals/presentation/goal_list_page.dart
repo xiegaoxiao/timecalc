@@ -6,8 +6,10 @@ import '../../../core/database/tables.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../core/providers/app_refresh.dart';
+import '../../../core/theme/accent_palette.dart';
 import '../../../core/theme/app_semantic_colors.dart';
 import '../../../core/theme/app_tokens.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../services/countdown_service.dart';
 import '../../../services/duration_format.dart';
@@ -306,8 +308,9 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
 
   /// 目标专属稳定色板（按 goal.id 取色）：柔和高辨识度色相，
   /// 同目标在各处（圆点/进度条/百分比）颜色一致。
-  static const _accentColors = <Color>[
-    Color(0xFF3F6C51), // 品牌深绿
+  /// 第 1 色（索引 0）为当前主题 brand 色（绿/蓝色系跟随主题，
+  /// 2026-08-16 解耦），其余 7 色为固定柔色板。
+  static const _fixedAccentColors = <Color>[
     Color(0xFF6B5B95), // 紫
     Color(0xFF2E7D8A), // 青
     Color(0xFFC0564D), // 砖红
@@ -316,6 +319,15 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
     Color(0xFF5C6BC0), // 靛蓝
     Color(0xFF8C5E9E), // 藕紫
   ];
+
+  /// 按当前主题取完整 8 色板（首色 = 主题 brand 色，同主题下各目标稳定）。
+  static List<Color> _accentColors(BuildContext context) {
+    final accent = Theme.of(context).extension<AccentPalette>();
+    return [
+      accent?.brandDeep ?? kTimeCalcBrandDeep,
+      ..._fixedAccentColors,
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -337,7 +349,8 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
     };
     // 目标专属强调色：进度条/圆点/百分比共用（同目标跨卡一致）。
     // abs 防御（L4）：负 id 理论上不可达（autoIncrement），取模负值越界。
-    final accent = _accentColors[goal.id.abs() % _accentColors.length];
+    final colors = _accentColors(context);
+    final accent = colors[goal.id.abs() % colors.length];
 
     final done = completion?.done ?? 0;
     final total = completion?.total ?? 0;

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/database/tables.dart';
+import '../../../core/theme/accent_palette.dart';
 import '../../backup/presentation/archived_tasks_page.dart';
 import '../../backup/presentation/backup_page.dart';
 import '../data/settings_repository_provider.dart';
@@ -33,7 +34,8 @@ class SettingsPage extends ConsumerWidget {
     final autoBackupLabel = settings?.autoBackupEnabled ?? false
         ? '每日自动备份 · ${_autoBackupTargetsLabel(settings)}'
         : '每日自动备份（未开启）';
-    final appearanceLabel = _appearanceLabel(settings?.themeMode);
+    final appearanceLabel =
+        '${_appearanceLabel(settings?.themeMode)} · ${accentLabel(settings?.accentColor)}';
 
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
@@ -141,6 +143,11 @@ String _appearanceLabel(String? mode) {
     'dark' => '深色',
     _ => '跟随系统',
   };
+}
+
+/// 色系摘要（2026-08-16 色系解耦，schema v14 `accent_color`）。
+String accentLabel(String? accentColor) {
+  return accentPaletteById(accentColor).label;
 }
 
 /// 整宽菜单项：图标 + 标题 + 摘要 + chevron。

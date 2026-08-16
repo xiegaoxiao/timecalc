@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/database.dart';
 import '../../../core/providers/app_refresh.dart';
 import '../../../core/providers/clock_provider.dart';
-import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/accent_palette.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../services/countdown_service.dart';
 import '../../../services/duration_format.dart';
@@ -281,6 +281,8 @@ class _GoalHeader extends ConsumerWidget {
       CountdownPhase.terminated => Icons.flag_outlined,
     };
     // 头部 hero：品牌渐变背景 + 白字（与今天页倒计时卡同款，视觉呼应）。
+    // 渐变取当前色系（绿色/蓝色主题各自变化，2026-08-16 解耦）。
+    final accent = Theme.of(context).extension<AccentPalette>()!;
     final onHero = Colors.white;
     final onHeroSoft = Colors.white.withValues(alpha: 0.88);
 
@@ -290,7 +292,7 @@ class _GoalHeader extends ConsumerWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: const [kTimeCalcBrandDeep, kTimeCalcBrandBright],
+          colors: [accent.brandDeep, accent.brandBright],
         ),
       ),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),

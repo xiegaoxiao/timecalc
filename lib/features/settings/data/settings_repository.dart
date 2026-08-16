@@ -90,6 +90,15 @@ class SettingsRepository {
     ));
   }
 
+  /// 更新主题色系（2026-08-16 色系解耦，schema v14）。
+  ///
+  /// [accentColor] 取值见 `AccentPalette.id`：`green`/`blue`。
+  Future<void> updateAccentColor(String accentColor) {
+    return _update(SettingsCompanion(
+      accentColor: Value(accentColor),
+    ));
+  }
+
   Future<void> _update(SettingsCompanion companion) {
     return _db.transaction(() async {
       // 更新前确保默认行存在（极端场景：从未调用过 get 直接更新）。

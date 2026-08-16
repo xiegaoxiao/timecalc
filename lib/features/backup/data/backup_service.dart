@@ -457,6 +457,7 @@ class BackupService {
         final previousLocalBackupFolder = previous?.localBackupFolder;
         final previousLastAutoBackupAt = previous?.lastAutoBackupAt;
         final previousThemeMode = previous?.themeMode;
+        final previousAccentColor = previous?.accentColor;
         await _db.delete(_db.settings).go();
         await _db.into(_db.settings).insert(
               _codec.settingsFromJson(
@@ -476,6 +477,8 @@ class BackupService {
                       ),
                 themeMode: payload.settings.first['themeMode'] as String? ??
                     previousThemeMode,
+                accentColor: payload.settings.first['accentColor'] as String? ??
+                    previousAccentColor,
               ),
             );
       } else {
@@ -494,6 +497,7 @@ class BackupService {
                   localBackupFolder: existing.localBackupFolder,
                   lastAutoBackupAt: existing.lastAutoBackupAt,
                   themeMode: existing.themeMode,
+                  accentColor: existing.accentColor,
                 ),
                 mode: InsertMode.insertOrReplace,
               );

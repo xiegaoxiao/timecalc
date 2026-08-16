@@ -151,4 +151,26 @@ void main() {
     expect(settings.dailyAvailableMinutes, 90);
     expect(settings.themeMode, 'dark');
   });
+
+  test('默认主题色系为绿色（2026-08-16 色系解耦，schema v14）', () async {
+    final settings = await repo.get();
+    expect(settings.accentColor, 'green');
+  });
+
+  test('更新主题色系为蓝色并持久化', () async {
+    await repo.updateAccentColor('blue');
+    expect((await repo.get()).accentColor, 'blue');
+    await repo.updateAccentColor('green');
+    expect((await repo.get()).accentColor, 'green');
+  });
+
+  test('主题色系与主题模式/计划偏好互不覆盖', () async {
+    await repo.updateThemeMode('dark');
+    await repo.updateAccentColor('blue');
+    await repo.updateDailyAvailableMinutes(90);
+    final settings = await repo.get();
+    expect(settings.themeMode, 'dark');
+    expect(settings.accentColor, 'blue');
+    expect(settings.dailyAvailableMinutes, 90);
+  });
 }

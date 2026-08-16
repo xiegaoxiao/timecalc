@@ -219,6 +219,7 @@ class BackupCodec {
     String? localBackupFolder,
     DateTime? lastAutoBackupAt,
     String? themeMode,
+    String? accentColor,
   }) {
     final now = DateTime.now().toUtc();
     return SettingsCompanion.insert(
@@ -243,6 +244,10 @@ class BackupCodec {
       themeMode: themeMode == null
           ? const Value.absent()
           : Value(themeMode),
+      // 色系同 themeMode：覆盖恢复保留本设备选择（2026-08-16）。
+      accentColor: accentColor == null
+          ? const Value.absent()
+          : Value(accentColor),
       createdAt: now,
       updatedAt: now,
     );

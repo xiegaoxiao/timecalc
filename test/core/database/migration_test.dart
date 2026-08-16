@@ -1038,10 +1038,12 @@ void main() {
     schema.close();
   });
 
-  test('v14 库降级到 v13：清理 AI 与 WebDAV 残留结构，数据保留（回退兼容）', () async {
-    // 模拟「AI 功能已移除且 WebDAV 已移除，但本地库仍停在 v14」：先建 v12
-    // 库并写入数据（v12 含 webdav/sync 6 列），再手工加回 AI 残留结构
-    // （ai_providers 表 + settings 的 ai_* 列），并把 user_version 提到 14。
+  test('v15 库降级到 v14：清理高版本残留结构，数据保留（回退兼容）', () async {
+    // 模拟「代码回退」：v14（当前）以上版本（如带 AI 功能的 v15+）新增了
+    // 我们不认识的结构，本地库却停在该版本。先建 v12 库并写入数据
+    // （v12 含 webdav/sync 6 列），再手工加回 AI 残留结构
+    // （ai_providers 表 + settings 的 ai_* 列）与 accent_color 列，
+    // 并把 user_version 提到 15。
     final verifier = SchemaVerifier(GeneratedHelper());
     final schema = await verifier.schemaAt(12);
     final raw = schema.rawDatabase;
@@ -1070,10 +1072,13 @@ void main() {
     ]) {
       raw.execute('ALTER TABLE settings ADD COLUMN $column TEXT');
     }
-    raw.execute('PRAGMA user_version = 14');
+    raw.execute(
+      "ALTER TABLE settings ADD COLUMN accent_color TEXT NOT NULL DEFAULT 'green'",
+    );
+    raw.execute('PRAGMA user_version = 15');
 
-    // 真实 AppDatabase（schemaVersion=13）打开 v14 库：onUpgrade 检测到
-    // 降级，清理 AI 与 WebDAV 残留并让 drift 把版本写回 13。
+    // 真实 AppDatabase（schemaVersion=14）打开 v15 库：onUpgrade 检测到
+    // 降级，清理高版本不认识的结构并让 drift 把版本写回 14。
     final downgraded = AppDatabase(schema.newConnection());
     await downgraded.customSelect('SELECT 1').get();
 
@@ -1081,7 +1086,7 @@ void main() {
     final version = await downgraded
         .customSelect('PRAGMA user_version')
         .get();
-    expect(version.single.read<int>('user_version'), 13);
+    expect(version.single.read<int>('user_version'), 14);
 
     // AI 残留结构已清理。
     final tables = await downgraded
@@ -1101,6 +1106,8 @@ void main() {
     expect(settingColumns, isNot(contains('webdav_sync_enabled')));
     expect(settingColumns, isNot(contains('last_pushed_seq')));
     expect(settingColumns, isNot(contains('last_synced_at')));
+    // accent_color 是 v14 认识的列，降级后保留。
+    expect(settingColumns, contains('accent_color'));
 
     // 原数据全部保留。
     final goal = await (downgraded.select(downgraded.goals)
@@ -1135,13 +1142,15 @@ void main() {
     );
 
     final upgraded = AppDatabase(schema.newConnection());
-    await verifier.migrateAndValidate(upgraded, 13);
+    // 迁移到最新版本（v14）：v13 步骤删除 WebDAV 列，v14 步骤补 accent_color。
+    await verifier.migrateAndValidate(upgraded, 14);
 
     // v12 数据保留。
     final goal = await (upgraded.select(upgraded.goals)..where((g) => g.id.equals(1))).getSingle();
     expect(goal.title, 'v12 目标');
     final setting = await upgraded.select(upgraded.settings).getSingle();
     expect(setting.dailyAvailableMinutes, 120);
+    expect(setting.accentColor, 'green'); // v14 列默认值
 
     // v13：WebDAV/同步 6 列全部删除。
     final columns = await _columns(upgraded, 'settings');
@@ -1151,9 +1160,10 @@ void main() {
     expect(columns, isNot(contains('webdav_sync_enabled')));
     expect(columns, isNot(contains('last_pushed_seq')));
     expect(columns, isNot(contains('last_synced_at')));
-    // 其余设置列保留。
+    // 其余设置列保留（含 v14 新增的 accent_color）。
     expect(columns, containsAll([
       'theme_mode',
+      'accent_color',
       'auto_backup_enabled',
       'close_behavior',
       'local_backup_folder',
@@ -1164,7 +1174,7 @@ void main() {
     schema.close();
   });
 
-  test('schema v1 -> v13：迁移成功保留数据，WebDAV/同步列已删除（完整链路）', () async {
+  test('schema v1 -> v14：迁移成功保留数据，WebDAV/同步列已删除（完整链路）', () async {
     final verifier = SchemaVerifier(GeneratedHelper());
     final schema = await verifier.schemaAt(1);
     final raw = schema.rawDatabase;
@@ -1180,7 +1190,7 @@ void main() {
     );
 
     final upgraded = AppDatabase(schema.newConnection());
-    await verifier.migrateAndValidate(upgraded, 13);
+    await verifier.migrateAndValidate(upgraded, 14);
 
     final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
     expect(task.title, '迁移任务');
@@ -1196,11 +1206,76 @@ void main() {
 
     final columns = await _columns(upgraded, 'settings');
     expect(columns, contains('theme_mode')); // v12 列随链路保留
+    expect(columns, contains('accent_color')); // v14 列随链路保留
     expect(columns, contains('auto_backup_enabled')); // v9 列随链路保留
     expect(columns, contains('close_behavior')); // v6 列随链路保留
     // 完整链路到 v13：webdav/sync 列在 v11/v9 加入后于 v13 被删除。
     expect(columns, isNot(contains('webdav_sync_enabled')));
     expect(columns, isNot(contains('webdav_url')));
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('schema v13 -> v14：Settings 增加 accent_color 列，v13 数据保留（2026-08-16 色系）', () async {
+    final verifier = SchemaVerifier(GeneratedHelper());
+    // 以 v13 结构初始化数据库并写入数据（含带 theme_mode 的 settings 行）。
+    final schema = await verifier.schemaAt(13);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['v13 目标', '2026-08-05', 1750000000, 1750000000],
+    );
+    raw.execute(
+      "INSERT INTO settings (id, daily_available_minutes, available_weekdays, "
+      "theme_mode, created_at, updated_at) "
+      "VALUES (1, 120, '1,2,3,4,5,6,7', 'dark', 1750000000, 1750000000)",
+    );
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 14);
+
+    // v13 数据保留（theme_mode 等既有列不回填）。
+    final goal = await (upgraded.select(upgraded.goals)..where((g) => g.id.equals(1))).getSingle();
+    expect(goal.title, 'v13 目标');
+    final setting = await upgraded.select(upgraded.settings).getSingle();
+    expect(setting.themeMode, 'dark');
+    // v14：新增 accent_color，旧行走 DB 默认值 green。
+    expect(setting.accentColor, 'green');
+    final columns = await _columns(upgraded, 'settings');
+    expect(columns, contains('accent_color'));
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('半迁移状态：v13 版本号但 accent_color 列已存在时迁移可重复成功（幂等回归）', () async {
+    // v13 库手工加过 accent_color（模拟半迁移/重复升级：列已加但版本号
+    // 停在 13），并写入蓝色选择：v13 -> v14 迁移的 addColumnIfMissing 对
+    // 已存在的列跳过，已写入的数据不被覆盖（默认 'green' 不重置为回填）。
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(13);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      "ALTER TABLE settings ADD COLUMN accent_color TEXT NOT NULL DEFAULT 'green'",
+    );
+    raw.execute(
+      "INSERT INTO settings (id, accent_color, created_at, updated_at) "
+      "VALUES (1, 'blue', 1750000000, 1750000000)",
+    );
+    raw.execute('PRAGMA user_version = 13');
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 14);
+
+    final version = await upgraded
+        .customSelect('PRAGMA user_version')
+        .get();
+    expect(version.single.read<int>('user_version'), 14);
+    // 已存在的列不被覆盖（保持半迁移时写入的 blue，而非重置为默认）。
+    final setting = await upgraded.select(upgraded.settings).getSingle();
+    expect(setting.accentColor, 'blue');
 
     await upgraded.close();
     schema.close();

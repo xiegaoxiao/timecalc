@@ -3297,6 +3297,18 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
     requiredDuringInsert: false,
     defaultValue: const Constant('system'),
   );
+  static const VerificationMeta _accentColorMeta = const VerificationMeta(
+    'accentColor',
+  );
+  @override
+  late final GeneratedColumn<String> accentColor = GeneratedColumn<String>(
+    'accent_color',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('green'),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -3329,6 +3341,7 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
     localBackupFolder,
     lastAutoBackupAt,
     themeMode,
+    accentColor,
     createdAt,
     updatedAt,
   ];
@@ -3407,6 +3420,15 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
         themeMode.isAcceptableOrUnknown(data['theme_mode']!, _themeModeMeta),
       );
     }
+    if (data.containsKey('accent_color')) {
+      context.handle(
+        _accentColorMeta,
+        accentColor.isAcceptableOrUnknown(
+          data['accent_color']!,
+          _accentColorMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -3464,6 +3486,10 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
         DriftSqlType.string,
         data['${effectivePrefix}theme_mode'],
       )!,
+      accentColor: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}accent_color'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -3520,6 +3546,13 @@ class Setting extends DataClass implements Insertable<Setting> {
   /// `light` / `dark`。设备级外观配置（同 close_behavior），不进入业务
   /// 数据备份（FR-9.5），覆盖恢复/同步拉取时保留本设备选择。
   final String themeMode;
+
+  /// 主题色系（2026-08-16 色系解耦，schema v14 引入）。
+  ///
+  /// 取值见 [AccentPalette.id]：`green`（默认）或 `blue`。设备级外观配置
+  /// （同 theme_mode），不进入业务数据备份（FR-9.5），覆盖恢复时保留
+  /// 本设备选择。
+  final String accentColor;
   final DateTime createdAt;
   final DateTime updatedAt;
   const Setting({
@@ -3531,6 +3564,7 @@ class Setting extends DataClass implements Insertable<Setting> {
     this.localBackupFolder,
     this.lastAutoBackupAt,
     required this.themeMode,
+    required this.accentColor,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -3549,6 +3583,7 @@ class Setting extends DataClass implements Insertable<Setting> {
       map['last_auto_backup_at'] = Variable<DateTime>(lastAutoBackupAt);
     }
     map['theme_mode'] = Variable<String>(themeMode);
+    map['accent_color'] = Variable<String>(accentColor);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -3568,6 +3603,7 @@ class Setting extends DataClass implements Insertable<Setting> {
           ? const Value.absent()
           : Value(lastAutoBackupAt),
       themeMode: Value(themeMode),
+      accentColor: Value(accentColor),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -3593,6 +3629,7 @@ class Setting extends DataClass implements Insertable<Setting> {
         json['lastAutoBackupAt'],
       ),
       themeMode: serializer.fromJson<String>(json['themeMode']),
+      accentColor: serializer.fromJson<String>(json['accentColor']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -3609,6 +3646,7 @@ class Setting extends DataClass implements Insertable<Setting> {
       'localBackupFolder': serializer.toJson<String?>(localBackupFolder),
       'lastAutoBackupAt': serializer.toJson<DateTime?>(lastAutoBackupAt),
       'themeMode': serializer.toJson<String>(themeMode),
+      'accentColor': serializer.toJson<String>(accentColor),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -3623,6 +3661,7 @@ class Setting extends DataClass implements Insertable<Setting> {
     Value<String?> localBackupFolder = const Value.absent(),
     Value<DateTime?> lastAutoBackupAt = const Value.absent(),
     String? themeMode,
+    String? accentColor,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => Setting(
@@ -3638,6 +3677,7 @@ class Setting extends DataClass implements Insertable<Setting> {
         ? lastAutoBackupAt.value
         : this.lastAutoBackupAt,
     themeMode: themeMode ?? this.themeMode,
+    accentColor: accentColor ?? this.accentColor,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -3663,6 +3703,9 @@ class Setting extends DataClass implements Insertable<Setting> {
           ? data.lastAutoBackupAt.value
           : this.lastAutoBackupAt,
       themeMode: data.themeMode.present ? data.themeMode.value : this.themeMode,
+      accentColor: data.accentColor.present
+          ? data.accentColor.value
+          : this.accentColor,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -3679,6 +3722,7 @@ class Setting extends DataClass implements Insertable<Setting> {
           ..write('localBackupFolder: $localBackupFolder, ')
           ..write('lastAutoBackupAt: $lastAutoBackupAt, ')
           ..write('themeMode: $themeMode, ')
+          ..write('accentColor: $accentColor, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -3695,6 +3739,7 @@ class Setting extends DataClass implements Insertable<Setting> {
     localBackupFolder,
     lastAutoBackupAt,
     themeMode,
+    accentColor,
     createdAt,
     updatedAt,
   );
@@ -3710,6 +3755,7 @@ class Setting extends DataClass implements Insertable<Setting> {
           other.localBackupFolder == this.localBackupFolder &&
           other.lastAutoBackupAt == this.lastAutoBackupAt &&
           other.themeMode == this.themeMode &&
+          other.accentColor == this.accentColor &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -3723,6 +3769,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
   final Value<String?> localBackupFolder;
   final Value<DateTime?> lastAutoBackupAt;
   final Value<String> themeMode;
+  final Value<String> accentColor;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   const SettingsCompanion({
@@ -3734,6 +3781,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     this.localBackupFolder = const Value.absent(),
     this.lastAutoBackupAt = const Value.absent(),
     this.themeMode = const Value.absent(),
+    this.accentColor = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
@@ -3746,6 +3794,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     this.localBackupFolder = const Value.absent(),
     this.lastAutoBackupAt = const Value.absent(),
     this.themeMode = const Value.absent(),
+    this.accentColor = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
   }) : createdAt = Value(createdAt),
@@ -3759,6 +3808,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     Expression<String>? localBackupFolder,
     Expression<DateTime>? lastAutoBackupAt,
     Expression<String>? themeMode,
+    Expression<String>? accentColor,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
   }) {
@@ -3772,6 +3822,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
       if (localBackupFolder != null) 'local_backup_folder': localBackupFolder,
       if (lastAutoBackupAt != null) 'last_auto_backup_at': lastAutoBackupAt,
       if (themeMode != null) 'theme_mode': themeMode,
+      if (accentColor != null) 'accent_color': accentColor,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
@@ -3786,6 +3837,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     Value<String?>? localBackupFolder,
     Value<DateTime?>? lastAutoBackupAt,
     Value<String>? themeMode,
+    Value<String>? accentColor,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
   }) {
@@ -3799,6 +3851,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
       localBackupFolder: localBackupFolder ?? this.localBackupFolder,
       lastAutoBackupAt: lastAutoBackupAt ?? this.lastAutoBackupAt,
       themeMode: themeMode ?? this.themeMode,
+      accentColor: accentColor ?? this.accentColor,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -3833,6 +3886,9 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     if (themeMode.present) {
       map['theme_mode'] = Variable<String>(themeMode.value);
     }
+    if (accentColor.present) {
+      map['accent_color'] = Variable<String>(accentColor.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -3853,6 +3909,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
           ..write('localBackupFolder: $localBackupFolder, ')
           ..write('lastAutoBackupAt: $lastAutoBackupAt, ')
           ..write('themeMode: $themeMode, ')
+          ..write('accentColor: $accentColor, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -7422,6 +7479,7 @@ typedef $$SettingsTableCreateCompanionBuilder =
       Value<String?> localBackupFolder,
       Value<DateTime?> lastAutoBackupAt,
       Value<String> themeMode,
+      Value<String> accentColor,
       required DateTime createdAt,
       required DateTime updatedAt,
     });
@@ -7435,6 +7493,7 @@ typedef $$SettingsTableUpdateCompanionBuilder =
       Value<String?> localBackupFolder,
       Value<DateTime?> lastAutoBackupAt,
       Value<String> themeMode,
+      Value<String> accentColor,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
     });
@@ -7485,6 +7544,11 @@ class $$SettingsTableFilterComposer
 
   ColumnFilters<String> get themeMode => $composableBuilder(
     column: $table.themeMode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get accentColor => $composableBuilder(
+    column: $table.accentColor,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7548,6 +7612,11 @@ class $$SettingsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get accentColor => $composableBuilder(
+    column: $table.accentColor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -7604,6 +7673,11 @@ class $$SettingsTableAnnotationComposer
   GeneratedColumn<String> get themeMode =>
       $composableBuilder(column: $table.themeMode, builder: (column) => column);
 
+  GeneratedColumn<String> get accentColor => $composableBuilder(
+    column: $table.accentColor,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -7647,6 +7721,7 @@ class $$SettingsTableTableManager
                 Value<String?> localBackupFolder = const Value.absent(),
                 Value<DateTime?> lastAutoBackupAt = const Value.absent(),
                 Value<String> themeMode = const Value.absent(),
+                Value<String> accentColor = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => SettingsCompanion(
@@ -7658,6 +7733,7 @@ class $$SettingsTableTableManager
                 localBackupFolder: localBackupFolder,
                 lastAutoBackupAt: lastAutoBackupAt,
                 themeMode: themeMode,
+                accentColor: accentColor,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),
@@ -7671,6 +7747,7 @@ class $$SettingsTableTableManager
                 Value<String?> localBackupFolder = const Value.absent(),
                 Value<DateTime?> lastAutoBackupAt = const Value.absent(),
                 Value<String> themeMode = const Value.absent(),
+                Value<String> accentColor = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
               }) => SettingsCompanion.insert(
@@ -7682,6 +7759,7 @@ class $$SettingsTableTableManager
                 localBackupFolder: localBackupFolder,
                 lastAutoBackupAt: lastAutoBackupAt,
                 themeMode: themeMode,
+                accentColor: accentColor,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),

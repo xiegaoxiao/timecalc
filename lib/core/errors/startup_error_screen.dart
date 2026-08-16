@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../theme/app_theme.dart';
+import '../theme/accent_palette.dart';
 import 'diagnostics_service.dart';
 
 /// 启动错误屏（PRD §8：数据库异常 → 提示从备份恢复或导出诊断信息）。
@@ -37,7 +37,11 @@ class _StartupErrorAppState extends ConsumerState<StartupErrorApp> {
     return MaterialApp(
       title: 'TimeCalc 时间计算器',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(useMaterial3: true, colorSchemeSeed: kTimeCalcSeedColor),
+      // 无 settings 可读（数据库都打不开），用默认绿色色系。
+      theme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: greenAccent.seed,
+      ),
       home: Scaffold(
         body: Builder(
           // Builder 位于 MaterialApp 内部，ScaffoldMessenger 可用。

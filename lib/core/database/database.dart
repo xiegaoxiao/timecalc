@@ -108,6 +108,8 @@ Future<void> downgradeCleanup(Migrator m) async {
 ///     webdav_username/webdav_password_saved（v9 引入）与 webdav_sync_enabled/
 ///     last_pushed_seq/last_synced_at（v11 引入）6 列，回到纯本地单机。
 ///     删列用幂等 dropColumnIfExists（列不存在跳过），迁移可重复/可恢复。
+/// v14：Settings 增加 accent_color（2026-08-16 主题色系：green/blue，
+///     设备级外观配置，不进入业务备份；带默认值旧行免回填）。
 /// 后续 schema 变更必须提供 migration 与 migration 测试（SOP S3、NFR-2）。
 @DriftDatabase(
   tables: [
@@ -127,7 +129,7 @@ class AppDatabase extends _$AppDatabase {
   factory AppDatabase.open() => AppDatabase(driftDatabase(name: 'timecalc'));
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -314,6 +316,16 @@ class AppDatabase extends _$AppDatabase {
           ]) {
             await dropColumnIfExists(m, 'settings', column);
           }
+        },
+        from13To14: (m, schema) async {
+          // v13 -> v14：Settings 增加主题色系 accent_color（green/blue，
+          // 2026-08-16 色系解耦）。带默认值旧行免回填；加列用幂等 helper
+          // 防半迁移重复（与 v11->v12 themeMode 同模式）。
+          await addColumnIfMissing(
+            m,
+            schema.settings,
+            schema.settings.accentColor,
+          );
         },
       )(migrator, from, to);
     },

@@ -561,6 +561,26 @@ void main() {
       final settings = await db.select(db.settings).getSingle();
       expect(settings.themeMode, 'dark');
     });
+
+    test('覆盖恢复后主题色系被保留（2026-08-16 回归）', () async {
+      await seedBaseData();
+      // 当前色系（设备级外观配置，不进备份文件）。
+      await db.into(db.settings).insertOnConflictUpdate(
+            SettingsCompanion.insert(
+              id: const Value(1),
+              accentColor: const Value('blue'),
+              createdAt: DateTime.utc(2026, 1, 1),
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+      final file = tempFile('backup.timecalc');
+      await backup.exportBackup(file);
+
+      // 覆盖恢复：业务数据被替换，色系选择不被重置回默认绿色。
+      await backup.restoreBackup(file, mode: RestoreMode.overwrite);
+      final settings = await db.select(db.settings).getSingle();
+      expect(settings.accentColor, 'blue');
+    });
   });
 
   group('重置数据（resetData）', () {
@@ -641,6 +661,8 @@ void main() {
       expect(rebuilt.closeBehavior, CloseBehavior.exit);
       expect(rebuilt.autoBackupEnabled, isFalse);
       expect(rebuilt.themeMode, 'system');
+      // 2026-08-16 色系解耦：重置后默认重建为绿色。
+      expect(rebuilt.accentColor, 'green');
     });
 
     test('两种模式的安全副本均可往返恢复原数据（FR-9.3 语义）', () async {
