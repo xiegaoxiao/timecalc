@@ -286,21 +286,24 @@ class ProgressPage extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: const [
-              // 计划偏好入口卡：偏好是解读进度（今日概览完成率/剩余工作量）
-              // 的上下文，点击进入独立编辑页（设置页已移除该区块）。
-              _PlanPreferenceEntryCard(),
-              SizedBox(height: 12),
+              // 数据开场（2026-08-16 编排）：概览/燃尽/热力图/耗时图依次
+              // 呈现，「进度」页以数据为主角；设置类入口沉底（原首屏第一张
+              // 是计划偏好入口卡，抢了数据卡的主角位）。
               _TodayOverviewCard(),
               SizedBox(height: 12),
               // 空态 CTA（无可归属目标时不显示按钮）：燃尽/耗时图需要
               // 「带预估时长」的数据，点「去设置预估时长」跳转到计划页排期，
-              // 语义比「随便加个任务」更贴合图表；热力图无完成记录时
+              // 语义比「随便加一个任务」更贴合图表；热力图无完成记录时
               // 渲染全灰网格，不放引导按钮。
               _BurndownSection(ctaLabel: '去设置预估时长'),
               SizedBox(height: 12),
               _HeatmapSection(),
               SizedBox(height: 12),
               _GanttSection(ctaLabel: '去设置预估时长'),
+              SizedBox(height: 12),
+              // 计划偏好入口卡：偏好是解读进度（今日概览完成率/剩余工作量）
+              // 的上下文，点击进入独立编辑页（设置页已移除该区块）。
+              _PlanPreferenceEntryCard(),
               SizedBox(height: 12),
               // 数据统计说明：默认折叠，点击展开（不霸占底部留白）。
               _StatNote(),
@@ -505,17 +508,14 @@ class _PlanPreferenceEntryCard extends ConsumerWidget {
   }
 }
 
-/// 今日概览卡（FR-7.1）。
+/// 今日概览卡（FR-7.1，2026-08-16 仪表盘化：与今天页负载卡同构）。
 ///
-/// 展示今日完成数/总数、今日已完成预估时长与目标剩余工作量，
-/// 数字 + 图标文本表达，不只依赖颜色。三项数据用 Wrap 排布：
-/// 宽屏下三列并排撑满卡片宽度，窄屏下自动换行不挤压。
-///
-/// 无数据语义（与「计划已满但全部完成」区分，避免 0 误导）：
-/// - 今日没有任务（totalCount==0）：已完成任务 → `-- / --`、已完成时长
-///   → `-- 分`；
-/// - 应用完全没有任务（[hasAnyTask] 为 false）：目标剩余工作量 → `-- 分`
-///   （「今天本来就没有计划」而非「完美完成」）。
+/// 左侧进度环（今日完成 N/M）+ 右侧两格指标（已完成时长 / 目标剩余
+/// 工作量）；数值等宽（tabular figures），完成数/总数由环承载，不再
+/// 单列一格。无数据语义（与「计划已满但全部完成」区分，避免 0 误导）：
+/// - 今日没有任务（totalCount==0）：环置 0、中心 `--`、已完成时长
+///   `-- 分`；
+/// - 应用完全没有任务（[hasAnyTask] 为 false）：目标剩余工作量 `-- 分`。
 class _TodayOverviewCard extends ConsumerWidget {
   const _TodayOverviewCard();
 
@@ -542,7 +542,9 @@ class _TodayOverviewCard extends ConsumerWidget {
     final remainingMinutes = data.remainingMinutes;
     final hasAnyTask = data.hasAnyTask;
 
+    final scheme = Theme.of(context).colorScheme;
     final hasTodayTask = stats.totalCount > 0;
+    final progress = hasTodayTask ? stats.doneCount / stats.totalCount : 0.0;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -551,48 +553,90 @@ class _TodayOverviewCard extends ConsumerWidget {
           children: [
             const SectionHeader(icon: Icons.insights, title: '今日概览'),
             const SizedBox(height: 12),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                // 三项等宽 + 两项间距，恰好铺满卡片内容区。
-                const spacing = 16.0;
-                final itemWidth = (constraints.maxWidth - spacing * 2) / 3;
-                return Wrap(
-                  spacing: spacing,
-                  runSpacing: 12,
-                  children: [
-                    SizedBox(
-                      width: itemWidth,
-                      child: _StatItem(
-                        icon: Icons.check_circle_outline,
-                        label: '已完成任务',
-                        value: hasTodayTask
-                            ? '${stats.doneCount}/${stats.totalCount}'
-                            : '-- / --',
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // 今日完成进度环：与今天页负载卡同款（品牌主色圆头弧 +
+                // 320ms 平滑过渡 + 中心 N/M 等宽数字）。
+                SizedBox(
+                  width: 72,
+                  height: 72,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Positioned.fill(
+                        child: TweenAnimationBuilder<double>(
+                          tween: Tween(end: progress),
+                          duration: const Duration(milliseconds: 320),
+                          curve: Curves.easeOutCubic,
+                          builder: (context, value, _) =>
+                              CircularProgressIndicator(
+                                value: hasTodayTask ? value : 0,
+                                strokeWidth: 6,
+                                strokeCap: StrokeCap.round,
+                                backgroundColor:
+                                    scheme.surfaceContainerHighest,
+                                valueColor: AlwaysStoppedAnimation(
+                                  scheme.primary,
+                                ),
+                              ),
+                        ),
                       ),
-                    ),
-                    SizedBox(
-                      width: itemWidth,
-                      child: _StatItem(
-                        icon: Icons.timer_outlined,
-                        label: '已完成时长',
-                        value: hasTodayTask
-                            ? DurationFormat.minutes(stats.doneMinutes)
-                            : '-- 分',
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // FittedBox 防系统放大字号撑爆 72px 固定环。
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              hasTodayTask
+                                  ? '${stats.doneCount}/${stats.totalCount}'
+                                  : '--',
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
+                            ),
+                          ),
+                          Text(
+                            '今日完成',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: scheme.outline,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    SizedBox(
-                      width: itemWidth,
-                      child: _StatItem(
-                        icon: Icons.flag_outlined,
-                        label: '目标剩余工作量',
-                        value: hasAnyTask
-                            ? DurationFormat.minutes(remainingMinutes)
-                            : '-- 分',
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _MetricCell(
+                          label: '已完成时长',
+                          value: hasTodayTask
+                              ? DurationFormat.minutes(stats.doneMinutes)
+                              : '-- 分',
+                        ),
                       ),
-                    ),
-                  ],
-                );
-              },
+                      Expanded(
+                        child: _MetricCell(
+                          label: '目标剩余工作量',
+                          value: hasAnyTask
+                              ? DurationFormat.minutes(remainingMinutes)
+                              : '-- 分',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -601,58 +645,37 @@ class _TodayOverviewCard extends ConsumerWidget {
   }
 }
 
-class _StatItem extends StatelessWidget {
-  const _StatItem({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
+/// 概览指标格：小标签 + 等宽数字数值（2026-08-16 仪表盘化，与今天页
+/// `_MetricCell` 同款视觉语言）。
+class _MetricCell extends StatelessWidget {
+  const _MetricCell({required this.label, required this.value});
 
-  final IconData icon;
   final String label;
   final String value;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 15, color: scheme.primary),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                ),
-              ),
-            ],
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: scheme.outline),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 2),
           Text(
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  height: 1.1,
-                  fontSize: 22,
-                ),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
           ),
         ],
       ),
@@ -774,6 +797,8 @@ class _BurndownSection extends ConsumerWidget {
                       fontWeight: currentRemaining == null
                           ? FontWeight.w400
                           : FontWeight.w700,
+                      // 等宽数字：剩余量逐日变化时数字列对齐不抖动。
+                      fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
                 ],
@@ -1529,7 +1554,7 @@ class _GanttSection extends ConsumerWidget {
             const SectionHeader(
               icon: Icons.bar_chart_outlined,
               title: '任务耗时图',
-              subtitle: '按周展示未来计划与已完成时长（分钟）',
+              subtitle: '按周展示未来计划与已完成时长',
             ),
             const SizedBox(height: 12),
             if (!hasAnyWeek)

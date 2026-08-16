@@ -31,6 +31,9 @@ void main() {
   Future<void> openPreference(WidgetTester tester) async {
     await tester.tap(find.text('进度'));
     await tester.pumpAndSettle();
+    // 入口卡在进度页底部（2026-08-16 编排），先滚动可见再点击。
+    await tester.ensureVisible(find.text('计划偏好'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('计划偏好'));
     await tester.pumpAndSettle();
   }

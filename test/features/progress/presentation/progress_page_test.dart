@@ -311,7 +311,7 @@ void main() {
     await pumpApp(tester);
     await openProgress(tester);
 
-    // 今日概览三项数据同一行横向排布（宽屏下不换行）。
+    // 今日概览（2026-08-16 仪表盘化：进度环 + 两指标格）随窗口拉伸。
     final overviewCard = find.widgetWithText(Card, '今日概览');
     expect(overviewCard, findsOneWidget);
     final overviewBox = tester.getRect(overviewCard);
@@ -362,14 +362,16 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('进度页顶部展示计划偏好入口卡（摘要 + 点击进入独立页）', (tester) async {
+  testWidgets('计划偏好入口卡沉底展示（摘要 + 点击进入独立页）', (tester) async {
     await goals.create(title: '考研', deadlineDate: '2026-12-31');
 
     await pumpApp(tester);
     await openProgress(tester);
 
-    // 入口卡默认摘要：每日可用 2 小时 · 每周 7 天。
-    expect(find.text('计划偏好'), findsOneWidget);
+    // 入口卡默认摘要：每日可用 2 小时 · 每周 7 天（2026-08-16 编排：
+    // 移到页面底部统计说明旁，滚动后可见）。
+    await tester.ensureVisible(find.text('计划偏好'));
+    await tester.pumpAndSettle();
     expect(find.text('每日可用 2 小时 · 每周 7 天'), findsOneWidget);
 
     // 点击进入独立偏好编辑页。
@@ -493,13 +495,14 @@ void main() {
 
   testWidgets('无任务时今日概览显示 -- 而非 0（区分「没计划」与「已完成」）', (tester) async {
     await goals.create(title: '考研', deadlineDate: '2026-12-31');
-    // 无任何任务：今日概览三项均显示「无数据」占位。
+    // 无任何任务：今日概览各指标均显示「无数据」占位。
     await pumpApp(tester);
     await openProgress(tester);
 
     final overviewCard = find.widgetWithText(Card, '今日概览');
+    // 进度环中心显示 `--`（2026-08-16 仪表盘化：完成数/总数由环承载）。
     expect(
-      find.descendant(of: overviewCard, matching: find.text('-- / --')),
+      find.descendant(of: overviewCard, matching: find.text('--')),
       findsOneWidget,
     );
     expect(
