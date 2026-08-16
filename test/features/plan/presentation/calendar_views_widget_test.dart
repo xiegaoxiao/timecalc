@@ -119,6 +119,67 @@ void main() {
     expect(find.text('下周任务'), findsNothing);
   });
 
+  testWidgets('周视图选中格任务条可读：胶囊 onPrimary 覆盖层，不再浅底配 onPrimary 文字（回归 2026-08-16）', (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    // 今天（8/5 周三，默认选中）放 4 个任务：3 条进胶囊预览 + 1 条溢出。
+    for (final title in ['高数练习', '英语阅读', '政治刷题', '专业课复习']) {
+      await tasks.create(
+        goalId: goal.id,
+        title: title,
+        plannedDate: '2026-08-05',
+        estimatedMinutes: 30,
+      );
+    }
+    // 非选中日（8/4 周二）放 1 个任务：普通胶囊变体。
+    await tasks.create(
+      goalId: goal.id,
+      title: '昨日回顾',
+      plannedDate: '2026-08-04',
+      estimatedMinutes: 30,
+    );
+
+    await pumpApp(tester);
+    await openCalendar(tester);
+    await tester.tap(find.text('周'));
+    await tester.pumpAndSettle();
+
+    // 主题取自视图切换器（标题在周格胶囊与选日面板各出现一次，不能作锚点）。
+    final scheme = Theme.of(tester.element(find.text('年'))).colorScheme;
+
+    // 选中格（今天 8/5）胶囊文字（fontSize 10，区别于选日面板的完整
+    // TaskTile）应为 onPrimary，胶囊底为 onPrimary 半透明覆盖层——
+    // 此前是 surfaceContainerHigh 浅底 + onPrimary 文字，完全不可读。
+    final selectedTitle = tester
+        .widgetList<Text>(find.text('高数练习'))
+        .firstWhere((t) => t.style?.fontSize == 10);
+    expect(selectedTitle.style?.color, scheme.onPrimary);
+
+    final pill = tester
+        .widgetList<Container>(
+          find.ancestor(
+            of: find.text('高数练习'),
+            matching: find.byType(Container),
+          ),
+        )
+        .firstWhere((c) => c.constraints?.maxHeight == 16);
+    expect(
+      (pill.decoration as BoxDecoration).color,
+      scheme.onPrimary.withValues(alpha: 0.14),
+    );
+
+    // 溢出文案在选中格上跟随 onPrimary（灰字落在主色实底上对比不足）。
+    expect(
+      tester.widget<Text>(find.text('+1 项')).style?.color,
+      scheme.onPrimary.withValues(alpha: 0.8),
+    );
+
+    // 非选中格保持原配色：胶囊文字为格子前景色（onSurface）。
+    final unselectedTitle = tester
+        .widgetList<Text>(find.text('昨日回顾'))
+        .firstWhere((t) => t.style?.fontSize == 10);
+    expect(unselectedTitle.style?.color, scheme.onSurface);
+  });
+
   testWidgets('年视图：12 月格 + 月完成数 + 点月格下钻月视图', (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
     // 直接插入已完成任务并指定 completedAt（setDone 用真实时钟，

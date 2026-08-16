@@ -1208,6 +1208,7 @@ class _WeekGrid extends StatelessWidget {
                   child: _TaskPills(
                     tasks: dayTasks,
                     textColor: textColor,
+                    selected: isSelected,
                   ),
                 ),
               ),
@@ -1272,14 +1273,24 @@ class _CompletionBadge extends StatelessWidget {
 }
 
 /// 任务条预览：最多展示 [_WeekGrid._maxTaskPills] 条，超出显示 "+n"。
+///
+/// [selected] 为所在格是否选中（主色实心块）：普通格的胶囊是
+/// surfaceContainer 系浅/深底 + 格子前景色；选中格若沿用该底色，
+/// 文字却跟着格子变成 onPrimary，会出现「浅底白字」（暗色主题为
+/// 「深底深字」）完全不可读。选中时改用 onPrimary 半透明覆盖层胶囊，
+/// 与整格「实心主色 + onPrimary 内容」语言一致（2026-08-16 对比度修复）。
 class _TaskPills extends StatelessWidget {
   const _TaskPills({
     required this.tasks,
     required this.textColor,
+    this.selected = false,
   });
 
   final List<Task> tasks;
   final Color textColor;
+
+  /// 所在格是否选中（决定胶囊配色变体）。
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
@@ -1290,51 +1301,63 @@ class _TaskPills extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (final task in display)
-          Container(
-            height: _WeekGrid._pillHeight - 2,
-            margin: const EdgeInsets.only(bottom: 2),
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            decoration: BoxDecoration(
-              color: task.status == TaskStatus.done
-                  ? scheme.surfaceContainerHighest
-                  : scheme.surfaceContainerHigh,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            alignment: Alignment.centerLeft,
-            child: Row(
-              children: [
-                Icon(
-                  task.status == TaskStatus.done
-                      ? Icons.check_circle
-                      : Icons.circle,
-                  size: 8,
-                  color: task.status == TaskStatus.done
-                      ? scheme.outline
-                      : scheme.primary,
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    task.title,
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: textColor,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+          Builder(builder: (context) {
+            final done = task.status == TaskStatus.done;
+            final iconColor = selected
+                ? scheme.onPrimary.withValues(alpha: done ? 0.7 : 1.0)
+                : (done ? scheme.outline : scheme.primary);
+            return Container(
+              height: _WeekGrid._pillHeight - 2,
+              margin: const EdgeInsets.only(bottom: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: selected
+                    ? scheme.onPrimary.withValues(alpha: 0.14)
+                    : (done
+                          ? scheme.surfaceContainerHighest
+                          : scheme.surfaceContainerHigh),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              alignment: Alignment.centerLeft,
+              child: Row(
+                children: [
+                  Icon(
+                    done ? Icons.check_circle : Icons.circle,
+                    size: 8,
+                    color: iconColor,
                   ),
-                ),
-              ],
-            ),
-          ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      task.title,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: selected
+                            ? scheme.onPrimary.withValues(
+                                alpha: done ? 0.7 : 1.0,
+                              )
+                            : textColor,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
         if (overflow > 0)
           Padding(
             padding: const EdgeInsets.only(top: 2),
             child: Text(
               '+$overflow 项',
+              // 选中格上溢出文案同样跟随 onPrimary（onSurfaceVariant 灰
+              // 落在主色实底上对比不足）。
               style: TextStyle(
                 fontSize: 10,
-                color: scheme.onSurfaceVariant,
+                color: selected
+                    ? scheme.onPrimary.withValues(alpha: 0.8)
+                    : scheme.onSurfaceVariant,
               ),
             ),
           ),
