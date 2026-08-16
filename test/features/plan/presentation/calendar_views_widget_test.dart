@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -160,6 +161,40 @@ void main() {
     await tester.tap(find.text('2 月'));
     await tester.pumpAndSettle();
     expect(find.text('2026年2月'), findsOneWidget);
+  });
+
+  testWidgets('周视图勾选任务后即时刷新（回归：invalidatePlanData 补上 tasksByWeek）', (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    await tasks.create(
+      goalId: goal.id,
+      title: '周三任务',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 60,
+    );
+
+    await pumpApp(tester);
+    await openCalendar(tester);
+
+    // 切到周视图（8/3~8/9）。
+    await tester.tap(find.text('周'));
+    await tester.pumpAndSettle();
+    // 选中周三 8/5：任务出现在周格任务条预览 + 选日面板（两处）。
+    await tester.tap(find.text('5').first);
+    await tester.pumpAndSettle();
+    expect(find.text('周三任务'), findsWidgets);
+
+    // 勾选前：8/5 周格聚合 0/1。
+    expect(find.text('0/1'), findsOneWidget);
+
+    // 勾选完成。
+    await tester.tap(find.byType(Checkbox).first);
+    await tester.pumpAndSettle();
+
+    // 勾选后：8/5 周格聚合即时更新为 1/1。
+    // （此前 tasksByWeekProvider 未纳入失效清单，周视图在勾选后保持陈旧，
+    //   2026-08-15 审查 #4；invalidatePlanData 补上后此回归通过。）
+    expect(find.text('1/1'), findsOneWidget);
+    expect(find.text('0/1'), findsNothing);
   });
 
   testWidgets('「回到今天」从周/年视图回当前单元', (tester) async {

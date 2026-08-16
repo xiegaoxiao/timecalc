@@ -83,9 +83,6 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
 
     final goalsAsync = ref.watch(goalListProvider);
     final settingsAsync = ref.watch(settingsProvider);
-    final monthTasksAsync = ref.watch(tasksByMonthProvider(monthKey));
-    final weekTasksAsync = ref.watch(tasksByWeekProvider(weekKey));
-    final yearTasksAsync = ref.watch(tasksByYearProvider(_year));
     final selectedTasksAsync = ref.watch(tasksByDateProvider(_selectedDate));
 
     // 核心数据（目标/设置）：仅首次加载或出错时整页占位；此后刷新期间
@@ -121,26 +118,57 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
     final weekdays = SettingsRepository.decodeWeekdays(
       settings.availableWeekdays,
     );
-    // 月份任务：换月/刷新期间 valueOrNull 保留旧值（首次换到新月份时兜底
-    // 空表），网格始终渲染不塌陷；聚合只随已就绪数据重算。
-    final monthTasks = monthTasksAsync.valueOrNull ?? const <Task>[];
-    final weekTasks = weekTasksAsync.valueOrNull ?? const <Task>[];
-    final yearTasks = yearTasksAsync.valueOrNull ?? const <Task>[];
-    final monthAggregate = _load.calendarAggregate(
-      tasks: _monthHideCompleted
-          ? monthTasks.where((t) => t.status != TaskStatus.done).toList()
-          : monthTasks,
-      availableMinutes: settings.dailyAvailableMinutes,
-      availableWeekdays: weekdays,
-    );
-    final weekAggregate = _load.calendarAggregate(
-      tasks: weekTasks,
-      availableMinutes: settings.dailyAvailableMinutes,
-      availableWeekdays: weekdays,
-    );
-    // 年视图月完成数：按 completedAt 归月（口径与进度页热力图一致）。
-    const stats = StatisticsService();
-    final yearMonthCounts = stats.completedCountsByMonth(yearTasks);
+    // 只 watch / 只聚合当前视图的数据族（2026-08-15 性能优化）：此前月视图
+    // 也 watch 周/年并计算全部三个聚合，勾选任务失效后连带重查/重建无关数据。
+    // 刷新期间 valueOrNull 保留旧值，网格始终渲染不塌陷。
+    final AsyncValue<List<Task>> viewTasksAsync;
+    final Map<String, DayAggregate> gridAggregate;
+    final Map<String, List<Task>> weekTasksByDate;
+    final Map<String, int> yearMonthCounts;
+    switch (_mode) {
+      case CalendarViewMode.month:
+        {
+          viewTasksAsync = ref.watch(tasksByMonthProvider(monthKey));
+          gridAggregate = _load.calendarAggregate(
+            tasks: _monthHideCompleted
+                ? (viewTasksAsync.valueOrNull ?? const <Task>[])
+                    .where((t) => t.status != TaskStatus.done)
+                    .toList()
+                : (viewTasksAsync.valueOrNull ?? const <Task>[]),
+            availableMinutes: settings.dailyAvailableMinutes,
+            availableWeekdays: weekdays,
+          );
+          weekTasksByDate = const {};
+          yearMonthCounts = const {};
+          break;
+        }
+      case CalendarViewMode.week:
+        {
+          viewTasksAsync = ref.watch(tasksByWeekProvider(weekKey));
+          weekTasksByDate = _groupTasksByDate(
+            viewTasksAsync.valueOrNull ?? const <Task>[],
+          );
+          gridAggregate = _load.calendarAggregate(
+            tasks: viewTasksAsync.valueOrNull ?? const <Task>[],
+            availableMinutes: settings.dailyAvailableMinutes,
+            availableWeekdays: weekdays,
+          );
+          yearMonthCounts = const {};
+          break;
+        }
+      case CalendarViewMode.year:
+        {
+          viewTasksAsync = ref.watch(tasksByYearProvider(_year));
+          // 年视图月完成数：按 completedAt 归月（口径与进度页热力图一致）。
+          const stats = StatisticsService();
+          yearMonthCounts = stats.completedCountsByMonth(
+            viewTasksAsync.valueOrNull ?? const <Task>[],
+          );
+          gridAggregate = const {};
+          weekTasksByDate = const {};
+          break;
+        }
+    }
 
     // 选日任务的科目名：父级一次性预取（按 goalId 去重），避免每个 TaskTile
     // 各自 watch(subjectListProvider) + 线性扫描（N+1）。
@@ -238,7 +266,7 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
                   todayStr: todayStr,
                   selectedDate: _selectedDate,
                   weekdays: weekdays,
-                  aggregate: monthAggregate,
+                  aggregate: gridAggregate,
                   onSelect: (dateStr) =>
                       setState(() => _selectedDate = dateStr),
                   // FR-5.1：把任务拖到某一天改期。
@@ -250,10 +278,10 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
                   todayStr: todayStr,
                   selectedDate: _selectedDate,
                   weekdays: weekdays,
-                  aggregate: weekAggregate,
+                  aggregate: gridAggregate,
                   // 周视图格内直接展示当日任务条（与月视图的聚合数字区分：
                   // 周视图的价值是「一周安排一览」，而非仅负载概览）。
-                  tasksByDate: _groupTasksByDate(weekTasks),
+                  tasksByDate: weekTasksByDate,
                   onSelect: (dateStr) =>
                       setState(() => _selectedDate = dateStr),
                   onDropTask: (task, date) => _handleTaskDropped(task, date),
@@ -366,10 +394,9 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
         CalendarViewMode.year => ref.read(tasksByYearProvider(_year)),
       };
 
-  /// 数据变更后的统一刷新（FR-3 验收：日历月视图、选日列表、今日页与
-  /// 目标详情在同一操作周期内同步更新）。公共集合见 invalidateAppData
-  /// （P3 收敛）。
-  void _invalidateAll() => invalidateAppData(ref);
+  /// 数据变更后的统一刷新：计划页高频任务操作走局部失效（invalidatePlanData，
+  /// 2026-08-15 性能优化：不重查目标、补上周/年视图；跨页统计仍一并刷新）。
+  void _invalidateAll() => invalidatePlanData(ref);
 
   /// FR-5.1：任务被拖到某一天（网格 DragTarget 命中）时改期。
   ///

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/database/tables.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../core/utils/date_text.dart';
@@ -27,7 +28,7 @@ import 'task_form_dialog.dart';
 ///   [subjectListProvider] 自查；
 /// - 目标内列表（目标详情页/科目任务页）：父级批量查询后经 [subjects]
 ///   传入科目（避免 N+1），[showPlannedDate] 为 true 时展示计划日期。
-class TaskTile extends ConsumerWidget {
+class TaskTile extends ConsumerStatefulWidget {
   const TaskTile({
     super.key,
     required this.task,
@@ -52,105 +53,153 @@ class TaskTile extends ConsumerWidget {
   /// 是否在副标题展示计划日期（目标内列表需要，跨目标列表冗余）。
   final bool showPlannedDate;
 
+  @override
+  ConsumerState<TaskTile> createState() => _TaskTileState();
+}
+
+class _TaskTileState extends ConsumerState<TaskTile> {
   static const _defer = DeferService();
 
+  /// 乐观完成态（2026-08-15 性能优化）：点击复选框立即反映到 UI，不等
+  /// 数据库写入 + Provider 刷新往返——避免「点了没反应 → 数据回来后整行
+  /// 猛然划线」的掉帧/延迟感。数据刷新确认后由 [didUpdateWidget] 清除。
+  bool? _optimisticDone;
+
+  /// 当前展示的完成态：乐观态优先，未覆盖时以真实数据为准。
+  bool get _done => _optimisticDone ?? widget.task.status == TaskStatus.done;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final done = task.status == 'done';
+  void didUpdateWidget(TaskTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 数据刷新已确认乐观态（父级以新 task 重建本行）→ 清除覆盖，
+    // 恢复由真实数据驱动；未确认（例如其他刷新先到、旧数据仍在）则保留。
+    if (_optimisticDone != null &&
+        _optimisticDone == (widget.task.status == TaskStatus.done)) {
+      _optimisticDone = null;
+    }
+  }
+
+  /// 完成/取消完成切换：乐观更新 + 数据落地后统一刷新。
+  Future<void> _toggle(bool? value) async {
+    if (value == true && !_done) {
+      // FR-4.1：勾选完成且存在未完成检查项时二次确认。
+      final proceed = await confirmCompleteTask(context, ref, widget.task);
+      if (!proceed) return;
+      if (!mounted) return;
+    }
+    final target = value ?? false;
+    setState(() => _optimisticDone = target); // 立即反馈，不等数据库往返
+    final repo = ref.read(taskRepositoryProvider);
+    final ok = await runDbAction(
+      context,
+      action: () => repo.setDone(widget.task.id, target),
+    );
+    if (ok) {
+      widget.onChanged();
+    } else if (mounted) {
+      setState(() => _optimisticDone = null); // 写入失败回滚到真实态
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final done = _done;
 
     // 科目名：优先用父级传入列表（N+1 优化）；否则 watch 自查。
-    final subjectName = subjects != null
-        ? (task.subjectId == null
+    final subjectName = widget.subjects != null
+        ? (widget.task.subjectId == null
               ? null
-              : subjects!
-                  .where((s) => s.id == task.subjectId)
+              : widget.subjects!
+                  .where((s) => s.id == widget.task.subjectId)
                   .map((s) => s.name)
                   .firstOrNull)
         : ref
-            .watch(subjectListProvider(task.goalId))
+            .watch(subjectListProvider(widget.task.goalId))
             .valueOrNull
-            ?.where((s) => s.id == task.subjectId)
+            ?.where((s) => s.id == widget.task.subjectId)
             .map((s) => s.name)
             .firstOrNull;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Checkbox(
-          value: done,
-          // 读屏可读的名称（NFR-4）：任务完成复选框不依赖相邻文本推断。
-          semanticLabel: done ? '标记未完成' : '标记完成',
-          onChanged: (value) async {
-            // FR-4.1：勾选完成且存在未完成检查项时二次确认。
-            if (value == true && !done) {
-              final proceed = await confirmCompleteTask(context, ref, task);
-              if (!proceed) return;
-              if (!context.mounted) return;
-            }
-            final repo = ref.read(taskRepositoryProvider);
-            final ok = await runDbAction(
-              context,
-              action: () => repo.setDone(task.id, value ?? false),
-            );
-            if (ok) onChanged();
-          },
-        ),
-        title: Row(
-          children: [
-            Flexible(
-              child: Text(
-                task.title,
-                style: done
-                    ? const TextStyle(decoration: TextDecoration.lineThrough)
-                    : null,
-                overflow: TextOverflow.ellipsis,
+    return AnimatedOpacity(
+      // 完成态整行轻微降透明（配合划线），过渡 200ms 平滑不跳变。
+      duration: const Duration(milliseconds: 200),
+      opacity: done ? 0.72 : 1.0,
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: ListTile(
+          leading: Checkbox(
+            value: done,
+            // 读屏可读的名称（NFR-4）：任务完成复选框不依赖相邻文本推断。
+            semanticLabel: done ? '标记未完成' : '标记完成',
+            onChanged: _toggle,
+          ),
+          title: Row(
+            children: [
+              Flexible(
+                child: AnimatedDefaultTextStyle(
+                  // 完成划线 + 颜色过渡：勾选后平滑地划掉，而非跳变。
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut,
+                  style: done
+                      ? TextStyle(
+                          decoration: TextDecoration.lineThrough,
+                          color: Theme.of(context).colorScheme.outline,
+                        )
+                      : TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                  child: Text(
+                    widget.task.title,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ),
-            ),
-            if (task.recurrenceTemplateId != null) ...[
-              const SizedBox(width: 6),
-              const Tooltip(
-                message: '重复任务',
-                child: Icon(Icons.autorenew, size: 16),
-              ),
+              if (widget.task.recurrenceTemplateId != null) ...[
+                const SizedBox(width: 6),
+                const Tooltip(
+                  message: '重复任务',
+                  child: Icon(Icons.autorenew, size: 16),
+                ),
+              ],
             ],
-          ],
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              [
-                ?goalTitle,
-                if (showPlannedDate)
-                  formatLocalDate(parseLocalDate(task.plannedDate)),
-                ?subjectName,
-                if (task.estimatedMinutes != null)
-                  DurationFormat.minutes(task.estimatedMinutes!),
-              ].join(' · '),
-            ),
-            if (task.note?.isNotEmpty ?? false)
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Text(
-                task.note!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall,
+                [
+                  ?widget.goalTitle,
+                  if (widget.showPlannedDate)
+                    formatLocalDate(parseLocalDate(widget.task.plannedDate)),
+                  ?subjectName,
+                  if (widget.task.estimatedMinutes != null)
+                    DurationFormat.minutes(widget.task.estimatedMinutes!),
+                ].join(' · '),
               ),
-          ],
-        ),
-        trailing: PopupMenuButton<String>(
-          tooltip: '任务操作',
-          onSelected: (action) => _handleAction(context, ref, action),
-          itemBuilder: (_) => [
-            const PopupMenuItem(value: 'edit', child: Text('编辑')),
-            const PopupMenuItem(value: 'checklist', child: Text('检查项…')),
-            const PopupMenuItem(value: 'deferNext', child: Text('延期至下一可用日')),
-            const PopupMenuItem(value: 'deferPick', child: Text('延期…')),
-            if (task.recurrenceTemplateId != null) ...[
-              const PopupMenuItem(value: 'editRecurrence', child: Text('编辑重复规则')),
-              const PopupMenuItem(value: 'stopRecurrence', child: Text('停止重复')),
+              if (widget.task.note?.isNotEmpty ?? false)
+                Text(
+                  widget.task.note!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
             ],
-            const PopupMenuItem(value: 'delete', child: Text('删除')),
-          ],
+          ),
+          trailing: PopupMenuButton<String>(
+            tooltip: '任务操作',
+            onSelected: (action) => _handleAction(context, ref, action),
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: 'edit', child: Text('编辑')),
+              const PopupMenuItem(value: 'checklist', child: Text('检查项…')),
+              const PopupMenuItem(value: 'deferNext', child: Text('延期至下一可用日')),
+              const PopupMenuItem(value: 'deferPick', child: Text('延期…')),
+              if (widget.task.recurrenceTemplateId != null) ...[
+                const PopupMenuItem(value: 'editRecurrence', child: Text('编辑重复规则')),
+                const PopupMenuItem(value: 'stopRecurrence', child: Text('停止重复')),
+              ],
+              const PopupMenuItem(value: 'delete', child: Text('删除')),
+            ],
+          ),
         ),
       ),
     );
@@ -163,7 +212,7 @@ class TaskTile extends ConsumerWidget {
         await _edit(context, ref);
         break;
       case 'checklist':
-        await ChecklistDialog.show(context, task: task);
+        await ChecklistDialog.show(context, task: widget.task);
         break;
       case 'deferNext':
         await _deferToNextAvailable(context, ref);
@@ -185,25 +234,25 @@ class TaskTile extends ConsumerWidget {
 
   /// 编辑重复规则（打开规则对话框，预填当前模板）。
   Future<void> _editRecurrence(BuildContext context, WidgetRef ref) async {
-    final templateId = task.recurrenceTemplateId;
+    final templateId = widget.task.recurrenceTemplateId;
     if (templateId == null) return;
     final template = await ref.read(recurrenceTemplateProvider(templateId).future);
     if (template == null || !context.mounted) return;
-    final subjects = this.subjects ??
-        ref.read(subjectListProvider(task.goalId)).valueOrNull ??
+    final subjects = widget.subjects ??
+        ref.read(subjectListProvider(widget.task.goalId)).valueOrNull ??
         const <Subject>[];
     final saved = await RecurrenceTaskDialog.show(
       context,
-      goalId: task.goalId,
+      goalId: widget.task.goalId,
       subjects: subjects,
       editTemplate: template,
     );
-    if (saved) onChanged();
+    if (saved) widget.onChanged();
   }
 
   /// 停止重复（确认后停用模板，历史实例保留，FR-4.5）。
   Future<void> _stopRecurrence(BuildContext context, WidgetRef ref) async {
-    final templateId = task.recurrenceTemplateId;
+    final templateId = widget.task.recurrenceTemplateId;
     if (templateId == null) return;
     final confirmed = await confirmStopRecurrence(context);
     if (confirmed != true) return;
@@ -214,23 +263,23 @@ class TaskTile extends ConsumerWidget {
       action: () => repo.stop(templateId),
     );
     if (!ok) return;
-    ref.invalidate(recurrenceTemplatesProvider(task.goalId));
-    onChanged();
+    ref.invalidate(recurrenceTemplatesProvider(widget.task.goalId));
+    widget.onChanged();
   }
 
   Future<void> _edit(BuildContext context, WidgetRef ref) async {
     // 编辑对话框需要该目标下的科目列表（含无科目选项）。
-    final subjects = this.subjects ??
-        await ref.read(subjectListProvider(task.goalId).future);
+    final subjects = widget.subjects ??
+        await ref.read(subjectListProvider(widget.task.goalId).future);
     final subjectList = subjects ?? const <Subject>[];
     if (!context.mounted) return;
     final saved = await TaskFormDialog.show(
       context,
-      goalId: task.goalId,
-      task: task,
+      goalId: widget.task.goalId,
+      task: widget.task,
       subjects: subjectList,
     );
-    if (saved) onChanged();
+    if (saved) widget.onChanged();
   }
 
   Future<void> _deferToNextAvailable(BuildContext context, WidgetRef ref) async {
@@ -246,9 +295,9 @@ class TaskTile extends ConsumerWidget {
     final repo = ref.read(taskRepositoryProvider);
     final ok = await runDbAction(
       context,
-      action: () => repo.defer(task.id, next),
+      action: () => repo.defer(widget.task.id, next),
     );
-    if (ok) onChanged();
+    if (ok) widget.onChanged();
   }
 
   Future<void> _deferPickDate(BuildContext context, WidgetRef ref) async {
@@ -261,7 +310,7 @@ class TaskTile extends ConsumerWidget {
     final first = DateUtils.dateOnly(now);
     // 任务计划日期可早于 firstDate（逾期一年以上是真实场景）：initialDate
     // 越界会在 debug 下触发 datepicker 断言、release 下落到错误初值，故钳制。
-    final planned = parseLocalDate(task.plannedDate);
+    final planned = parseLocalDate(widget.task.plannedDate);
     final initial = planned.isBefore(first) ? first : planned;
     final picked = await showDatePicker(
       context: context,
@@ -275,21 +324,21 @@ class TaskTile extends ConsumerWidget {
     final repo = ref.read(taskRepositoryProvider);
     final ok = await runDbAction(
       context,
-      action: () => repo.defer(task.id, formatLocalDate(picked)),
+      action: () => repo.defer(widget.task.id, formatLocalDate(picked)),
     );
-    if (ok) onChanged();
+    if (ok) widget.onChanged();
   }
 
   Future<void> _delete(BuildContext context, WidgetRef ref) async {
-    final confirmed = await confirmDeleteTask(context, task.title);
+    final confirmed = await confirmDeleteTask(context, widget.task.title);
     if (confirmed != true) return;
     if (!context.mounted) return;
     final repo = ref.read(taskRepositoryProvider);
     final ok = await runDbAction(
       context,
-      action: () => repo.delete(task.id),
+      action: () => repo.delete(widget.task.id),
     );
-    if (ok) onChanged();
+    if (ok) widget.onChanged();
   }
 }
 

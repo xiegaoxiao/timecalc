@@ -30,6 +30,30 @@ void invalidateAppData(WidgetRef ref) {
   ref.invalidate(allTodoTasksProvider);
 }
 
+/// 计划页任务变更的局部刷新（2026-08-15 性能优化）。
+///
+/// 与 [invalidateAppData] 的区别：
+/// - **不失效 goalListProvider**：勾选/改期任务不改变目标本身，避免计划页
+///   每次勾选都重查目标列表并触发整页连带重建；
+/// - **补上 tasksByWeekProvider / tasksByYearProvider**：此前两份失效清单都
+///   漏掉它们，周/年视图在勾选任务后保持陈旧（2026-08-15 审查 #4）；
+/// - 跨页统计（completedTasksProvider / allTodoTasksProvider）仍一并失效，
+///   保证今日页「目标剩余工作量」与进度页图表口径一致——它们不被计划页
+///   watch，只在后台重查，不造成计划页可见重建。
+///
+/// 使用场景：计划页（日历视图）内的高频任务操作（勾选/取消勾选/改期）。
+/// 其余页面仍走 [invalidateAppData] 全量集合。
+void invalidatePlanData(WidgetRef ref) {
+  ref.invalidate(tasksByDateProvider);
+  ref.invalidate(tasksByMonthProvider);
+  ref.invalidate(tasksByWeekProvider);
+  ref.invalidate(tasksByYearProvider);
+  ref.invalidate(taskListProvider);
+  ref.invalidate(unfinishedBeforeProvider);
+  ref.invalidate(completedTasksProvider);
+  ref.invalidate(allTodoTasksProvider);
+}
+
 /// 全量数据刷新（影响面最广的操作专用：覆盖恢复 / 重置数据）。
 ///
 /// 在 [invalidateAppData] 基础上补齐其余页面/入口的缓存：目标详情、
