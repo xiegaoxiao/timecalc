@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -298,9 +300,12 @@ class _GoalCard extends ConsumerStatefulWidget {
 }
 
 class _GoalCardState extends ConsumerState<_GoalCard> {
-  /// 详情页导航进行中标志（双击去重）：250ms 预取窗口内重复点击卡片/
+  /// 详情页导航进行中标志（双击去重）：250ms 窗口内重复点击卡片/
   /// 「查看详情」只 push 一次，避免压入两个相同详情页（需按两次返回）。
   bool _navInFlight = false;
+
+  /// 去重窗口计时器（dispose 取消，防 widget 测试 pending timer）。
+  Timer? _navGuard;
 
   /// 转发到 widget 字段：保持下方方法体 `goal.`/`completion` 引用不变。
   Goal get goal => widget.goal;
@@ -543,37 +548,41 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
     final mm = date.month.toString().padLeft(2, '0');
     final dd = date.day.toString().padLeft(2, '0');
     return '${date.year}.$mm.$dd';
-  }  /// 打开详情页：**数据先到再导航**（带超时兜底）。
+  }  /// 打开详情页：**立即导航 + 后台预热数据**（2026-08-16 二次卡顿修复）。
   ///
-  /// 等详情页关键数据（目标/任务/科目/里程碑）就绪后再 push——详情页
-  /// 首帧即渲染真实内容，跳过「骨架屏 + 过渡动画叠加」造成的进入卡顿
-  /// （用户实测：点击卡片明显卡一下才进详情）。查询超慢（超大库）时
-  /// 最多等 250ms 照常进入，详情页骨架兜底。
-  Future<void> _openDetail(BuildContext context, WidgetRef ref) async {
-    // 双击去重：预取 250ms 窗口内重复点击只 push 一次。
+  /// 此前「数据先到再导航」（await 预取，最多 800ms 兜底）在真实文件库上
+  /// 把查询延迟直接转嫁成点击响应延迟——点卡片后数百毫秒无任何反馈，
+  /// 感知为「卡」（内存库测试测不出：查询微秒级）。现改为：点击瞬间
+  /// push（150ms 淡入与数据加载并行），预取在后台继续填充 provider
+  /// 缓存；数据未就绪时详情页静态骨架兜底（无闪烁，数据到达自然替换）。
+  void _openDetail(BuildContext context, WidgetRef ref) {
+    // 双击去重：快速重复点击（250ms 窗口）只 push 一次。计时器持有并
+    // 在 dispose 取消——widget 测试会因 pending timer 失败
+    // （celebration_overlay 同款处理）。
     if (_navInFlight) return;
     _navInFlight = true;
-    try {
-      try {
-        await _prefetchDetail(ref, goal.id);
-      } catch (_) {
-        // 预取失败（库损坏/IO 异常等）不阻断导航：详情页骨架屏兜底，
-        // 而非让点击无任何反馈（review：250ms 内 future reject 时
-        // Future.timeout 的 onTimeout 不会触发，异常直接冒泡）。
-      }
-      if (!context.mounted) return;
-      context.push('/goals/${goal.id}');
-    } finally {
+    _navGuard?.cancel();
+    _navGuard = Timer(const Duration(milliseconds: 250), () {
       _navInFlight = false;
-    }
+      _navGuard = null;
+    });
+    // 后台预热（不阻塞导航）：失败/慢查询由详情页骨架/错误态兜底，
+    // 异常不冒泡为未处理异步错误。
+    unawaited(_prefetchDetail(ref, goal.id).catchError((Object _) {}));
+    context.push('/goals/${goal.id}');
   }
 
-  /// 预热详情页数据源（P3.5 卡顿排查）。
+  @override
+  void dispose() {
+    _navGuard?.cancel();
+    super.dispose();
+  }
+
+  /// 预热详情页数据源（P3.5 卡顿排查；2026-08-16 起后台执行、不设超时）。
   ///
   /// 详情页首载同时 watch 目标详情/任务列表/科目列表/里程碑列表四个
-  /// provider，各自独立查询库（后台 isolate 不阻塞 UI，但逐项填充的
-  /// 时间窗会造成「点卡片 → 详情页首帧空/慢」的观感）。点击瞬间
-  /// 提前触发查询，页面进入时数据多已缓存，首帧直接渲染内容。
+  /// provider，各自独立查询库（后台 isolate 不阻塞 UI）。点击瞬间触发
+  /// 查询，页面进入时数据多已缓存，首帧直接渲染内容；未就绪时骨架兜底。
   Future<void> _prefetchDetail(WidgetRef ref, int goalId) async {
     final futures = <Future<Object?>>[
       ref.read(goalDetailProvider(goalId).future),
@@ -587,18 +596,10 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
       ref.read(settingsProvider.future),
       ref.read(recurrenceTemplatesProvider(goalId).future),
     ];
-    // 带超时兜底：查询慢（超大库）时最多等 800ms 就进入，不阻塞点击；
-    // 已发出的查询继续在后台完成，详情页骨架屏兜底显示。
-    // 超时 250ms → 800ms：真实文件库查询耗时高于内存库（实测内存库
-    // 10000 条任务进详情 <200ms），250ms 常在真实库上触发超时兜底，
-    // 导致进入后「骨架 → 内容」跳变；800ms 覆盖绝大多数真实库规模，
-    // 同时不阻塞点击太久。
-    // 用 Future.timeout 而非 Future.any：timeout 在完成时取消内部 Timer，
-    // 不会在测试/退出时残留 pending timer。
-    await Future.wait(futures).timeout(
-      const Duration(milliseconds: 800),
-      onTimeout: () => <Object?>[],
-    );
+    // 后台预热无需超时（旧 800ms 超时是为「await 后再 push」兜底的，
+    // 现在不等待也就没有可超时的东西）：查询完成即入缓存，慢查询
+    // 不拖累已完成的项。
+    await Future.wait(futures);
   }
 
   Future<void> _handleAction(
