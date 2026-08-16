@@ -85,9 +85,14 @@ void main() {
     await pumpApp(tester);
     await openGoalDetail(tester, '考研');
 
-    expect(find.text('剩余任务时长：6 小时'), findsOneWidget);
-    expect(find.text('剩余可用天数（学习日）：4 天'), findsOneWidget);
-    expect(find.text('建议日均时长：1 小时 30 分 · 可用 2 小时/天'), findsOneWidget);
+    // 负载区仪表盘化（2026-08-16）：冒号整句改为指标格 label + value。
+    expect(find.text('剩余任务时长'), findsOneWidget);
+    expect(find.text('6 小时'), findsOneWidget);
+    expect(find.text('剩余学习日'), findsOneWidget);
+    expect(find.text('4 天'), findsOneWidget);
+    expect(find.text('建议日均时长'), findsOneWidget);
+    expect(find.text('1 小时 30 分'), findsOneWidget);
+    expect(find.text('可用 2 小时/天'), findsOneWidget);
     // 建议日均未超可用时长，不显示计划风险。
     expect(find.textContaining('计划风险'), findsNothing);
   });
@@ -112,8 +117,8 @@ void main() {
     await openGoalDetail(tester, '考研');
 
     // 剩余 3 天（08-05/06/07）共 600 分钟 -> 建议日均 200 > 120。
-    expect(find.text('剩余任务时长：10 小时'), findsOneWidget);
-    expect(find.text('建议日均时长：3 小时 20 分 · 可用 2 小时/天'), findsOneWidget);
+    expect(find.text('10 小时'), findsOneWidget);
+    expect(find.text('3 小时 20 分'), findsOneWidget);
     expect(find.textContaining('计划风险'), findsOneWidget);
     // 系统只建议，不自动改计划（FR-5.5）。
     expect(find.textContaining('不会自动修改你的计划'), findsOneWidget);
@@ -133,9 +138,9 @@ void main() {
     await pumpApp(tester);
     await openGoalDetail(tester, '论文');
 
-    expect(find.text('剩余可用天数（学习日）：5 天'), findsOneWidget);
+    expect(find.text('5 天'), findsOneWidget);
     // 500 / 5 = 100 分钟/天，未超可用时长，无风险。
-    expect(find.text('建议日均时长：1 小时 40 分 · 可用 2 小时/天'), findsOneWidget);
+    expect(find.text('1 小时 40 分'), findsOneWidget);
     expect(find.textContaining('计划风险'), findsNothing);
   });
 
@@ -147,8 +152,7 @@ void main() {
     await openGoalDetail(tester, '考研');
 
     // 无任务状态：时长与建议日均显示 -- 分，而非误导性的 0 分。
-    expect(find.text('剩余任务时长：-- 分'), findsOneWidget);
-    expect(find.text('建议日均时长：-- 分 · 可用 2 小时/天'), findsOneWidget);
+    expect(find.text('-- 分'), findsNWidgets(2));
     // 学习日口径说明仍展示（有剩余学习日时）。
     expect(find.textContaining('按计划偏好排除休息日后的学习日'), findsOneWidget);
   });

@@ -7,6 +7,7 @@ import '../../../core/errors/app_guard.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/chart_empty_state.dart';
+import '../../../shared/widgets/section_header.dart';
 import '../data/milestone_repository_provider.dart';
 import 'milestone_form_dialog.dart';
 
@@ -34,16 +35,15 @@ class MilestoneSection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Text('里程碑', style: Theme.of(context).textTheme.titleMedium),
-            const Spacer(),
-            TextButton.icon(
-              onPressed: () => _addMilestone(context, ref),
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('添加里程碑'),
-            ),
-          ],
+        // 区块头统一 SectionHeader（2026-08-16 视觉升级）。
+        SectionHeader(
+          icon: Icons.outlined_flag,
+          title: '里程碑',
+          trailing: TextButton.icon(
+            onPressed: () => _addMilestone(context, ref),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('添加里程碑'),
+          ),
         ),
         const SizedBox(height: 8),
         milestonesAsync.when(

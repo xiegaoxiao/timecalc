@@ -14,6 +14,7 @@ import '../../../core/utils/date_text.dart';
 import '../../../services/countdown_service.dart';
 import '../../../services/duration_format.dart';
 import '../../../shared/widgets/app_error_view.dart';
+import '../../../shared/widgets/section_header.dart';
 import '../../plan_import/presentation/plan_import_dialog.dart';
 import '../../settings/data/settings_repository_provider.dart';
 import '../../tasks/data/recurrence_repository_provider.dart';
@@ -109,38 +110,40 @@ class GoalListBody extends ConsumerWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 区块头（Dashboard 语言）：页面主标题 + 导入完整计划 + 新建
-            // 目标入口（取代原 FAB 与 AppBar actions，桌面宽窗下比悬浮
-            // 按钮更醒目、更接近列表页惯例）。始终显示——空态也要能
-            // 导入完整计划/新建目标。
+            // 区块头（Dashboard 语言，2026-08-16 统一 SectionHeader）：
+            // 页面主标题 + 导入完整计划 + 新建目标入口（取代原 FAB 与
+            // AppBar actions）。始终显示——空态也要能导入完整计划/新建目标。
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-              child: Row(
-                children: [
-                  Text('我的目标',
-                      style: Theme.of(context).textTheme.titleLarge),
-                  const Spacer(),
-                  if (onImportPlan != null)
-                    IconButton(
-                      tooltip: '导入完整计划',
-                      onPressed: onImportPlan,
-                      icon: const Icon(Icons.upload_file_outlined),
-                    ),
-                  // 空态时不重复放「新建目标」（空态大按钮是唯一主入口，
-                  // 避免两个『创建目标』tooltip 歧义）；非空态显示。
-                  if (goals.isNotEmpty) ...[
-                    const SizedBox(width: 4),
-                    // tooltip 保留旧语义，兼容既有测试与无障碍。
-                    Tooltip(
-                      message: '创建目标',
-                      child: FilledButton.icon(
-                        onPressed: onCreateGoal ?? () => _defaultCreate(context),
-                        icon: const Icon(Icons.add),
-                        label: const Text('新建目标'),
+              child: SectionHeader(
+                icon: Icons.flag_outlined,
+                title: '我的目标',
+                // 空态时不重复放「新建目标」（空态大按钮是唯一主入口，
+                // 避免两个『创建目标』tooltip 歧义）；非空态显示。
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (onImportPlan != null)
+                      IconButton(
+                        tooltip: '导入完整计划',
+                        onPressed: onImportPlan,
+                        icon: const Icon(Icons.upload_file_outlined),
                       ),
-                    ),
+                    if (goals.isNotEmpty) ...[
+                      const SizedBox(width: 4),
+                      // tooltip 保留旧语义，兼容既有测试与无障碍。
+                      Tooltip(
+                        message: '创建目标',
+                        child: FilledButton.icon(
+                          onPressed:
+                              onCreateGoal ?? () => _defaultCreate(context),
+                          icon: const Icon(Icons.add),
+                          label: const Text('新建目标'),
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
             if (goals.isEmpty)
@@ -459,14 +462,21 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
               ),
               const SizedBox(height: 12),
               // —— 彩色粗进度条（8px，目标专属色，mhabit 式）——
+              // 入场从 0 生长到当前进度（2026-08-16，与进度环同款 320ms
+              // 生长感；数据刷新时平滑跟随新值）。
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 8,
-                  backgroundColor: scheme.surfaceContainerHighest
-                      .withValues(alpha: 0.5),
-                  valueColor: AlwaysStoppedAnimation(accent),
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(end: progress),
+                  duration: const Duration(milliseconds: 320),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, value, _) => LinearProgressIndicator(
+                    value: value,
+                    minHeight: 8,
+                    backgroundColor: scheme.surfaceContainerHighest
+                        .withValues(alpha: 0.5),
+                    valueColor: AlwaysStoppedAnimation(accent),
+                  ),
                 ),
               ),
               const SizedBox(height: 14),
@@ -722,8 +732,10 @@ class _CardStat extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+              fontWeight: FontWeight.w600,
+              // 等宽数字：完成数/时长逐日变化时列对齐不抖动（2026-08-16）。
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
           ),
         ],
       ),

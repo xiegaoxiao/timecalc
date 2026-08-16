@@ -11,6 +11,7 @@ import '../../../services/duration_format.dart';
 import '../../../services/load_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/page_skeletons.dart';
+import '../../../shared/widgets/section_header.dart';
 import '../../settings/data/settings_repository.dart';
 import '../../settings/data/settings_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
@@ -200,35 +201,84 @@ class _LoadSection extends ConsumerWidget {
         final hasAnyTask = tasks.isNotEmpty;
         return Card(
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // 区块头统一 SectionHeader（2026-08-16 视觉升级）：风险时
+                // 图标换警示 + trailing 红色警示 chip（与今天页「超出」chip
+                // 同款；不只依赖颜色，chip 带文字）。
+                SectionHeader(
+                  icon: risk ? Icons.warning_amber_rounded : Icons.speed,
+                  title: '负载',
+                  trailing: risk
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: scheme.error.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.warning_amber_rounded,
+                                size: 14,
+                                color: scheme.error,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '计划风险',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: scheme.error,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                // 三格指标（仪表盘化，2026-08-16）：冒号文本行改为
+                // label + 等宽数字数值，与今天页/进度页同语言。
                 Row(
                   children: [
-                    Icon(
-                      risk ? Icons.warning_amber_rounded : Icons.speed,
-                      color: risk ? scheme.error : scheme.primary,
+                    Expanded(
+                      child: _MetricCell(
+                        label: '剩余任务时长',
+                        value: hasAnyTask
+                            ? DurationFormat.minutes(remaining)
+                            : '-- 分',
+                      ),
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '负载',
-                      style: Theme.of(context).textTheme.titleMedium,
+                    Expanded(
+                      child: _MetricCell(
+                        label: '剩余学习日',
+                        value: '$remainingDays 天',
+                      ),
+                    ),
+                    Expanded(
+                      child: _MetricCell(
+                        label: '建议日均时长',
+                        value: hasAnyTask
+                            ? DurationFormat.minutes(suggested)
+                            : '-- 分',
+                        // 依据摘要：建议日均对照的每日可用量。
+                        caption:
+                            '可用 ${DurationFormat.minutes(settings.dailyAvailableMinutes)}/天',
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  '剩余任务时长：${hasAnyTask ? DurationFormat.minutes(remaining) : '-- 分'}',
-                ),
                 // 学习日 = 按计划偏好 weekdays 过滤后的可学习星期（与顶部
                 // 倒计时的「日历天数」口径不同，显式标注避免两个数字混淆）。
-                Text('剩余可用天数（学习日）：$remainingDays 天'),
-                Text(
-                  '建议日均时长：${hasAnyTask ? DurationFormat.minutes(suggested) : '-- 分'} · 可用 ${DurationFormat.minutes(settings.dailyAvailableMinutes)}/天',
-                ),
                 if (remainingDays > 0) ...[
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 8),
                   Text(
                     '剩余可用天数为按计划偏好排除休息日后的学习日；'
                     '日历总天数见顶部倒计时。',
@@ -239,14 +289,28 @@ class _LoadSection extends ConsumerWidget {
                 ],
                 if (risk) ...[
                   const SizedBox(height: 8),
-                  Text(
-                    '计划风险：按当前节奏无法在截止日前完成。'
-                    '建议延长截止日、减少任务量或增加每日可用时间。',
-                    style: TextStyle(color: scheme.error),
-                  ),
-                  Text(
-                    '系统仅提供建议，不会自动修改你的计划。',
-                    style: Theme.of(context).textTheme.bodySmall,
+                  // 风险提示移入浅红容器（与今天页过期区块同语义）。
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: scheme.errorContainer.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '按当前节奏无法在截止日前完成。'
+                          '建议延长截止日、减少任务量或增加每日可用时间。',
+                          style: TextStyle(color: scheme.error),
+                        ),
+                        Text(
+                          '系统仅提供建议，不会自动修改你的计划。',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ],
@@ -254,6 +318,56 @@ class _LoadSection extends ConsumerWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// 负载指标格：小标签 + 等宽数字数值 + 可选摘要小字（2026-08-16 仪表盘化，
+/// 与今天页/进度页 `_MetricCell` 同款视觉语言）。
+class _MetricCell extends StatelessWidget {
+  const _MetricCell({required this.label, required this.value, this.caption});
+
+  final String label;
+  final String value;
+
+  /// 数值下方的补充摘要（如「可用 X/天」）。
+  final String? caption;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: scheme.outline),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+          if (caption != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              caption!,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.outline),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

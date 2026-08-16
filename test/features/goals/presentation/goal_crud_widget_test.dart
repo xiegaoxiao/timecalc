@@ -115,10 +115,13 @@ void main() {
 
     // 自动进入详情页，四个科目以卡片列表展示（点击可进入科目任务页）。
     expect(find.text('目标详情'), findsOneWidget);
-    expect(find.widgetWithText(Card, '政治'), findsOneWidget);
-    expect(find.widgetWithText(Card, '英语'), findsOneWidget);
-    expect(find.widgetWithText(Card, '数学'), findsOneWidget);
-    expect(find.widgetWithText(Card, '408'), findsOneWidget);
+    // 科目区在视口下方（2026-08-16 负载区仪表盘化后页面更高，sliver 懒
+    // 构建），滚动到可见后逐个断言。
+    for (final subject in ['政治', '英语', '数学', '408']) {
+      await tester.scrollUntilVisible(find.text(subject), 200);
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(Card, subject), findsOneWidget);
+    }
   });
 
   testWidgets('创建目标后，今天页展示目标卡片与倒计时（FR-1 验收）', (tester) async {

@@ -7,6 +7,7 @@ import '../../../core/errors/app_guard.dart';
 import '../../../core/theme/accent_palette.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/chart_empty_state.dart';
+import '../../../shared/widgets/section_header.dart';
 import '../data/subject_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
 
@@ -27,16 +28,15 @@ class SubjectManager extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Text('科目', style: Theme.of(context).textTheme.titleMedium),
-            const Spacer(),
-            TextButton.icon(
-              onPressed: () => _addSubject(context, ref),
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('添加科目'),
-            ),
-          ],
+        // 区块头统一 SectionHeader（2026-08-16 视觉升级）。
+        SectionHeader(
+          icon: Icons.label_outline,
+          title: '科目',
+          trailing: TextButton.icon(
+            onPressed: () => _addSubject(context, ref),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('添加科目'),
+          ),
         ),
         const SizedBox(height: 8),
         subjectsAsync.when(
