@@ -22,22 +22,26 @@ import '../../settings/data/settings_repository.dart';
 import '../../settings/data/settings_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
 
-/// 进度图表主绿（最深绿）：燃尽剩余线 / 热力图最深档 / 耗时图完成段共用。
-const _progressGreen = Color(0xFF216E39);
+/// 热力图完成强度色（LeetCode 色板最深档，**热力图专属语义色**）。
+///
+/// 不随主题色系变化（2026-08-16 蓝色主题：热力图保留原色板）；燃尽图
+/// 剩余线与耗时图柱已改为主题派生色（见 _BurndownSection/_BarChart）。
+const _heatGreen = Color(0xFF216E39);
 
-/// 进度图表浅绿：热力图第一档 / 耗时图计划段共用。
-const _progressGreenLight = Color(0xFF9BE9A8);
+/// 热力图完成强度浅档（LeetCode 色板第二档，热力图专属）。
+const _heatGreenLight = Color(0xFF9BE9A8);
 
 /// LeetCode 官方热力图色板（FR-7.2）。
 ///
 /// 从无到多五档：空（浅灰）、1-3 项、4-6 项、7-9 项、10+ 项。
 /// 色值取自 LeetCode 贡献图（#EBEDF0 → #216E39），克制且饱和度递增。
+/// 热力图专属语义色，不随主题色系变化。
 const _heatColors = <Color>[
   Color(0xFFEBEDF0),
-  _progressGreenLight,
+  _heatGreenLight,
   Color(0xFF40C463),
   Color(0xFF30A14E),
-  _progressGreen,
+  _heatGreen,
 ];
 
 /// 复用单一 DateFormat 实例（Intl 格式化非 const 可构造，逐格/逐任务
@@ -673,21 +677,20 @@ class _BurndownSection extends ConsumerWidget {
   /// 空态按钮文案（默认「去添加任务」；燃尽/耗时图用「去设置预估时长」）。
   final String ctaLabel;
 
-  /// 实际剩余线颜色（与热力图最深档 / 耗时图完成段共用主绿）。
-  static const _remainingColor = _progressGreen;
-
-  /// 面积填充渐变：从主绿淡出到透明。
-  static const _areaGradient = [
-    Color(0x47216E39), // 主绿 28% 透明度
-    Color(0x00216E39), // 全透明
-  ];
-
+  /// 实际剩余线颜色 = 当前主题主色（2026-08-16：从固定绿改为主题派生，
+  /// 蓝色主题下燃尽图跟随变蓝）；面积填充从主色 28% 淡出到透明。
+  /// 因依赖主题，由 build 内计算后传给 [_BurndownChart] 与图例。
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
+    final remainingColor = scheme.primary;
+    final areaGradient = [
+      scheme.primary.withValues(alpha: 0.28),
+      scheme.primary.withValues(alpha: 0.0),
+    ];
     // 理想参考线用主题 outline：浅色浅灰、深色自动提亮（替代硬编码浅灰）。
     final idealColor = scheme.outline;
-    // 节点/图例描边：浅色下白色，深色下用 surface 兜住绿色。
+    // 节点/图例描边：浅色下白色，深色下用 surface 兜住主色节点。
     final dotBorder = Theme.of(context).brightness == Brightness.dark
         ? scheme.surface
         : Colors.white;
@@ -790,12 +793,19 @@ class _BurndownSection extends ConsumerWidget {
             else ...[
               // RepaintBoundary：fl_chart 每帧 repaint 开销大，隔离成独立
               // 图层，滚动经过时避免整页连带重绘。
-              RepaintBoundary(child: _BurndownChart(points: points, today: today)),
+              RepaintBoundary(
+                child: _BurndownChart(
+                  points: points,
+                  today: today,
+                  remainingColor: remainingColor,
+                  areaGradient: areaGradient,
+                ),
+              ),
               const SizedBox(height: 16),
               // Footer 图例：色块 + 文字（与其它图表统一；无数据时不渲染）。
               Row(
                 children: [
-                  _LegendDot(color: _remainingColor, borderColor: dotBorder),
+                  _LegendDot(color: remainingColor, borderColor: dotBorder),
                   const SizedBox(width: 8),
                   const Text('剩余工作量', style: TextStyle(fontSize: 10)),
                   const SizedBox(width: 16),
@@ -817,7 +827,7 @@ class _BurndownSection extends ConsumerWidget {
 /// + 悬停 tooltip。
 ///
 /// 视觉重构（M7 迭代增强）：
-/// - 面积填充：实际线下方 from 深绿 28% 到透明（belowBarData gradient）；
+/// - 面积填充：实际线下方 from 主题主色 28% 到透明（belowBarData gradient）；
 /// - 平滑曲线（isCurved）替代生硬折线；
 /// - 节点白描边（FlDotCirclePainter strokeColor 白），图更精致；
 /// - 理想线虚线（dashArray），浅灰；
@@ -825,10 +835,21 @@ class _BurndownSection extends ConsumerWidget {
 /// - 入场动画：TweenAnimationBuilder 高度 0→100% 从底部向上生长；
 /// - 整体 Semantics（NFR-4）+ 悬停 tooltip（日期 + 剩余 + 理想）。
 class _BurndownChart extends StatelessWidget {
-  const _BurndownChart({required this.points, required this.today});
+  const _BurndownChart({
+    required this.points,
+    required this.today,
+    required this.remainingColor,
+    required this.areaGradient,
+  });
 
   final List<BurndownPoint> points;
   final DateTime today;
+
+  /// 实际剩余线/节点色（当前主题主色，由 _BurndownSection 传入）。
+  final Color remainingColor;
+
+  /// 面积填充渐变（主题主色淡出，由 _BurndownSection 传入）。
+  final List<Color> areaGradient;
 
   static const _chartHeight = 220.0;
 
@@ -1044,12 +1065,12 @@ class _BurndownChart extends StatelessWidget {
                   spots: remainingSpots,
                   isCurved: true,
                   curveSmoothness: 0.3,
-                  color: _BurndownSection._remainingColor,
+                  color: remainingColor,
                   barWidth: 2.5,
                   belowBarData: BarAreaData(
                     show: true,
                     gradient: LinearGradient(
-                      colors: _BurndownSection._areaGradient,
+                      colors: areaGradient,
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                     ),
@@ -1059,9 +1080,9 @@ class _BurndownChart extends StatelessWidget {
                     getDotPainter: (spot, percent, bar, index) =>
                         FlDotCirclePainter(
                           radius: 3.5,
-                          color: _BurndownSection._remainingColor,
+                          color: remainingColor,
                           strokeWidth: 2,
-                          // 描边：浅色下白色、深色下 surface，兜住绿色节点。
+                          // 描边：浅色下白色、深色下 surface，兜住主色节点。
                           strokeColor:
                               Theme.of(context).brightness == Brightness.dark
                               ? scheme.surface
@@ -1531,15 +1552,16 @@ class _GanttSection extends ConsumerWidget {
               ),
               const SizedBox(height: 12),
               // 图例固定在卡片底部，不随图表横向滚动而移动；无数据时不渲染。
-              const Row(
+              // 色块随主题（浅=计划 primaryContainer、深=完成 primary）。
+              Row(
                 children: [
-                  _LegendDot(color: _progressGreenLight),
-                  SizedBox(width: 8),
-                  Text('计划', style: TextStyle(fontSize: 10)),
-                  SizedBox(width: 16),
-                  _LegendDot(color: _progressGreen),
-                  SizedBox(width: 8),
-                  Text('完成', style: TextStyle(fontSize: 10)),
+                  _LegendDot(color: Theme.of(context).colorScheme.primaryContainer),
+                  const SizedBox(width: 8),
+                  const Text('计划', style: TextStyle(fontSize: 10)),
+                  const SizedBox(width: 16),
+                  _LegendDot(color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 8),
+                  const Text('完成', style: TextStyle(fontSize: 10)),
                 ],
               ),
             ],
@@ -1602,14 +1624,16 @@ class _BarChart extends StatelessWidget {
       final planned = plannedPerWeek[i];
       final completed = completedPerWeek[i];
       if (planned + completed <= 0) continue; // 无数据周跳过（x 位置固定）
+      // 主题派生色（2026-08-16）：完成段=主色、计划段=主容器浅色，
+      // 蓝色主题下整图跟随变蓝；深浅段对比同主题派生，明暗均成立。
       final stackItems = <BarChartRodStackItem>[
         if (completed > 0)
-          BarChartRodStackItem(0, completed.toDouble(), _progressGreen),
+          BarChartRodStackItem(0, completed.toDouble(), scheme.primary),
         if (planned > 0)
           BarChartRodStackItem(
             completed.toDouble(),
             (completed + planned).toDouble(),
-            _progressGreenLight,
+            scheme.primaryContainer,
           ),
       ];
       barGroups.add(
