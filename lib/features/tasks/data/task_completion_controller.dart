@@ -51,19 +51,37 @@ class TaskCompletionController extends Notifier<Set<int>> {
   }
 
   /// 5 秒计时到：整批写入完成并刷新。
+  ///
+  /// 时序（2026-08-16 动画流畅度优化）：
+  /// 1. 立即清空批次——撤回窗口关闭（SnackBar 收起、无法再并入/撤回）；
+  /// 2. 批次转入 [taskFinalizingProvider] 定稿显示态：任务条保持勾选显示，
+  ///    避免旧缓存数据把刚定稿的任务「闪回未勾选→数据到达再重新划线」
+  ///    （一轮定稿播两遍动画，5 秒到点必现的视觉抖动）；
+  /// 3. 写库 → 全量刷新 → **等新数据真正落地**（allTodoTasksProvider 的
+  ///    future 完成）再退出定稿态，此后由真实 status 驱动显示。
   Future<void> finalize() async {
     _cancelTimer();
     final ids = state.toList();
     if (ids.isEmpty) return;
     state = const {};
+    ref.read(taskFinalizingProvider.notifier).markAll(ids);
     final repo = ref.read(taskRepositoryProvider);
     try {
       await repo.setDoneMany(ids, true);
     } catch (_) {
-      // 后台定时器没有页面 context 可弹窗：写库失败时任务保持未完成，
+      // 后台定时器没有页面 context 可弹窗：写库失败时立即退出定稿显示态，
       // 刷新后 UI 恢复未勾选（事务保证无半写入，数据安全优先）。
+      ref.read(taskFinalizingProvider.notifier).clear();
+      _refresh();
+      return;
     }
     _refresh();
+    try {
+      await ref.read(allTodoTasksProvider.future);
+    } catch (_) {
+      // 刷新查询异常（如测试外覆盖场景）：也退出定稿态，交给错误兜底。
+    }
+    ref.read(taskFinalizingProvider.notifier).clear();
   }
 
   void _restartTimer() {
@@ -94,5 +112,28 @@ class TaskCompletionController extends Notifier<Set<int>> {
 /// 待完成批次（taskId 集合）Provider。
 final taskCompletionControllerProvider =
     NotifierProvider<TaskCompletionController, Set<int>>(
-  TaskCompletionController.new,
-);
+      TaskCompletionController.new,
+    );
+
+/// 定稿中批次（taskId 集合）：从批次定稿（写库）到刷新数据落地之间的
+/// 显示态（2026-08-16 动画流畅度优化）。
+///
+/// 任务条在定稿期间保持勾选显示，消除「旧缓存闪回未勾选 → 新数据到达
+/// 再重新划线」的双段动画。仅由 [TaskCompletionController.finalize] 写入
+/// 与清空，页面只读。
+class TaskFinalizingController extends Notifier<Set<int>> {
+  @override
+  Set<int> build() => const {};
+
+  /// 批次进入定稿（整批替换）。
+  void markAll(List<int> ids) => state = {...ids};
+
+  /// 定稿流程结束（数据落地/写库失败），恢复由真实数据驱动显示。
+  void clear() => state = const {};
+}
+
+/// 定稿中批次 Provider。
+final taskFinalizingProvider =
+    NotifierProvider<TaskFinalizingController, Set<int>>(
+      TaskFinalizingController.new,
+    );

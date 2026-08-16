@@ -67,30 +67,40 @@ class _TodayPageState extends ConsumerState<TodayPage> {
 
   @override
   Widget build(BuildContext context) {
-    // 勾选完成 → 进入 5 秒撤回批次：监听批次变化弹「已勾选 N 项 · 撤回」
-    // SnackBar，批次清空（到期定稿 / 整批撤回）时收起。SnackBar 时长与
-    // 控制器计时同为 [TaskCompletionController.undoWindow]，天然同步。
+    // 勾选完成 → 进入 5 秒撤回批次。SnackBar 单实例（2026-08-16 动画
+    // 流畅度优化）：只在「空 → 非空」弹出、「非空 → 空」收起；批次增长时
+    // 不再关旧开新（连续勾选时出入场动画反复启停是掉帧感的主要来源），
+    // 计数与倒计时由内容组件 [_UndoSnackBarContent] 原地更新。
     ref.listen<Set<int>>(taskCompletionControllerProvider, (previous, next) {
-      final messenger = ScaffoldMessenger.of(context);
-      final current = _undoSnackBar;
-      if (current != null) {
-        // 只关闭本撤回条，不影响其它页面/流程的 SnackBar；
-        // 若已自行关闭（到期/点撤回）则 close 为 no-op。
-        _undoSnackBar = null;
-        current.close();
+      final wasEmpty = previous == null || previous.isEmpty;
+      if (next.isEmpty) {
+        // 批次清空（到期定稿 / 整批撤回）：收起撤回条。只关闭本撤回条，
+        // 不影响其它页面/流程的 SnackBar；已自行关闭则 close 为 no-op。
+        final current = _undoSnackBar;
+        if (current != null) {
+          _undoSnackBar = null;
+          current.close();
+        }
+        return;
       }
-      if (next.isEmpty) return;
+      if (!wasEmpty && _undoSnackBar != null) return; // 已在展示：原地更新
+      final messenger = ScaffoldMessenger.of(context);
       final snack = messenger.showSnackBar(
         SnackBar(
-          duration: TaskCompletionController.undoWindow,
-          content: _UndoCountdownText(
-            count: next.length,
+          // 关闭完全由批次状态驱动（上方 listener close）；不设短 duration
+          // 抢在定稿前自动消失。此值仅作兜底（正常流程远早于 1 分钟收起）。
+          duration: const Duration(minutes: 1),
+          content: _UndoSnackBarContent(
             totalSeconds: TaskCompletionController.undoWindow.inSeconds,
           ),
           action: SnackBarAction(
             label: '撤回',
             onPressed: () {
+              // 显式收起（undo() 清空批次时 listener 里引用已为 null，
+              // 若不在此关闭会一直展示到兜底 duration）。
+              final current = _undoSnackBar;
               _undoSnackBar = null;
+              current?.close();
               ref.read(taskCompletionControllerProvider.notifier).undo();
             },
           ),
@@ -384,6 +394,7 @@ class _TodayPageState extends ConsumerState<TodayPage> {
               itemBuilder: (context, index) {
                 final task = todayTasks[index];
                 return TaskTile(
+                  key: ValueKey('today-task-${task.id}'),
                   task: task,
                   goalTitle: goalsById[task.goalId]?.title,
                   subjects: subjectsByGoal[task.goalId],
@@ -653,6 +664,9 @@ class _OverdueTasksSection extends StatelessWidget {
                 ),
               ),
               TaskTile(
+                // 按任务身份复用 element：定稿后区块收缩时，划线/透明度
+                // 动画不会错播到相邻任务上（幻影动画）。
+                key: ValueKey('overdue-task-${task.id}'),
                 task: task,
                 goalTitle: goalsById[task.goalId]?.title,
                 subjects: subjectsByGoal[task.goalId],
@@ -668,31 +682,42 @@ class _OverdueTasksSection extends StatelessWidget {
   }
 }
 
-/// 撤回 SnackBar 的倒计时文案：每秒递减「N 秒后自动完成」，到 0 停止。
+/// 撤回 SnackBar 内容：「已勾选 N 项任务 · M 秒后自动完成」。
 ///
-/// 与 [TaskCompletionController] 的 5 秒定稿计时并行（同一窗口），仅作
-/// 视觉反馈；定稿本身仍由控制器的计时器负责，本组件不参与触发。
-class _UndoCountdownText extends StatefulWidget {
-  const _UndoCountdownText({required this.count, required this.totalSeconds});
-
-  /// 批次内已勾选任务数。
-  final int count;
+/// 单实例 SnackBar 的内容组件（2026-08-16 动画流畅度优化）：计数经
+/// watch 批次 provider 原地更新；批次并入新任务时倒计时重置——与
+/// [TaskCompletionController] 的滚动窗口一致。倒计时仅作视觉反馈，
+/// 定稿本身仍由控制器的计时器负责，本组件不参与触发。
+class _UndoSnackBarContent extends ConsumerStatefulWidget {
+  const _UndoSnackBarContent({required this.totalSeconds});
 
   /// 撤回窗口总时长（秒）。
   final int totalSeconds;
 
   @override
-  State<_UndoCountdownText> createState() => _UndoCountdownTextState();
+  ConsumerState<_UndoSnackBarContent> createState() =>
+      _UndoSnackBarContentState();
 }
 
-class _UndoCountdownTextState extends State<_UndoCountdownText> {
+class _UndoSnackBarContentState extends ConsumerState<_UndoSnackBarContent> {
   late int _remaining;
   Timer? _ticker;
 
   @override
   void initState() {
     super.initState();
+    _startCountdown();
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  void _startCountdown() {
     _remaining = widget.totalSeconds;
+    _ticker?.cancel();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       setState(() {
         if (_remaining > 0) _remaining--;
@@ -702,14 +727,13 @@ class _UndoCountdownTextState extends State<_UndoCountdownText> {
   }
 
   @override
-  void dispose() {
-    _ticker?.cancel();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Text('已勾选 ${widget.count} 项任务 · $_remaining 秒后自动完成');
+    // 并入新任务 → 重置倒计时（与控制器滚动窗口同步）。
+    ref.listen<Set<int>>(taskCompletionControllerProvider, (previous, next) {
+      if ((previous?.length ?? 0) < next.length) _startCountdown();
+    });
+    final count = ref.watch(taskCompletionControllerProvider).length;
+    return Text('已勾选 $count 项任务 · $_remaining 秒后自动完成');
   }
 }
 

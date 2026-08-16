@@ -547,6 +547,36 @@ void main() {
     expect(find.textContaining('秒后自动完成'), findsNothing);
   });
 
+  testWidgets('定稿瞬间不闪回未勾选：数据落地前保持勾选显示（2026-08-16 动画优化）', (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    final created = await tasks.create(
+      goalId: goal.id,
+      title: '背单词',
+      plannedDate: '2026-08-05',
+      estimatedMinutes: 30,
+    );
+
+    await pumpApp(tester);
+
+    await tester.tap(find.byType(Checkbox));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // 5 秒到期：定稿流程启动（批次清空、写库、刷新、等新数据落地）。
+    // 此刻旧缓存数据仍是 todo——finalizing 显示态应保持勾选，
+    // 而不是闪回未勾选、数据到达后再重新划线（一轮定稿播两遍动画）。
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump(); // 渲染定稿中间态（写库/刷新 future 尚未完成）
+
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
+
+    await tester.pumpAndSettle();
+
+    // 数据落地后：真实 status 驱动，仍为勾选（划线态）。
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
+    expect((await tasks.byId(created.id))?.status, 'done');
+  });
+
   testWidgets('5 秒内勾选多个任务：可整批撤回，全部恢复未勾选', (tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;

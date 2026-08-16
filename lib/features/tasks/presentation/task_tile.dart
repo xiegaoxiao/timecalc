@@ -155,10 +155,23 @@ class _TaskTileState extends ConsumerState<TaskTile> {
   Widget build(BuildContext context) {
     // 今天页「5 秒撤回」：勾选后先进入待完成批次（不写库），批次内视为
     // 已勾选显示；其余页面不启用该行为，维持原即时完成逻辑。
+    // watch 用 select 收窄到「本任务是否在批次内」（2026-08-16 性能优化）：
+    // 批次集合变化时只有成员关系变化的任务行重建，而不是全部行。
     final statusDone = widget.task.status == TaskStatus.done;
     final pendingThis = widget.enableCompleteUndo &&
-        ref.watch(taskCompletionControllerProvider).contains(widget.task.id);
-    final done = _optimisticDone ?? (pendingThis || statusDone);
+        ref.watch(
+          taskCompletionControllerProvider.select(
+            (s) => s.contains(widget.task.id),
+          ),
+        );
+    // 定稿显示态：5 秒到期后（写库 → 数据落地之间）保持勾选，消除
+    // 「闪回未勾选 → 重新划线」的双段动画。
+    final finalizingThis = widget.enableCompleteUndo &&
+        ref.watch(
+          taskFinalizingProvider.select((s) => s.contains(widget.task.id)),
+        );
+    final done =
+        _optimisticDone ?? (pendingThis || finalizingThis || statusDone);
 
     // 科目名：优先用父级传入列表（N+1 优化）；否则 watch 自查。
     final subjectName = widget.subjects != null

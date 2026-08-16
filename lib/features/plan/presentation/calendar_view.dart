@@ -256,9 +256,14 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
                 child: LinearProgressIndicator(minHeight: 2),
               ),
           // 视图/单元切换淡入淡出（keyed by 视图+单元；刷新原位更新，
-          // 不触发动画）。
+          // 不触发动画）。过渡期新旧两份网格各自成层（RepaintBoundary）：
+          // 淡入淡出只做图层合成，不逐帧重绘整棵子树（2026-08-16 优化）。
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 200),
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: RepaintBoundary(child: child),
+            ),
             child: switch (_mode) {
               CalendarViewMode.month => _MonthGrid(
                   key: ValueKey('month-$monthKey'),
@@ -300,8 +305,13 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
           ),
           const Divider(height: 32),
           // 选日面板：换日淡入淡出（keyed by date），加载/错误只影响面板区。
+          // 新旧面板同样各自成层（与上方视图切换同口径）。
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 200),
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: RepaintBoundary(child: child),
+            ),
             child: _DayPanel(
               key: ValueKey(_selectedDate),
               dateLabel: _dayLabelFormat.format(parseLocalDate(_selectedDate)),
@@ -501,7 +511,10 @@ class _DayPanel extends StatelessWidget {
         else
           for (final task in selectedTasks)
             // FR-5.1：长按任务条目即可拖动到网格中的目标日期改期。
+            // 按任务身份 key 复用 element：勾选/删除导致列表收缩时，
+            // 划线/透明度动画不会错播到相邻任务上（幻影动画）。
             LongPressDraggable<Task>(
+              key: ValueKey('day-task-${task.id}'),
               data: task,
               feedback: Material(
                 elevation: 4,

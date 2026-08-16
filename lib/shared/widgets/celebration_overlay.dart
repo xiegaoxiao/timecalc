@@ -54,12 +54,18 @@ class _CelebrationOverlayState extends State<_CelebrationOverlay>
   Widget build(BuildContext context) {
     return Positioned.fill(
       child: IgnorePointer(
-        child: ConfettiWidget(
-          confettiController: _controller,
-          blastDirectionality: BlastDirectionality.explosive,
-          numberOfParticles: 60,
-          gravity: 0.3,
-          shouldLoop: false,
+        // RepaintBoundary（2026-08-16 动画流畅度优化）：彩带逐帧重绘被
+        // 限制在独立图层，不再把整个窗口的内容拖进同一帧光栅化——
+        // 全部完成庆祝恰好与定稿刷新同帧叠加，是此前最明显的掉帧场景。
+        child: RepaintBoundary(
+          child: ConfettiWidget(
+            confettiController: _controller,
+            blastDirectionality: BlastDirectionality.explosive,
+            // 40 粒在视觉上依然饱满，Windows 光栅化成本约降三分之一。
+            numberOfParticles: 40,
+            gravity: 0.3,
+            shouldLoop: false,
+          ),
         ),
       ),
     );
