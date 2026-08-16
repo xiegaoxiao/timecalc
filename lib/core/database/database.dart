@@ -46,12 +46,14 @@ Future<void> dropColumnIfExists(
   );
 }
 
-/// 回退兼容：清理高版本残留结构（AI 供应商表与 settings 的 ai_* 列）。
+/// 回退兼容：清理高版本残留结构（AI 供应商表、settings 的 ai_* 列与
+/// WebDAV/同步 6 列）。
 ///
-/// 代码从带 AI 功能（schema v14）回退后，本地数据库仍停留在更高版本。
-/// drift 的 step-by-step 迁移只支持升级；这里在 onUpgrade 检测到降级时
-/// 删除目标版本不认识的残留结构（ai_providers 表 + settings 的 5 个
-/// ai_* 列），随后让 drift 把 user_version 写回当前版本。原数据
+/// 代码从带 AI 功能（schema v14）或带 WebDAV 同步（schema v12）回退后，
+/// 本地数据库仍停留在更高版本。drift 的 step-by-step 迁移只支持升级；
+/// 这里在 onUpgrade 检测到降级时删除目标版本不认识的残留结构
+/// （ai_providers 表 + settings 的 5 个 ai_* 列 + 6 个 webdav/sync 列），
+/// 随后让 drift 把 user_version 写回当前版本。原数据
 /// （目标/任务/科目/模板/设置）全部保留，且各操作幂等（表/列不存在时跳过）。
 Future<void> downgradeCleanup(Migrator m) async {
   final db = m.database;
@@ -68,9 +70,21 @@ Future<void> downgradeCleanup(Migrator m) async {
   ]) {
     await dropColumnIfExists(m, 'settings', column);
   }
+  // v13（2026-08 移除 WebDAV/同步）之前的库含 webdav/sync 6 列：
+  // 高版本库降级到当前 v13 时一并清理（与 AI 残留同语义，幂等）。
+  for (final column in const [
+    'webdav_url',
+    'webdav_username',
+    'webdav_password_saved',
+    'webdav_sync_enabled',
+    'last_pushed_seq',
+    'last_synced_at',
+  ]) {
+    await dropColumnIfExists(m, 'settings', column);
+  }
 }
 
-/// TimeCalc 本地数据库（schema v12）。
+/// TimeCalc 本地数据库（schema v13）。
 ///
 /// v1：目标/科目/任务三张表。
 /// v2：Tasks 增加 original_planned_date；新增 Settings 计划偏好表（M2）。
@@ -90,6 +104,10 @@ Future<void> downgradeCleanup(Migrator m) async {
 ///     last_pushed_seq/last_synced_at，运行时配置，不进入业务备份）。
 /// v12：Settings 增加 theme_mode（M10 明暗主题：system/light/dark，设备级
 ///     外观配置，不进入业务备份）。
+/// v13：移除全部 WebDAV/同步功能（2026-08）：Settings 删除 webdav_url/
+///     webdav_username/webdav_password_saved（v9 引入）与 webdav_sync_enabled/
+///     last_pushed_seq/last_synced_at（v11 引入）6 列，回到纯本地单机。
+///     删列用幂等 dropColumnIfExists（列不存在跳过），迁移可重复/可恢复。
 /// 后续 schema 变更必须提供 migration 与 migration 测试（SOP S3、NFR-2）。
 @DriftDatabase(
   tables: [
@@ -109,7 +127,7 @@ class AppDatabase extends _$AppDatabase {
   factory AppDatabase.open() => AppDatabase(driftDatabase(name: 'timecalc'));
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -279,6 +297,23 @@ class AppDatabase extends _$AppDatabase {
             schema.settings,
             schema.settings.themeMode,
           );
+        },
+        from12To13: (m, schema) async {
+          // v12 -> v13：移除全部 WebDAV/同步功能（2026-08）。Settings 删除
+          // webdav_url/webdav_username/webdav_password_saved（v9 引入）与
+          // webdav_sync_enabled/last_pushed_seq/last_synced_at（v11 引入）
+          // 6 列。删列用幂等 dropColumnIfExists（列不存在跳过，
+          // 半迁移/重复升级安全，与 addColumnIfMissing 同款语义）。
+          for (final column in const [
+            'webdav_url',
+            'webdav_username',
+            'webdav_password_saved',
+            'webdav_sync_enabled',
+            'last_pushed_seq',
+            'last_synced_at',
+          ]) {
+            await dropColumnIfExists(m, 'settings', column);
+          }
         },
       )(migrator, from, to);
     },

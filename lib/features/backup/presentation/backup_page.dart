@@ -22,7 +22,7 @@ import 'restore_confirm_dialog.dart';
 /// 由设置页「备份与恢复」菜单项 push 进入。统一管理数据相关操作：
 /// - 自动备份区（M11 并入）：总开关（点击即写库 + 立即触发一次检查反馈）、
 ///   本地目录（唯一目的地）、立即备份、最近备份时间；
-/// - 手动备份/恢复区：导出备份、从备份恢复、从备份位置恢复（本地/WebDAV
+/// - 手动备份/恢复区：导出备份、从备份恢复、从备份位置恢复（本地
 ///   历史文件）。
 ///
 /// 已归档任务在独立「已归档任务」页管理（见 archived_tasks_page.dart）。
@@ -97,7 +97,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '列出「本地目录」与 WebDAV 上的备份文件，'
+                    '列出「本地目录」中的备份文件，'
                     '选中后走同样的合并/覆盖确认流程。',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
@@ -161,8 +161,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                 const SizedBox(height: 4),
                 Text(
                   '每日自动备份全部业务数据到本地目录（保留最近 7 份）。'
-                  '应用运行期间生效：启动时检查一次、之后每小时复查；'
-                  'WebDAV 数据保护由「同步」承担。',
+                  '应用运行期间生效：启动时检查一次、之后每小时复查。',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
                 const SizedBox(height: 8),
@@ -370,7 +369,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     await _confirmAndRestore(context, backup, messenger, file);
   }
 
-  /// 从本地目录 / WebDAV 列出备份文件，选中后走恢复确认流程（M8）。
+  /// 从本地目录列出备份文件，选中后走恢复确认流程（M8）。
   Future<void> _restoreFromLocation(
     BuildContext context,
     BackupService backup,
@@ -416,7 +415,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     if (picked == null || !context.mounted) return;
 
     // 下载到临时文件后复用统一的恢复确认流程。
-    // 文件名净化（M14）：恶意 WebDAV href 可携带路径分隔符/`..`（如
+    // 文件名净化（M14，防御性）：远端文件名可携带路径分隔符/`..`（如
     // `..\..\evil`），直接拼接会写出临时目录之外。只取末段并拒绝 `..`。
     final rawName = picked.file.fileName;
     final safeName = rawName.split(RegExp(r'[\\/]')).last;

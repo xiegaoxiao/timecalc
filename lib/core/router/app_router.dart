@@ -16,7 +16,6 @@ import '../../features/settings/presentation/plan_preference_page.dart';
 import '../../features/settings/presentation/reset_data_page.dart';
 import '../../features/settings/presentation/settings_page.dart';
 import '../../features/settings/presentation/shortcuts_page.dart';
-import '../../features/sync/presentation/sync_page.dart';
 import '../../features/tasks/data/recurrence_repository_provider.dart';
 import '../../features/tasks/data/task_repository_provider.dart';
 import '../../features/tasks/presentation/subject_task_page.dart';
@@ -153,11 +152,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: BackupPage.route,
         name: 'backup',
         builder: (context, state) => const BackupPage(),
-      ),
-      GoRoute(
-        path: SyncPage.route,
-        name: 'sync',
-        builder: (context, state) => const SyncPage(),
       ),
       GoRoute(
         path: ArchivedTasksPage.route,

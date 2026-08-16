@@ -52,7 +52,7 @@ void main() {
           return const AutoBackupResult(
             skipped: false,
             succeeded: false,
-            errors: ['WebDAV：认证失败'],
+            errors: ['本地目录：磁盘写入失败'],
           );
         }
         return _success({});

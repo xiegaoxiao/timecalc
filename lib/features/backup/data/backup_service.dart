@@ -447,21 +447,15 @@ class BackupService {
 
       // 计划偏好：覆盖模式下随备份一并恢复（FR-9.2 覆盖语义）。
       if (payload.settings.isNotEmpty) {
-        // 运行时配置不进备份文件（FR-9.5：关闭行为、自动备份配置、WebDAV
-        // 同步配置），备份 JSON 中无这些字段。覆盖清空 settings 行会把它们
-        // 重置为默认值，故在恢复前读取当前值并保留——桌面/备份/同步行为
-        // 不该被「数据恢复」意外改变。
+        // 运行时配置不进备份文件（FR-9.5：关闭行为、自动备份配置；
+        // 2026-08 移除 WebDAV/同步后不再有相应运行时字段），备份 JSON 中
+        // 无这些字段。覆盖清空 settings 行会把它们重置为默认值，故在恢复
+        // 前读取当前值并保留——桌面/备份行为不该被「数据恢复」意外改变。
         final previous = await _db.select(_db.settings).getSingleOrNull();
         final previousCloseBehavior = previous?.closeBehavior;
         final previousAutoBackupEnabled = previous?.autoBackupEnabled;
         final previousLocalBackupFolder = previous?.localBackupFolder;
-        final previousWebdavUrl = previous?.webdavUrl;
-        final previousWebdavUsername = previous?.webdavUsername;
-        final previousWebdavPasswordSaved = previous?.webdavPasswordSaved;
         final previousLastAutoBackupAt = previous?.lastAutoBackupAt;
-        final previousSyncEnabled = previous?.webdavSyncEnabled;
-        final previousLastPushedSeq = previous?.lastPushedSeq;
-        final previousLastSyncedAt = previous?.lastSyncedAt;
         final previousThemeMode = previous?.themeMode;
         await _db.delete(_db.settings).go();
         await _db.into(_db.settings).insert(
@@ -475,26 +469,10 @@ class BackupService {
                     previousAutoBackupEnabled,
                 localBackupFolder: payload.settings.first['localBackupFolder'] as String? ??
                     previousLocalBackupFolder,
-                webdavUrl: payload.settings.first['webdavUrl'] as String? ??
-                    previousWebdavUrl,
-                webdavUsername: payload.settings.first['webdavUsername'] as String? ??
-                    previousWebdavUsername,
-                webdavPasswordSaved: payload.settings.first['webdavPasswordSaved'] as bool? ??
-                    previousWebdavPasswordSaved,
                 lastAutoBackupAt: payload.settings.first['lastAutoBackupAt'] == null
                     ? previousLastAutoBackupAt
                     : DateTime.tryParse(
                         payload.settings.first['lastAutoBackupAt'] as String,
-                      ),
-                webdavSyncEnabled: payload.settings.first['webdavSyncEnabled'] as bool? ??
-                    previousSyncEnabled,
-                lastPushedSeq: payload.settings.first['lastPushedSeq'] == null
-                    ? previousLastPushedSeq
-                    : payload.settings.first['lastPushedSeq'] as int,
-                lastSyncedAt: payload.settings.first['lastSyncedAt'] == null
-                    ? previousLastSyncedAt
-                    : DateTime.tryParse(
-                        payload.settings.first['lastSyncedAt'] as String,
                       ),
                 themeMode: payload.settings.first['themeMode'] as String? ??
                     previousThemeMode,
@@ -514,13 +492,7 @@ class BackupService {
                   closeBehavior: existing.closeBehavior,
                   autoBackupEnabled: existing.autoBackupEnabled,
                   localBackupFolder: existing.localBackupFolder,
-                  webdavUrl: existing.webdavUrl,
-                  webdavUsername: existing.webdavUsername,
-                  webdavPasswordSaved: existing.webdavPasswordSaved,
                   lastAutoBackupAt: existing.lastAutoBackupAt,
-                  webdavSyncEnabled: existing.webdavSyncEnabled,
-                  lastPushedSeq: existing.lastPushedSeq,
-                  lastSyncedAt: existing.lastSyncedAt,
                   themeMode: existing.themeMode,
                 ),
                 mode: InsertMode.insertOrReplace,

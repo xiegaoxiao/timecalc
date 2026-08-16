@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
@@ -16,23 +14,7 @@ import 'core/errors/startup_error_screen.dart';
 import 'features/backup/data/auto_backup_scheduler.dart';
 import 'features/backup/data/auto_backup_service.dart';
 import 'features/backup/data/backup_service.dart';
-import 'features/backup/data/credential_store.dart';
-import 'features/goals/data/goal_repository_provider.dart';
-import 'features/goals/data/milestone_repository_provider.dart';
-import 'features/goals/data/subject_repository_provider.dart';
 import 'features/settings/data/settings_repository.dart';
-import 'features/settings/data/settings_repository_provider.dart';
-import 'features/sync/data/database_change_watcher.dart';
-import 'features/sync/data/webdav_sync_service.dart';
-import 'features/sync/data/webdav_sync_service_provider.dart';
-import 'features/tasks/data/recurrence_repository_provider.dart';
-import 'features/tasks/data/task_repository_provider.dart';
-
-/// WebDAV 整库文件同步运行中周期拉取间隔（M9）。
-///
-/// 除启动拉取/变更推送/退出推送/手动外，每 5 分钟复查一次远端，补足
-/// 另一设备在本机运行期间的变更。
-const Duration kSyncPeriodicInterval = Duration(minutes: 5);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -62,23 +44,7 @@ Future<void> main() async {
   }
   diagnostics.attachDatabase(db);
 
-  // WebDAV 整库文件同步（M9）：拉取恢复后全量刷新各页 Provider。
-  final syncService = WebDavSyncService(
-    settingsRepository: SettingsRepository(db),
-    backupService: BackupService(db),
-    credentialStore: SecureCredentialStore(),
-    schemaVersion: db.schemaVersion,
-    onDataRestored: () async {
-      final container = _container;
-      if (container != null) _invalidateDataProviders(container);
-    },
-  );
-
-  final controller = await _createDesktopController(
-    db,
-    diagnostics: diagnostics,
-    onQuit: () => _pushSyncOnQuit(syncService),
-  );
+  final controller = await _createDesktopController(db, diagnostics: diagnostics);
 
   // 每日自动备份调度（FR-9.4，M8）：启动即检查一次 + 每小时复查。
   // 应用运行期间语义（进程只在窗口/托盘存活时存在）；失败经全局
@@ -90,67 +56,17 @@ Future<void> main() async {
       databaseProvider.overrideWithValue(db),
       desktopControllerProvider.overrideWithValue(controller),
       diagnosticsServiceProvider.overrideWithValue(diagnostics),
-      // 同步页「立即同步」复用同一实例：共享 onDataRestored（拉取后全量
-      // 刷新 UI）与互斥锁，避免出现第二个独立同步实例。
-      webDavSyncServiceProvider.overrideWithValue(syncService),
     ],
   );
   runApp(UncontrolledProviderScope(
     container: _container!,
     child: const TimeCalcApp(),
   ));
-
-  // 同步接线（M9）：
-  // - 启动拉取一次（runApp 后，ScaffoldMessenger key 已挂载可提示）；
-  // - 运行中每 5 分钟复查远端（补足另一设备运行期间的变更）；
-  // - 业务表变更防抖 3s 后推送（settings 表不监听，防推送写状态回环）。
-  // - markLocalDirty：启动即标记本地可能有未推送变更（覆盖应用崩溃于
-  //   上次推送前的窗口），使首次同步无条件推送一次本地快照（S3）。
-  syncService.markLocalDirty();
-  unawaited(syncService.syncOnce());
-  Timer.periodic(kSyncPeriodicInterval, (_) => unawaited(syncService.syncOnce()));
-  DatabaseChangeWatcher(
-    db,
-    onChanged: () => unawaited(syncService.pushIfNeeded()),
-  );
 }
 
-/// 全局 ProviderContainer：同步拉取恢复后全量刷新各页缓存（恢复罕见，
-/// 全量刷新可接受）。集合与 [invalidateAllAppData]（app_refresh.dart）对齐，
-/// 覆盖全部页面/入口的缓存族（M1：此前遗漏详情/科目/里程碑/重复模板/
-/// 归档 8 个族，拉取恢复后这些页面会残留陈旧数据）。
+/// 全局 ProviderContainer（2026-08：WebDAV 整库同步移除后不再被同步拉取
+/// 恢复调用；保留备用）。
 ProviderContainer? _container;
-
-/// 对容器级 provider 集合做整族失效（WidgetRef 版本的 invalidateAllAppData
-/// 见 app_refresh.dart；这里直接作用于容器）。
-void _invalidateDataProviders(ProviderContainer container) {
-  container.invalidate(goalListProvider);
-  container.invalidate(goalDetailProvider);
-  container.invalidate(subjectListProvider);
-  container.invalidate(taskListProvider);
-  container.invalidate(tasksByDateProvider);
-  container.invalidate(tasksByMonthProvider);
-  container.invalidate(unfinishedBeforeProvider);
-  container.invalidate(completedTasksProvider);
-  container.invalidate(allTodoTasksProvider);
-  container.invalidate(archivedCountProvider);
-  container.invalidate(archivedTaskListProvider);
-  container.invalidate(allArchivedTasksProvider);
-  container.invalidate(recurrenceTemplatesProvider);
-  container.invalidate(recurrenceTemplateProvider);
-  container.invalidate(milestoneListProvider);
-  container.invalidate(settingsProvider);
-}
-
-/// 退出推送（带超时）：启动拉取/周期/变更之外的兜底，覆盖未推送的本地
-/// 变更。失败不阻断退出（同步是尽力而为，退出必须及时）。
-Future<void> _pushSyncOnQuit(WebDavSyncService syncService) async {
-  try {
-    await syncService.pushIfNeeded().timeout(const Duration(seconds: 5));
-  } catch (_) {
-    // 超时/失败忽略：不阻塞应用退出。
-  }
-}
 
 /// 创建并启动自动备份调度器（幂等）。
 void _startAutoBackupScheduler(AppDatabase db) {
@@ -158,7 +74,6 @@ void _startAutoBackupScheduler(AppDatabase db) {
     service: AutoBackupService(
       settingsRepository: SettingsRepository(db),
       backupService: BackupService(db),
-      credentialStore: SecureCredentialStore(),
     ),
     onFailure: (message) async {
       final messenger = DesktopController.scaffoldMessengerKey.currentContext;
@@ -179,19 +94,14 @@ void _startAutoBackupScheduler(AppDatabase db) {
 }
 
 /// 创建并初始化桌面控制器；失败时返回 null（桌面能力禁用，应用仍可用）。
-///
-/// [onQuit] 在真正退出（关闭窗口 exit 分支 / 托盘「退出」）前调用一次
-/// （M9 退出推送；minimizeToTray 分支不退出，不触发）。
 Future<DesktopController?> _createDesktopController(
   AppDatabase db, {
   required DiagnosticsService diagnostics,
-  Future<void> Function()? onQuit,
 }) async {
   try {
     final controller = DesktopController(
       stateStore: WindowStateStore(),
       settingsRepository: SettingsRepository(db),
-      onQuit: onQuit,
     );
     await controller.initialize();
     return controller;

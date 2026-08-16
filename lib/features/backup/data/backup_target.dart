@@ -1,7 +1,5 @@
 import 'dart:io';
 
-import 'webdav_client.dart';
-
 /// 远端备份文件元信息。
 ///
 /// [modifiedAt] 为 UTC，供恢复列表排序（最新在上）。
@@ -34,12 +32,12 @@ String autoBackupFileName(DateTime local) {
   return '$autoBackupPrefix$stamp.timecalc';
 }
 
-/// 备份目的地抽象（M8）：本地目录与 WebDAV 的同一操作面。
+/// 备份目的地抽象（M8）：本地目录目的地。
 ///
-/// 上传/下载/删除失败抛可读异常（本地 IO 异常、WebDAV 转 [WebDavException]），
-/// 调用方（AutoBackupService / 备份页恢复流程）负责向用户展示原因。
+/// 上传/下载/删除失败抛可读异常（本地 IO 异常），调用方
+/// （AutoBackupService / 备份页恢复流程）负责向用户展示原因。
 abstract class BackupTarget {
-  /// 用户可读的目的地名称（如「本地目录」/「WebDAV」）。
+  /// 用户可读的目的地名称（如「本地目录」）。
   String get label;
 
   /// 上传 [fileName] 到目的地；目标目录不存在时先创建。
@@ -111,53 +109,5 @@ class LocalBackupTarget implements BackupTarget {
   Future<void> delete(String fileName) async {
     final file = File('${folder.path}${Platform.pathSeparator}${_baseName(fileName)}');
     if (await file.exists()) await file.delete();
-  }
-}
-
-/// WebDAV 目的地：文件存放在服务器目录 [basePath]（默认 `webdav_auto/`，
-/// 与手动上传到根目录的文件隔离）。
-class WebDavBackupTarget implements BackupTarget {
-  WebDavBackupTarget(this._client, {String basePath = 'webdav_auto'})
-      : basePath = basePath.replaceFirst(RegExp(r'^/+'), '')
-            .replaceFirst(RegExp(r'/+$'), '');
-
-  final WebDavClient _client;
-  final String basePath;
-
-  @override
-  String get label => 'WebDAV';
-
-  String _path(String fileName) => '$basePath/$fileName';
-
-  @override
-  Future<void> upload(String fileName, List<int> bytes) async {
-    await _client.ensureFolder(basePath);
-    await _client.upload(_path(fileName), bytes);
-  }
-
-  @override
-  Future<List<RemoteBackupFile>> list() async {
-    await _client.ensureFolder(basePath);
-    final entries = await _client.list(basePath);
-    return entries
-        .where((e) => e.href.endsWith('.timecalc'))
-        .map(
-          (e) => RemoteBackupFile(
-            fileName: e.href.split('/').last,
-            size: e.size,
-            modifiedAt: e.modifiedAt,
-          ),
-        )
-        .toList();
-  }
-
-  @override
-  Future<List<int>> download(RemoteBackupFile file) {
-    return _client.download(_path(file.fileName));
-  }
-
-  @override
-  Future<void> delete(String fileName) {
-    return _client.delete(_path(fileName));
   }
 }

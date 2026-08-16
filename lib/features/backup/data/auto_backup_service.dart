@@ -1,13 +1,9 @@
 import 'dart:io';
 
-import 'package:http/http.dart' as http;
-
 import '../../../core/database/database.dart';
 import '../../settings/data/settings_repository.dart';
 import 'backup_service.dart';
 import 'backup_target.dart';
-import 'credential_store.dart';
-import 'webdav_client.dart';
 
 /// 自动备份保留份数（FR-9.4 默认保留最近 7 份）。
 const int autoBackupRetentionCount = 7;
@@ -53,18 +49,16 @@ abstract interface class AutoBackupRunner {
 /// 全部成功才更新 last_auto_backup_at。失败不推进时间戳，避免静默跳过。
 ///
 /// 纯 Dart（不依赖 UI）：调度器与「立即备份」按钮共用同一实例逻辑。
+///
+/// 2026-08：移除全部 WebDAV 后，目的地收敛为本地目录（M11 决策的落实）。
 class AutoBackupService implements AutoBackupRunner {
   AutoBackupService({
     required this.settingsRepository,
     required this.backupService,
-    required this.credentialStore,
-    http.Client? httpClient,
-  }) : _httpClient = httpClient ?? http.Client();
+  });
 
   final SettingsRepository settingsRepository;
   final BackupService backupService;
-  final WebDavCredentialStore credentialStore;
-  final http.Client _httpClient;
 
   /// 执行一次自动备份。
   ///
@@ -82,10 +76,8 @@ class AutoBackupService implements AutoBackupRunner {
       );
     }
 
-    // M11：自动备份目的地收敛为本地目录——WebDAV 数据保护由整库文件同步
-    // （M9）承担，不再往 WebDAV 传自动备份（用户确认精简）。
-    // 注意：buildEnabledTargets（含 WebDAV）仍保留给 backup_page
-    // 「从备份位置恢复」列历史备份文件用。
+    // M11：自动备份目的地收敛为本地目录——WebDAV 数据保护此前由整库文件
+    // 同步（M9）承担；2026-08 移除全部 WebDAV 后，目的地仅本地目录。
     final localFolder = settings.localBackupFolder;
     if (localFolder == null || localFolder.trim().isEmpty) {
       return const AutoBackupResult(
@@ -151,39 +143,13 @@ class AutoBackupService implements AutoBackupRunner {
     );
   }
 
-  /// 根据当前设置构建启用的目的地列表（本地目录 + WebDAV）。
-  ///
-  /// WebDAV 需同时配置 url / username / 密码（凭据存储中已保存）。
-  /// 密码缺失的 WebDAV 目的地视为不可用并计入 [outIncomplete]。
-  Future<List<BackupTarget>> buildEnabledTargets(
-    Setting settings, {
-    List<String>? outIncomplete,
-  }) async {
+  /// 根据当前设置构建启用的目的地列表（2026-08 起仅本地目录）。
+  Future<List<BackupTarget>> buildEnabledTargets(Setting settings) async {
     final targets = <BackupTarget>[];
 
     final localFolder = settings.localBackupFolder;
     if (localFolder != null && localFolder.trim().isNotEmpty) {
       targets.add(LocalBackupTarget(Directory(localFolder)));
-    }
-
-    final url = settings.webdavUrl;
-    final username = settings.webdavUsername;
-    if (url != null && url.trim().isNotEmpty && username != null && username.trim().isNotEmpty) {
-      final password = await credentialStore.read(url);
-      if (password == null || password.isEmpty) {
-        outIncomplete?.add('WebDAV：未保存密码，请在「自动备份」页重新保存');
-      } else {
-        targets.add(
-          WebDavBackupTarget(
-            WebDavClient(
-              client: _httpClient,
-              baseUrl: url,
-              username: username,
-              password: password,
-            ),
-          ),
-        );
-      }
     }
 
     return targets;

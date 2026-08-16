@@ -2,47 +2,25 @@ import 'dart:io';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 
 import 'package:timecalc/core/database/database.dart';
 import 'package:timecalc/features/backup/data/auto_backup_service.dart';
 import 'package:timecalc/features/backup/data/backup_service.dart';
 import 'package:timecalc/features/backup/data/backup_target.dart';
-import 'package:timecalc/features/backup/data/credential_store.dart';
 import 'package:timecalc/features/settings/data/settings_repository.dart';
 
-/// 内存凭据存储假实现（widget 测试与调度测试共用）。
-class FakeCredentialStore implements WebDavCredentialStore {
-  final Map<String, String> _passwords = {};
-
-  @override
-  Future<void> save(String url, String password) async {
-    _passwords[url] = password;
-  }
-
-  @override
-  Future<String?> read(String url) async => _passwords[url];
-
-  @override
-  Future<void> delete(String url) async {
-    _passwords.remove(url);
-  }
-}
-
-/// AutoBackupService 测试（M8，FR-9.4；M11 目的地收敛为本地目录）。
+/// AutoBackupService 测试（M8，FR-9.4；M11 目的地收敛为本地目录；
+/// 2026-08 移除全部 WebDAV 后仅剩本地目录）。
 ///
 /// 覆盖：
 /// - 未启用 / 未配置目的地 / 距上次不足 24h → 跳过；
 /// - 成功：导出 zip 落本地目录 + 推进 last_auto_backup_at；
 /// - 失败不推进时间戳（本地目录失败整体失败）；
-/// - 保留策略：只删 timecalc-auto-*、保留最新 7 份、不删手动导出；
-/// - 自动备份不往 WebDAV 上传（M11 精简：云端由 M9 同步承担）。
+/// - 保留策略：只删 timecalc-auto-*、保留最新 7 份、不删手动导出。
 void main() {
   late AppDatabase db;
   late SettingsRepository settings;
   late BackupService backup;
-  late FakeCredentialStore credentials;
   late Directory tempDir;
 
   Future<void> seedGoal() async {
@@ -56,18 +34,15 @@ void main() {
         );
   }
 
-  AutoBackupService service({http.Client? client}) => AutoBackupService(
+  AutoBackupService service() => AutoBackupService(
         settingsRepository: settings,
         backupService: backup,
-        credentialStore: credentials,
-        httpClient: client ?? MockClient((_) async => http.Response('', 201)),
       );
 
   setUp(() {
     db = AppDatabase(NativeDatabase.memory());
     settings = SettingsRepository(db);
     backup = BackupService(db);
-    credentials = FakeCredentialStore();
     tempDir = Directory.systemTemp.createTempSync('timecalc-auto-test');
   });
 
@@ -197,29 +172,5 @@ void main() {
     expect(autos, contains('timecalc-auto-20260809-000000.timecalc')); // 最新保留
     expect(autos, isNot(contains('timecalc-auto-20260801-000000.timecalc'))); // 最老被清
     expect(files, contains('manual-20260801.timecalc')); // 手动导出不受影响
-  });
-
-  test('自动备份只写本地目录：WebDAV 配置不参与上传（M11 精简）', () async {
-    await seedGoal();
-    await settings.updateAutoBackupEnabled(true);
-    // 配置了 WebDAV（含已保存密码），但自动备份不再往 WebDAV 上传——
-    // 云端数据保护由 M9 整库文件同步承担。
-    await settings.updateWebDavConfig(
-      url: 'https://dav.example.com/dav',
-      username: 'alice',
-    );
-    await credentials.save('https://dav.example.com/dav', 'secret');
-    await settings.updateLocalBackupFolder(tempDir.path);
-
-    var webdavUploaded = false;
-    final result = await service(
-      client: MockClient((req) async {
-        if (req.method == 'MKCOL' || req.method == 'PUT') webdavUploaded = true;
-        return http.Response('', 201);
-      }),
-    ).run(force: true, now: DateTime.utc(2026, 8, 6, 1));
-    expect(result.succeeded, isTrue);
-    expect(result.uploadedTargets, 1); // 仅本地目录
-    expect(webdavUploaded, isFalse); // 未向 WebDAV 发起任何写请求
   });
 }

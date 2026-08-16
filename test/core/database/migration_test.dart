@@ -1038,10 +1038,10 @@ void main() {
     schema.close();
   });
 
-  test('v14 库降级到 v12：清理 AI 残留结构，数据保留（回退兼容）', () async {
-    // 模拟「AI 功能已移除但本地库仍停在 v14」：先建 v12 库并写入数据，
-    // 再手工加回 v13/v14 的 AI 残留结构（ai_providers 表 + settings 的
-    // ai_* 列），并把 user_version 提到 14。
+  test('v14 库降级到 v13：清理 AI 与 WebDAV 残留结构，数据保留（回退兼容）', () async {
+    // 模拟「AI 功能已移除且 WebDAV 已移除，但本地库仍停在 v14」：先建 v12
+    // 库并写入数据（v12 含 webdav/sync 6 列），再手工加回 AI 残留结构
+    // （ai_providers 表 + settings 的 ai_* 列），并把 user_version 提到 14。
     final verifier = SchemaVerifier(GeneratedHelper());
     final schema = await verifier.schemaAt(12);
     final raw = schema.rawDatabase;
@@ -1072,8 +1072,8 @@ void main() {
     }
     raw.execute('PRAGMA user_version = 14');
 
-    // 真实 AppDatabase（schemaVersion=12）打开 v14 库：onUpgrade 检测到
-    // 降级，清理残留并让 drift 把版本写回 12。
+    // 真实 AppDatabase（schemaVersion=13）打开 v14 库：onUpgrade 检测到
+    // 降级，清理 AI 与 WebDAV 残留并让 drift 把版本写回 13。
     final downgraded = AppDatabase(schema.newConnection());
     await downgraded.customSelect('SELECT 1').get();
 
@@ -1081,7 +1081,7 @@ void main() {
     final version = await downgraded
         .customSelect('PRAGMA user_version')
         .get();
-    expect(version.single.read<int>('user_version'), 12);
+    expect(version.single.read<int>('user_version'), 13);
 
     // AI 残留结构已清理。
     final tables = await downgraded
@@ -1094,6 +1094,13 @@ void main() {
     final settingColumns = await _columns(downgraded, 'settings');
     expect(settingColumns, isNot(contains('ai_protocol')));
     expect(settingColumns, isNot(contains('ai_active_provider_id')));
+    // WebDAV/同步残留列已清理（v13 移除全部 WebDAV）。
+    expect(settingColumns, isNot(contains('webdav_url')));
+    expect(settingColumns, isNot(contains('webdav_username')));
+    expect(settingColumns, isNot(contains('webdav_password_saved')));
+    expect(settingColumns, isNot(contains('webdav_sync_enabled')));
+    expect(settingColumns, isNot(contains('last_pushed_seq')));
+    expect(settingColumns, isNot(contains('last_synced_at')));
 
     // 原数据全部保留。
     final goal = await (downgraded.select(downgraded.goals)
@@ -1109,24 +1116,118 @@ void main() {
     schema.close();
   });
 
-  test('v13 库降级到 v12：无 ai_providers 表也能清理，幂等（列不存在跳过）', () async {
+  test('schema v12 -> v13：WebDAV/同步 6 列删除，v12 数据保留（2026-08 移除 WebDAV）', () async {
+    final verifier = SchemaVerifier(GeneratedHelper());
+    // 以 v12 结构初始化数据库并写入数据（含带 WebDAV 配置的 settings 行）。
+    final schema = await verifier.schemaAt(12);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['v12 目标', '2026-08-05', 1750000000, 1750000000],
+    );
+    raw.execute(
+      "INSERT INTO settings (id, daily_available_minutes, available_weekdays, "
+      "webdav_url, webdav_username, webdav_password_saved, webdav_sync_enabled, "
+      "last_pushed_seq, last_synced_at, created_at, updated_at) "
+      "VALUES (1, 120, '1,2,3,4,5,6,7', 'https://dav.example.com/dav', 'alice', "
+      "1, 1, 7, 1750000000, 1750000000, 1750000000)",
+    );
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 13);
+
+    // v12 数据保留。
+    final goal = await (upgraded.select(upgraded.goals)..where((g) => g.id.equals(1))).getSingle();
+    expect(goal.title, 'v12 目标');
+    final setting = await upgraded.select(upgraded.settings).getSingle();
+    expect(setting.dailyAvailableMinutes, 120);
+
+    // v13：WebDAV/同步 6 列全部删除。
+    final columns = await _columns(upgraded, 'settings');
+    expect(columns, isNot(contains('webdav_url')));
+    expect(columns, isNot(contains('webdav_username')));
+    expect(columns, isNot(contains('webdav_password_saved')));
+    expect(columns, isNot(contains('webdav_sync_enabled')));
+    expect(columns, isNot(contains('last_pushed_seq')));
+    expect(columns, isNot(contains('last_synced_at')));
+    // 其余设置列保留。
+    expect(columns, containsAll([
+      'theme_mode',
+      'auto_backup_enabled',
+      'close_behavior',
+      'local_backup_folder',
+      'last_auto_backup_at',
+    ]));
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('schema v1 -> v13：迁移成功保留数据，WebDAV/同步列已删除（完整链路）', () async {
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(1);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['迁移目标', '2026-08-05', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO tasks (goal_id, title, planned_date, created_at, updated_at) '
+      'VALUES (1, ?, ?, ?, ?)',
+      ['迁移任务', '2026-08-05', 1750000000, 1750000000],
+    );
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 13);
+
+    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    expect(task.title, '迁移任务');
+
+    final tables = await upgraded.customSelect(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+    ).get();
+    final names = tables.map((row) => row.read<String>('name')).toSet();
+    expect(
+      names,
+      containsAll(['settings', 'recurrence_templates', 'milestones', 'checklist_items']),
+    );
+
+    final columns = await _columns(upgraded, 'settings');
+    expect(columns, contains('theme_mode')); // v12 列随链路保留
+    expect(columns, contains('auto_backup_enabled')); // v9 列随链路保留
+    expect(columns, contains('close_behavior')); // v6 列随链路保留
+    // 完整链路到 v13：webdav/sync 列在 v11/v9 加入后于 v13 被删除。
+    expect(columns, isNot(contains('webdav_sync_enabled')));
+    expect(columns, isNot(contains('webdav_url')));
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('半迁移状态：v12 版本号但部分 WebDAV 列已被手工删除时迁移可重复成功（幂等回归）', () async {
+    // v12 库缺一个 WebDAV 列（模拟半迁移/手工删列），user_version 停在 12：
+    // v12 -> v13 迁移的 dropColumnIfExists 对缺失列跳过，重复执行安全。
     final verifier = SchemaVerifier(GeneratedHelper());
     final schema = await verifier.schemaAt(12);
     final raw = schema.rawDatabase;
-    raw.execute('ALTER TABLE settings ADD COLUMN ai_base_url TEXT');
-    raw.execute('PRAGMA user_version = 13'); // 仅 v13（settings 带 ai 列、无表）
+    raw.execute('ALTER TABLE settings DROP COLUMN webdav_url');
+    raw.execute('PRAGMA user_version = 12');
 
-    final downgraded = AppDatabase(schema.newConnection());
-    await downgraded.customSelect('SELECT 1').get();
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 13);
 
-    final version = await downgraded
+    final version = await upgraded
         .customSelect('PRAGMA user_version')
         .get();
-    expect(version.single.read<int>('user_version'), 12);
-    final settingColumns = await _columns(downgraded, 'settings');
-    expect(settingColumns, isNot(contains('ai_base_url')));
+    expect(version.single.read<int>('user_version'), 13);
+    final settingColumns = await _columns(upgraded, 'settings');
+    expect(settingColumns, isNot(contains('webdav_url'))); // 缺列不复活
+    expect(settingColumns, isNot(contains('webdav_sync_enabled'))); // 其余被删
+    expect(settingColumns, isNot(contains('last_pushed_seq')));
 
-    await downgraded.close();
+    await upgraded.close();
     schema.close();
   });
 }

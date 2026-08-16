@@ -4,14 +4,11 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 
 import 'package:timecalc/features/backup/data/auto_backup_service.dart';
 import 'package:timecalc/features/backup/data/auto_backup_service_provider.dart';
 import 'package:timecalc/features/backup/data/backup_folder_picker.dart';
 import 'package:timecalc/features/backup/data/backup_service.dart';
-import 'package:timecalc/features/backup/data/credential_store.dart';
 import 'package:timecalc/features/backup/presentation/backup_page.dart';
 import 'package:timecalc/core/database/database.dart';
 import 'package:timecalc/core/database/database_provider.dart';
@@ -31,20 +28,6 @@ class FakeBackupFolderPicker implements BackupFolderPicker {
   }
 }
 
-/// 内存凭据存储假实现。
-class _FakeCredentialStore implements WebDavCredentialStore {
-  final Map<String, String> store = {};
-
-  @override
-  Future<void> save(String url, String password) async => store[url] = password;
-
-  @override
-  Future<String?> read(String url) async => store[url];
-
-  @override
-  Future<void> delete(String url) async => store.remove(url);
-}
-
 /// BackupPage widget 测试（M8 FR-9.4；M11 自动备份并入本页）。
 ///
 /// 覆盖：
@@ -56,7 +39,6 @@ void main() {
   late AppDatabase db;
   late SettingsRepository settings;
   late BackupService backup;
-  late _FakeCredentialStore credentials;
   late FakeBackupFolderPicker picker;
 
   Future<void> pumpPage(WidgetTester tester) async {
@@ -70,13 +52,10 @@ void main() {
         overrides: [
           databaseProvider.overrideWithValue(db),
           backupFolderPickerProvider.overrideWithValue(picker),
-          webDavCredentialStoreProvider.overrideWithValue(credentials),
           autoBackupServiceProvider.overrideWithValue(
             AutoBackupService(
               settingsRepository: settings,
               backupService: backup,
-              credentialStore: credentials,
-              httpClient: MockClient((_) async => http.Response('', 201)),
             ),
           ),
         ],
@@ -90,7 +69,6 @@ void main() {
     db = AppDatabase(NativeDatabase.memory());
     settings = SettingsRepository(db);
     backup = BackupService(db);
-    credentials = _FakeCredentialStore();
     picker = FakeBackupFolderPicker(['C:\\Backups']);
   });
 

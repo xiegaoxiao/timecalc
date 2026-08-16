@@ -177,7 +177,12 @@ class ChecklistItems extends Table {
 }
 
 /// 计划偏好（单行表，PRD §9 Settings 的 M2 子集 + M3 关闭行为 + M8 自动备份
-/// + M9 WebDAV 同步 + M10 外观主题）。
+/// + M10 外观主题）。
+///
+/// schema v13（2026-08：移除全部 WebDAV/同步功能）删除了
+/// webdav_url / webdav_username / webdav_password_saved（v9）与
+/// webdav_sync_enabled / last_pushed_seq / last_synced_at（v11）6 列，
+/// 数据回到纯本地单机。
 ///
 /// schema v2 引入。默认行不写死在迁移里，由 SettingsRepository.get()
 /// 惰性 seed（insertOrIgnore），保证迁移库与全新安装行为一致。
@@ -212,48 +217,11 @@ class Settings extends Table {
   /// 为空时本地目的地不启用；选择目录经原生对话框后写回（Windows 路径）。
   TextColumn get localBackupFolder => text().nullable()();
 
-  /// WebDAV 服务器地址（schema v9，可空，如 `https://dav.example.com/dav`）。
-  ///
-  /// 为空时 WebDAV 目的地不启用。密码不存本表（NFR-3），存系统凭据存储
-  /// （Windows DPAPI，见 CredentialStore）；[webdavPasswordSaved] 仅作
-  /// 「是否已保存」标记。
-  TextColumn get webdavUrl => text().nullable()();
-
-  /// WebDAV 用户名（schema v9，可空；非敏感信息，密码不进本表）。
-  TextColumn get webdavUsername => text().nullable()();
-
-  /// 是否已在系统凭据存储中保存 WebDAV 密码（schema v9）。
-  ///
-  /// 供 UI 提示「已保存密码，可留空保持原密码」；清除该标记不会删除
-  /// 凭据存储中的密码。
-  BoolColumn get webdavPasswordSaved =>
-      boolean().withDefault(const Constant(false))();
-
   /// 上次自动备份完成时间（schema v9，UTC，可空）。
   ///
   /// 调度判据：距离上次成功不足 1 天时跳过（FR-9.4「每日」语义）。
   /// 失败不推进该时间戳，避免静默跳过。
   DateTimeColumn get lastAutoBackupAt => dateTime().nullable()();
-
-  /// WebDAV 整库文件同步开关（M9，schema v11 引入）。
-  ///
-  /// 与自动备份共享 webdav_url/username/密码（同一账号）；开启后
-  /// 启动拉取远端快照、数据变更后推送、退出推送，最近同步时间见
-  /// [lastSyncedAt]。运行时配置，不进入业务数据备份（FR-9.5，
-  /// 同 close_behavior 与自动备份配置）。
-  BoolColumn get webdavSyncEnabled =>
-      boolean().withDefault(const Constant(false))();
-
-  /// 本设备最近成功推送的同步序号（schema v11，可空，null=从未推送）。
-  ///
-  /// 与远端 meta 的 seq 比较决定「拉取（远端较新）还是只推送」；
-  /// 不进入业务数据备份（运行时配置）。
-  IntColumn get lastPushedSeq => integer().nullable()();
-
-  /// 最近同步完成时间（schema v11，UTC，可空，展示用）。
-  ///
-  /// 只在推送或拉取成功后更新；失败不动，便于用户看出同步停滞。
-  DateTimeColumn get lastSyncedAt => dateTime().nullable()();
 
   /// 主题模式（M10，schema v12 引入）。
   ///

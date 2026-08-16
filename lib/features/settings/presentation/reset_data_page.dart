@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers/app_refresh.dart';
 import '../../backup/data/backup_service_provider.dart';
-import '../data/settings_repository_provider.dart';
 
 /// 重置数据页（设置页「重置数据」菜单项 push 进入）。
 ///
@@ -11,8 +10,7 @@ import '../data/settings_repository_provider.dart';
 /// 与覆盖恢复一致），副本保存到系统临时目录：
 /// - 「重置数据」：仅清空全部业务数据（目标/科目/里程碑/任务/重复模板/
 ///   检查项，含已归档任务），设置与运行时配置保持不变；
-/// - 「重置数据 + 设置」：业务数据与设置全部恢复默认（等同全新安装；
-///   WebDAV 同步随之关闭，远端副本保留为安全网）。
+/// - 「重置数据 + 设置」：业务数据与设置全部恢复默认（等同全新安装）。
 ///
 /// 每个选项都要经二次确认对话框后才执行，执行后全量刷新各页缓存。
 class ResetDataPage extends ConsumerStatefulWidget {
@@ -31,8 +29,6 @@ class _ResetDataPageState extends ConsumerState<ResetDataPage> {
 
   @override
   Widget build(BuildContext context) {
-    final syncEnabled =
-        ref.watch(settingsProvider).valueOrNull?.webdavSyncEnabled ?? false;
     return Scaffold(
       appBar: AppBar(title: const Text('重置数据')),
       body: ListView(
@@ -49,7 +45,7 @@ class _ResetDataPageState extends ConsumerState<ResetDataPage> {
             title: '重置数据',
             icon: Icons.delete_outline,
             description: '清空全部目标、科目、里程碑、任务、重复模板与检查项'
-                '（含已归档任务）。设置与运行时配置（主题、同步、自动备份、'
+                '（含已归档任务）。设置与运行时配置（主题、自动备份、'
                 '关闭行为、计划偏好）保持不变。',
             buttonLabel: '重置数据',
             dialogTitle: '重置全部数据？',
@@ -62,26 +58,14 @@ class _ResetDataPageState extends ConsumerState<ResetDataPage> {
             title: '重置数据 + 设置',
             icon: Icons.restart_alt,
             description: '清空全部业务数据，同时把设置恢复默认（等同全新安装）：'
-                '主题跟随系统、计划偏好 120 分钟/周 7 天、自动备份与 WebDAV '
-                '同步关闭。',
+                '主题跟随系统、计划偏好 120 分钟/周 7 天、自动备份关闭。',
             buttonLabel: '重置数据 + 设置',
             dialogTitle: '重置全部数据与设置？',
-            dialogContent: '将清空全部业务数据，并把主题、同步、自动备份、'
+            dialogContent: '将清空全部业务数据，并把主题、自动备份、'
                 '关闭行为、计划偏好等设置恢复默认。执行前会自动创建安全副本。'
                 '此操作不可撤销。',
             onConfirm: () => _reset(includeSettings: true),
           ),
-          if (syncEnabled) ...[
-            const SizedBox(height: 16),
-            Text(
-              '注意：当前已开启 WebDAV 同步。仅「重置数据」时同步保持开启，'
-              '清空后的本地库可能被推送覆盖远端，或被远端旧数据拉回；'
-              '「重置数据 + 设置」会随设置一并关闭同步，远端副本保留为安全网。',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
-            ),
-          ],
         ],
       ),
     );

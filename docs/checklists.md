@@ -104,16 +104,18 @@
 - [x]（P0）可将全部业务数据导出为带版本号的备份文件并恢复（FR-9.1）——BackupService 导出 zip（manifest 带版本/计数），设置页「导出备份」；backup_service_test 10 项。
 - [x]（P0）恢复前展示备份时间、目标数和任务数，并要求确认「合并」或「覆盖」（FR-9.2）——恢复确认对话框展示摘要并二选一。
 - [x]（P0）覆盖恢复前自动创建当前数据的安全副本（FR-9.3）——覆盖模式先 exportSafetyCopy 再原子替换；测试断言副本存在且含覆盖前数据。
-- [x]（P1）每日自动备份，默认保留最近 7 份；路径不可写时通知用户（FR-9.4）——M8 交付：设置页「自动备份」独立页（启用开关 + 本地目录 + WebDAV 双目的地）；应用运行期间语义（启动检查 + 每小时复查，距上次成功不足 24 小时跳过）；每目的地只保留最近 7 份自动备份（`timecalc-auto-` 前缀隔离，不删手动导出）；失败不推进时间戳、当日去重 SnackBar 提示；从备份位置恢复（本地目录/WebDAV 列表 → 下载 → 走合并/覆盖全链路）；WebDAV 密码经系统凭据存储（DPAPI，NFR-3）不落库不进备份；schema v9 新增 6 个配置列 + 覆盖恢复保留运行时配置；auto_backup_service_test 9 项 + webdav_client_test 11 项 + backup_target_test 8 项 + auto_backup_scheduler_test 4 项 + auto_backup_page_test 5 项 + migration v8→v9 3 项佐证。
-- [x] API Key、日志和窗口状态不进入业务数据备份（FR-9.5）——备份仅含业务表 + 计划偏好；settings.json 不含 close_behavior 与自动备份配置；窗口状态独立 JSON；WebDAV 密码存系统凭据存储；测试佐证。
+ - [x]（P1）每日自动备份，默认保留最近 7 份；路径不可写时通知用户（FR-9.4）——M8 交付后于 **M11/v1.15 收敛为本地目录单目的地**（移除 WebDAV 目的地与凭据存储）；应用运行期间语义（启动检查 + 每小时复查，距上次成功不足 24 小时跳过）；保留最近 7 份自动备份（`timecalc-auto-` 前缀隔离，不删手动导出）；失败不推进时间戳、当日去重 SnackBar 提示；从备份位置恢复（本地目录列表 → 下载 → 走合并/覆盖全链路）；schema v9 配置列 + 覆盖恢复保留运行时配置；auto_backup_service_test + auto_backup_scheduler_test + backup_page_test 佐证。
+- [x] API Key、日志和窗口状态不进入业务数据备份（FR-9.5）——备份仅含业务表 + 计划偏好；settings.json 不含 close_behavior 与自动备份配置；窗口状态独立 JSON；测试佐证。
 
-### 2.10 FR-10 WebDAV 整库文件同步（M9，云同步落地）
+### 2.10 FR-10 WebDAV 整库文件同步（M9，云同步落地）——**v1.15 已整体移除**
 
-- [x] 多设备数据同步：启动拉取远端快照、业务变更后推送、退出推送、设置页手动「立即同步」、运行中每 5 分钟周期复查——`WebDavSyncService.syncOnce`/`pushIfNeeded` + `DatabaseChangeWatcher`（6 张业务表 `managers.<table>.watch()` 合并 + 防抖 3s）+ main 启动/周期/退出接线；webdav_sync_service_test 8 项 + sync_page_test 4 项佐证。
-- [x] 后写者胜 + 安全副本：远端仅存一份最新快照（`webdav_sync/`，与自动备份目录隔离）+ meta（seq/schema 版本）；拉取覆盖本地前自动安全副本（复用 FR-9.3）；并发编辑的极端场景可从安全副本恢复；同步页明示语义。
-- [x] 运行时配置各设备独立：覆盖恢复/拉取保留 close_behavior、自动备份、同步自身（backup_codec + backup_service 保留分支）；backup_service_test「覆盖恢复后同步配置被保留」佐证。
-- [x] schema 版本守卫：远端快照由更高版本生成时中止并提示升级，不降级读坏——webdav_sync_service_test「schema 版本守卫」佐证。
-- [x] 数据层（schema v11）：Settings 新增 `webdav_sync_enabled`/`last_pushed_seq`/`last_synced_at`；`from10To11` 迁移 + drift 快照 v11 + migration 测试（v10→v11 / v1→v11 / 半迁移幂等）；FR-9.5 运行时配置不进备份。
+> 本条目为历史验收记录。**v1.15（2026-08）移除全部 WebDAV/同步功能**：同步页、`WebDavSyncService`、`DatabaseChangeWatcher`、main 启动/周期/退出接线、`webdav_sync_enabled`/`last_pushed_seq`/`last_synced_at`（schema v11）与 `webdav_url`/`webdav_username`/`webdav_password_saved`（schema v9）6 列（schema v13 迁移删除）、`WebDavClient`、系统凭据存储与 `WebDavBackupTarget` 全部下线；数据回到纯本地单机。schema v13 迁移 + 降级清理 + 幂等删列测试佐证（migration_test「v12→v13 / v1→v13 / v14 库降级到 v13」）。
+
+- [x]（历史）多设备数据同步：启动拉取远端快照、业务变更后推送、退出推送、设置页手动「立即同步」、运行中每 5 分钟周期复查。
+- [x]（历史）后写者胜 + 安全副本：远端仅存一份最新快照 + meta（seq/schema 版本）；拉取覆盖本地前自动安全副本。
+- [x]（历史）运行时配置各设备独立：覆盖恢复/拉取保留 close_behavior、自动备份、同步自身。
+- [x]（历史）schema 版本守卫：远端快照由更高版本生成时中止并提示升级。
+- [x]（历史）数据层（schema v11）：Settings 新增 3 个同步列 + from10To11 迁移 + drift 快照 v11 + migration 测试。
 
 ## 3. 用户流程走查清单（手动回归，每个里程碑结束时执行）
 
@@ -282,17 +284,17 @@
 
 ### M8 每日自动备份（FR-9.4）
 
-- [x] 本地目录 + WebDAV 双目的地自动备份（保留 7 份/运行期间语义/从备份位置恢复）交付——见 §2.9 FR-9.4 与 M8 验收记录；auto_backup_service_test 9 项 + webdav_client_test 11 项 + backup_target_test 8 项 + scheduler 4 项 + page 5 项 + 迁移 3 项。
+- [x] 本地目录自动备份（保留 7 份/运行期间语义/从备份位置恢复）交付——见 §2.9 FR-9.4；auto_backup_service_test + auto_backup_scheduler_test + backup_page_test + backup_target_test 佐证。M11/v1.15 起目的地收敛为本地目录（移除 WebDAV）。
 
-### M9 WebDAV 整库文件同步（云同步落地）
+### M9 WebDAV 整库文件同步（云同步落地）——**v1.15 已整体移除**
 
-- [x] 多设备整库快照同步（启动拉取/变更推送/退出推送/手动/周期复查）交付——见 §2.10 FR-10；webdav_sync_service_test 8 项 + sync_page_test 4 项 + 迁移 3 项 + backup 保留 1 项。
-- [x] 后写者胜语义、拉取安全副本、运行时配置各设备独立、schema 版本守卫——同步页说明 + 测试佐证。
+- [x]（历史）多设备整库快照同步（启动拉取/变更推送/退出推送/手动/周期复查）交付——见 §2.10 FR-10 移除说明。
+- [x]（历史）后写者胜语义、拉取安全副本、运行时配置各设备独立、schema 版本守卫。
 
 ### M10 明暗主题切换
 
 - [x] 外观页三选一（跟随系统/浅色/深色）交付——`AppTheme.light()/dark()` 复用；`app.dart` watch `themeMode` 响应式换肤；appearance_page_test 4 项。
-- [x] 主题模式为设备级配置（schema v12 `theme_mode`），不进业务备份（FR-9.5），覆盖恢复/同步拉取保留——migration 3 项 + backup 保留 1 项 + settings_repository 3 项。
+- [x] 主题模式为设备级配置（schema v12 `theme_mode`），不进业务备份（FR-9.5），覆盖恢复保留——migration 3 项 + backup 保留 1 项 + settings_repository 2 项。
 
 ## 12. 使用场景速查表
 

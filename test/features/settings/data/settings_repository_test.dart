@@ -95,9 +95,6 @@ void main() {
     final settings = await repo.get();
     expect(settings.autoBackupEnabled, isFalse);
     expect(settings.localBackupFolder, isNull);
-    expect(settings.webdavUrl, isNull);
-    expect(settings.webdavUsername, isNull);
-    expect(settings.webdavPasswordSaved, isFalse);
     expect(settings.lastAutoBackupAt, isNull);
   });
 
@@ -112,15 +109,6 @@ void main() {
     expect((await repo.get()).localBackupFolder, r'C:\Backups');
     await repo.updateLocalBackupFolder(null);
     expect((await repo.get()).localBackupFolder, isNull);
-  });
-
-  test('更新 WebDAV 配置与密码标记', () async {
-    await repo.updateWebDavConfig(url: 'https://dav.example.com/dav', username: 'alice');
-    await repo.updateWebDavPasswordSaved(true);
-    final settings = await repo.get();
-    expect(settings.webdavUrl, 'https://dav.example.com/dav');
-    expect(settings.webdavUsername, 'alice');
-    expect(settings.webdavPasswordSaved, isTrue);
   });
 
   test('更新上次自动备份时间（UTC）', () async {
@@ -142,40 +130,6 @@ void main() {
     expect(settings.localBackupFolder, r'C:\Backups');
   });
 
-  test('默认 WebDAV 同步关闭且无同步状态（M9，schema v11）', () async {
-    final settings = await repo.get();
-    expect(settings.webdavSyncEnabled, isFalse);
-    expect(settings.lastPushedSeq, isNull);
-    expect(settings.lastSyncedAt, isNull);
-  });
-
-  test('更新同步开关并持久化', () async {
-    await repo.updateSyncEnabled(true);
-    expect((await repo.get()).webdavSyncEnabled, isTrue);
-    await repo.updateSyncEnabled(false);
-    expect((await repo.get()).webdavSyncEnabled, isFalse);
-  });
-
-  test('更新同步状态（seq + 时间），不覆盖同步开关', () async {
-    await repo.updateSyncEnabled(true);
-    final time = DateTime.utc(2026, 8, 7, 3, 30);
-    await repo.updateSyncState(seq: 12, at: time);
-    final settings = await repo.get();
-    expect(settings.webdavSyncEnabled, isTrue);
-    expect(settings.lastPushedSeq, 12);
-    expect(settings.lastSyncedAt?.toUtc(), time);
-  });
-
-  test('同步状态与自动备份/计划偏好互不覆盖', () async {
-    await repo.updateDailyAvailableMinutes(90);
-    await repo.updateAutoBackupEnabled(true);
-    await repo.updateSyncState(seq: 5, at: DateTime.now().toUtc());
-    final settings = await repo.get();
-    expect(settings.dailyAvailableMinutes, 90);
-    expect(settings.autoBackupEnabled, isTrue);
-    expect(settings.lastPushedSeq, 5);
-  });
-
   test('默认主题模式为跟随系统（M10，schema v12）', () async {
     final settings = await repo.get();
     expect(settings.themeMode, 'system');
@@ -190,13 +144,11 @@ void main() {
     expect((await repo.get()).themeMode, 'system');
   });
 
-  test('主题模式与计划偏好/同步状态互不覆盖', () async {
+  test('主题模式与计划偏好互不覆盖', () async {
     await repo.updateDailyAvailableMinutes(90);
     await repo.updateThemeMode('dark');
-    await repo.updateSyncState(seq: 3, at: DateTime.now().toUtc());
     final settings = await repo.get();
     expect(settings.dailyAvailableMinutes, 90);
     expect(settings.themeMode, 'dark');
-    expect(settings.lastPushedSeq, 3);
   });
 }

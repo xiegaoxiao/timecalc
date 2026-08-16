@@ -210,19 +210,14 @@ class BackupCodec {
   ///
   /// 备份文件按 FR-9.5 不包含运行时配置（close_behavior、自动备份配置），
   /// 因此恢复时这些字段由调用方决定：null 表示「覆盖恢复保留当前值」
-  /// （见 BackupService._overwriteRestore）。
+  /// （见 BackupService._overwriteRestore）。2026-08 移除 WebDAV/同步后
+  /// 不再有 webdav/sync 运行时字段。
   SettingsCompanion settingsFromJson(
     Map<String, Object?> json, {
     String? closeBehavior,
     bool? autoBackupEnabled,
     String? localBackupFolder,
-    String? webdavUrl,
-    String? webdavUsername,
-    bool? webdavPasswordSaved,
     DateTime? lastAutoBackupAt,
-    bool? webdavSyncEnabled,
-    int? lastPushedSeq,
-    DateTime? lastSyncedAt,
     String? themeMode,
   }) {
     final now = DateTime.now().toUtc();
@@ -242,27 +237,9 @@ class BackupCodec {
       localBackupFolder: localBackupFolder == null
           ? const Value.absent()
           : Value(localBackupFolder),
-      webdavUrl: webdavUrl == null
-          ? const Value.absent()
-          : Value(webdavUrl),
-      webdavUsername: webdavUsername == null
-          ? const Value.absent()
-          : Value(webdavUsername),
-      webdavPasswordSaved: webdavPasswordSaved == null
-          ? const Value.absent()
-          : Value(webdavPasswordSaved),
       lastAutoBackupAt: lastAutoBackupAt == null
           ? const Value.absent()
           : Value(lastAutoBackupAt),
-      webdavSyncEnabled: webdavSyncEnabled == null
-          ? const Value.absent()
-          : Value(webdavSyncEnabled),
-      lastPushedSeq: lastPushedSeq == null
-          ? const Value.absent()
-          : Value(lastPushedSeq),
-      lastSyncedAt: lastSyncedAt == null
-          ? const Value.absent()
-          : Value(lastSyncedAt),
       themeMode: themeMode == null
           ? const Value.absent()
           : Value(themeMode),

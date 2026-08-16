@@ -6,7 +6,6 @@ import '../../../core/database/database.dart';
 import '../../../core/database/tables.dart';
 import '../../backup/presentation/archived_tasks_page.dart';
 import '../../backup/presentation/backup_page.dart';
-import '../../sync/presentation/sync_page.dart';
 import '../data/settings_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
 import 'appearance_page.dart';
@@ -34,9 +33,6 @@ class SettingsPage extends ConsumerWidget {
     final autoBackupLabel = settings?.autoBackupEnabled ?? false
         ? '每日自动备份 · ${_autoBackupTargetsLabel(settings)}'
         : '每日自动备份（未开启）';
-    final syncLabel = settings?.webdavSyncEnabled ?? false
-        ? 'WebDAV 整库文件同步'
-        : 'WebDAV 整库文件同步（未开启）';
     final appearanceLabel = _appearanceLabel(settings?.themeMode);
 
     return Scaffold(
@@ -44,7 +40,7 @@ class SettingsPage extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // 分组标题：层级更清晰（个性化 / 数据与同步）。
+          // 分组标题：层级更清晰（个性化 / 数据）。
           const _GroupHeader(title: '个性化'),
           Card(
             margin: EdgeInsets.zero,
@@ -75,19 +71,12 @@ class SettingsPage extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 16),
-          const _GroupHeader(title: '数据与同步'),
+          const _GroupHeader(title: '数据'),
           Card(
             margin: EdgeInsets.zero,
             clipBehavior: Clip.antiAlias,
             child: Column(
               children: [
-                _MenuTile(
-                  icon: Icons.sync_outlined,
-                  title: '同步',
-                  subtitle: syncLabel,
-                  onTap: () => context.push(SyncPage.route),
-                ),
-                const Divider(height: 1),
                 _MenuTile(
                   icon: Icons.backup_outlined,
                   title: '备份与恢复',
@@ -138,7 +127,7 @@ class _GroupHeader extends StatelessWidget {
   }
 }
 
-/// 自动备份目的地摘要（本地目录；M11 起 WebDAV 交给同步，不再列出）。
+/// 自动备份目的地摘要（本地目录；2026-08 移除 WebDAV 后仅本地目录）。
 String _autoBackupTargetsLabel(Setting? settings) {
   final local = settings?.localBackupFolder;
   if (local == null || local.trim().isEmpty) return '未配置目录';

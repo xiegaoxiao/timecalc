@@ -526,9 +526,6 @@ void main() {
               id: const Value(1),
               autoBackupEnabled: const Value(true),
               localBackupFolder: const Value(r'C:\Backups'),
-              webdavUrl: const Value('https://dav.example.com/dav'),
-              webdavUsername: const Value('alice'),
-              webdavPasswordSaved: const Value(true),
               lastAutoBackupAt: Value(DateTime.utc(2026, 8, 6, 1, 0, 0)),
               createdAt: DateTime.utc(2026, 1, 1),
               updatedAt: DateTime.utc(2026, 1, 1),
@@ -542,34 +539,7 @@ void main() {
       final settings = await db.select(db.settings).getSingle();
       expect(settings.autoBackupEnabled, isTrue);
       expect(settings.localBackupFolder, r'C:\Backups');
-      expect(settings.webdavUrl, 'https://dav.example.com/dav');
-      expect(settings.webdavUsername, 'alice');
-      expect(settings.webdavPasswordSaved, isTrue);
       expect(settings.lastAutoBackupAt?.toUtc(), DateTime.utc(2026, 8, 6, 1, 0, 0));
-    });
-
-    test('覆盖恢复后 WebDAV 同步配置被保留（M9 回归）', () async {
-      await seedBaseData();
-      // 当前同步配置（运行时状态，不进备份文件）。
-      await db.into(db.settings).insertOnConflictUpdate(
-            SettingsCompanion.insert(
-              id: const Value(1),
-              webdavSyncEnabled: const Value(true),
-              lastPushedSeq: const Value(7),
-              lastSyncedAt: Value(DateTime.utc(2026, 8, 7, 3, 30, 0)),
-              createdAt: DateTime.utc(2026, 1, 1),
-              updatedAt: DateTime.utc(2026, 1, 1),
-            ),
-          );
-      final file = tempFile('backup.timecalc');
-      await backup.exportBackup(file);
-
-      // 覆盖恢复：业务数据被替换，同步开关/序号/时间不被重置。
-      await backup.restoreBackup(file, mode: RestoreMode.overwrite);
-      final settings = await db.select(db.settings).getSingle();
-      expect(settings.webdavSyncEnabled, isTrue);
-      expect(settings.lastPushedSeq, 7);
-      expect(settings.lastSyncedAt?.toUtc(), DateTime.utc(2026, 8, 7, 3, 30, 0));
     });
 
     test('覆盖恢复后主题模式被保留（M10 回归）', () async {
@@ -610,12 +580,11 @@ void main() {
               updatedAt: DateTime.utc(2026, 8, 1),
             ),
           );
-      // 修改设置（计划偏好 + 同步开启 + 深色主题），验证重置后保留。
+      // 修改设置（计划偏好 + 深色主题），验证重置后保留。
       await db.into(db.settings).insertOnConflictUpdate(
             SettingsCompanion.insert(
               id: const Value(1),
               dailyAvailableMinutes: const Value(90),
-              webdavSyncEnabled: const Value(true),
               themeMode: const Value('dark'),
               createdAt: DateTime.utc(2026, 1, 1),
               updatedAt: DateTime.utc(2026, 1, 1),
@@ -636,19 +605,17 @@ void main() {
       // 设置行保留原值。
       final settings = await db.select(db.settings).getSingle();
       expect(settings.dailyAvailableMinutes, 90);
-      expect(settings.webdavSyncEnabled, isTrue);
       expect(settings.themeMode, 'dark');
     });
 
     test('重置数据+设置：业务表全清空，设置行删除后由仓库重建默认值', () async {
       await seedBaseData();
-      // 修改设置（同步/自动备份开启 + 深色主题 + 计划偏好 90 分钟）。
+      // 修改设置（自动备份开启 + 深色主题 + 计划偏好 90 分钟）。
       await db.into(db.settings).insertOnConflictUpdate(
             SettingsCompanion.insert(
               id: const Value(1),
               dailyAvailableMinutes: const Value(90),
               autoBackupEnabled: const Value(true),
-              webdavSyncEnabled: const Value(true),
               themeMode: const Value('dark'),
               createdAt: DateTime.utc(2026, 1, 1),
               updatedAt: DateTime.utc(2026, 1, 1),
@@ -666,14 +633,13 @@ void main() {
       expect(await db.select(db.recurrenceTemplates).get(), isEmpty);
       expect(await db.select(db.checklistItems).get(), isEmpty);
 
-      // 设置行已删除；仓库惰性重建默认行（同步/自动备份关闭、主题跟随系统）。
+      // 设置行已删除；仓库惰性重建默认行（自动备份关闭、主题跟随系统）。
       expect(await db.select(db.settings).getSingleOrNull(), isNull);
       final rebuilt = await SettingsRepository(db).get();
       expect(rebuilt.dailyAvailableMinutes, 120);
       expect(rebuilt.availableWeekdays, '1,2,3,4,5,6,7');
       expect(rebuilt.closeBehavior, CloseBehavior.exit);
       expect(rebuilt.autoBackupEnabled, isFalse);
-      expect(rebuilt.webdavSyncEnabled, isFalse);
       expect(rebuilt.themeMode, 'system');
     });
 
