@@ -249,19 +249,25 @@ class _TodayPageState extends ConsumerState<TodayPage> {
     }
 
     return CustomScrollView(
-      // 头部区块（倒计时卡/概览/横幅/标题行等）用 SliverChildListDelegate
-      // 一次性构建；今日任务列表用 SliverList.builder 懒加载——大任务量下
-      // 只实例化视口内的任务行，滚动时按需构建（原 ListView(children:) 会
-      // 一次性构建全部行）。
+      // 头部区块：静态区块（概览/横幅/标题行等）用 SliverChildListDelegate
+      // 一次性构建；进行中目标倒计时卡改为 ProgressiveRows 视口驱动懒构建
+      // ——大目标量（批量导入）下每张卡还各自 watch 里程碑查询，只构建视口
+      // 附近卡片，滚动到哪建到哪。今日任务列表在下方独立 Sliver 内，同样
+      // 懒加载。
       slivers: [
         SliverPadding(
           padding: const EdgeInsets.all(16),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
-              if (activeGoals.isNotEmpty) ...[
-                for (final goal in activeGoals) _CountdownCard(goal: goal),
-                const SizedBox(height: 8),
-              ],
+              // 倒计时卡区块：有目标才显示，且首张卡必须常驻（视口最顶）。
+              // 卡片自带 bottom margin 12 提供行距。
+              if (activeGoals.isNotEmpty)
+                ProgressiveRows(
+                  itemCount: activeGoals.length,
+                  itemBuilder: (context, i) =>
+                      _CountdownCard(goal: activeGoals[i]),
+                ),
+              if (activeGoals.isNotEmpty) const SizedBox(height: 8),
               // 今日概览常驻：有活跃目标即显示（空态用 `--` 无数据语义），
               // 把「今日计划量与完成度」前置到首页。
               if (activeGoals.isNotEmpty) ...[

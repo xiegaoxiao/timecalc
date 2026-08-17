@@ -7,6 +7,7 @@ import '../../../core/errors/app_guard.dart';
 import '../../../core/theme/accent_palette.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/chart_empty_state.dart';
+import '../../../shared/widgets/progressive_rows.dart';
 import '../../../shared/widgets/section_header.dart';
 import '../data/subject_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
@@ -61,24 +62,27 @@ class SubjectManager extends ConsumerWidget {
                 ),
               );
             }
-            return Column(
-              children: [
-                for (final subject in subjects)
-                  _SubjectCard(
-                    goalId: goalId,
-                    subject: subject,
-                    taskCount: taskCounts[subject.id]?.length ?? 0,
-                    doneCount:
-                        taskCounts[subject.id]
-                            ?.where((t) => t.status == 'done')
-                            .length ??
-                        0,
-                    onTap: () =>
-                        context.push('/goals/$goalId/subjects/${subject.id}'),
-                    onRename: () => _renameSubject(context, ref, subject),
-                    onDelete: () => _deleteSubject(context, ref, subject),
-                  ),
-              ],
+            return ProgressiveRows(
+              // 懒加载（2026-08-17）：科目列表按视口驱动渐进构建（同上
+              // 里程碑区），详情页中大科目数量不一次性全建。
+              itemCount: subjects.length,
+              itemBuilder: (context, i) {
+                final subject = subjects[i];
+                return _SubjectCard(
+                  goalId: goalId,
+                  subject: subject,
+                  taskCount: taskCounts[subject.id]?.length ?? 0,
+                  doneCount:
+                      taskCounts[subject.id]
+                          ?.where((t) => t.status == 'done')
+                          .length ??
+                      0,
+                  onTap: () =>
+                      context.push('/goals/$goalId/subjects/${subject.id}'),
+                  onRename: () => _renameSubject(context, ref, subject),
+                  onDelete: () => _deleteSubject(context, ref, subject),
+                );
+              },
             );
           },
         ),

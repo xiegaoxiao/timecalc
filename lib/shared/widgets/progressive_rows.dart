@@ -92,11 +92,19 @@ class _ProgressiveRowsState extends State<ProgressiveRows> {
     if (lastBox is! RenderBox || !lastBox.attached) return true;
     final viewport = RenderAbstractViewport.of(lastBox);
     // 从渲染该行的视口取真实偏移（同步滚动监听到同一 offset）。
-    final ViewportOffset? offset = switch (viewport) {
-      final RenderViewport v => v.offset,
-      final RenderShrinkWrappingViewport v => v.offset,
-      _ => null,
-    };
+    // RenderViewport/RenderShrinkWrappingViewport = 常规 sliver 列表视口；
+    // SingleChildScrollView 的视口是私有 _RenderSingleChildViewport（也实现
+    // RenderAbstractViewport），无法在此命名，回退到最近 Scrollable 的
+    // position（SingleChildScrollView 场景无嵌套，祖先解析可靠）。
+    ViewportOffset? offset;
+    switch (viewport) {
+      case final RenderViewport v:
+        offset = v.offset;
+      case final RenderShrinkWrappingViewport v:
+        offset = v.offset;
+      default:
+        offset = Scrollable.maybeOf(ctx)?.position;
+    }
     // 视口偏移运行时为 ScrollPosition（含 pixels/viewportDimension）；
     // 未就绪（无内容维度）时不扩展，等下一帧/滚动事件再查。
     if (offset is! ScrollPosition || !offset.hasContentDimensions) {

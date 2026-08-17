@@ -8,6 +8,7 @@ import 'package:timecalc/core/database/database.dart';
 import 'package:timecalc/core/database/database_provider.dart';
 import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
+import 'package:timecalc/features/goals/presentation/goal_list_page.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 
 import '../../../shared/nav_helper.dart';
@@ -50,9 +51,10 @@ void main() {
     await db.close();
   });
 
-  /// 目标页中唯一的目标卡片（Wrap 流内 Card）。
+  /// 目标页中唯一的目标卡片（懒加载行列表内的 Card；以 GoalListBody 为界，
+  /// 避免 IndexedStack 常驻的其他页（今日页等）含 Card 干扰定位）。
   Finder goalCardFinder() => find.descendant(
-    of: find.byType(Wrap),
+    of: find.byType(GoalListBody),
     matching: find.byType(Card),
   );
 

@@ -16,6 +16,7 @@ import '../../../core/utils/date_text.dart';
 import '../../../services/countdown_service.dart';
 import '../../../services/duration_format.dart';
 import '../../../shared/widgets/app_error_view.dart';
+import '../../../shared/widgets/progressive_rows.dart';
 import '../../../shared/widgets/section_header.dart';
 import '../../plan_import/presentation/plan_import_dialog.dart';
 import '../../settings/data/settings_repository_provider.dart';
@@ -170,8 +171,13 @@ class GoalListBody extends ConsumerWidget {
               // 580px，消除下方大留白）。卡片按内容自适应高度（review：旧
               // 固定 mainAxisExtent 268 在系统 textScaler 放大字号/标题两行时
               // 会 RenderFlex overflow，旧 ListTile 是自适应的，固定高度是
-              // 回归）；Wrap 间距 12 与旧网格一致，一次性构建子项（目标数量
-              // 有限，个人工具，无懒加载需求）。
+              // 回归）。
+              // 懒加载（2026-08-17）：卡片行经 ProgressiveRows 视口驱动懒
+              // 构建——本页位于 IndexedStack 常驻分支，且每张卡都 watch
+              // clock/倒计时/目标统计，目标数量大（批量导入 100+）时全量
+              // Wrap 会在每次数据刷新整页重建所有卡片（旧 Wrap 一次性构建
+              // 全部子项）。按行分组后滚动到哪建到哪，行内保持原双列等宽
+              // 布局。
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
@@ -180,21 +186,24 @@ class GoalListBody extends ConsumerWidget {
                     final cardWidth = twoColumns
                         ? (width - 32 - 12) / 2
                         : width - 32;
+                    final perRow = twoColumns ? 2 : 1;
+                    final rowCount = (goals.length / perRow).ceil();
                     return SingleChildScrollView(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      child: Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        children: [
-                          for (final goal in goals)
-                            SizedBox(
-                              width: cardWidth,
-                              child: _GoalCard(
-                                goal: goal,
-                                completion: completion[goal.id],
-                              ),
-                            ),
-                        ],
+                      child: ProgressiveRows(
+                        itemCount: rowCount,
+                        // 每行一列或两列卡片（双列行内 12 间距 = 原 Wrap
+                        // spacing；行间 12 = 原 runSpacing）。
+                        itemBuilder: (context, row) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _GoalRow(
+                            goals: goals,
+                            completion: completion,
+                            row: row,
+                            twoColumns: twoColumns,
+                            cardWidth: cardWidth,
+                          ),
+                        ),
                       ),
                     );
                   },
@@ -269,6 +278,53 @@ class _EmptyView extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 目标卡片流中的一行（懒加载列表的 item）：单列时一张通栏大卡，双列时
+/// 左右两卡（12px 行内间距 = 原 Wrap spacing）。行高自适应（取两卡中较高
+/// 者），矮卡顶部对齐（与 Wrap 交叉轴 start 一致）。
+class _GoalRow extends StatelessWidget {
+  const _GoalRow({
+    required this.goals,
+    required this.completion,
+    required this.row,
+    required this.twoColumns,
+    required this.cardWidth,
+  });
+
+  final List<Goal> goals;
+  final Map<int, ({int total, int done, int totalMinutes, int doneMinutes})>
+      completion;
+  final int row;
+  final bool twoColumns;
+  final double cardWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    final perRow = twoColumns ? 2 : 1;
+    final start = row * perRow;
+    Widget card(int offset) {
+      final goal = goals[start + offset];
+      return SizedBox(
+        width: cardWidth,
+        child: _GoalCard(
+          goal: goal,
+          completion: completion[goal.id],
+        ),
+      );
+    }
+
+    if (!twoColumns) return card(0);
+    if (start + 1 >= goals.length) return card(0);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        card(0),
+        const SizedBox(width: 12),
+        card(1),
+      ],
     );
   }
 }

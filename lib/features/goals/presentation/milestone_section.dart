@@ -7,6 +7,7 @@ import '../../../core/errors/app_guard.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/chart_empty_state.dart';
+import '../../../shared/widgets/progressive_rows.dart';
 import '../../../shared/widgets/section_header.dart';
 import '../data/milestone_repository_provider.dart';
 import 'milestone_form_dialog.dart';
@@ -70,16 +71,18 @@ class MilestoneSection extends ConsumerWidget {
                 ),
               );
             }
-            return Column(
-              children: [
-                for (final milestone in milestones)
-                  _MilestoneCard(
-                    milestone: milestone,
-                    onEdit: () => _editMilestone(context, ref, milestone),
-                    onToggleDone: () => _toggleDone(context, ref, milestone),
-                    onDelete: () => _deleteMilestone(context, ref, milestone),
-                  ),
-              ],
+            return ProgressiveRows(
+              // 懒加载（2026-08-17）：里程碑列表按视口驱动渐进构建。
+              // 详情页中本区块经 SliverToBoxAdapter 嵌入，进入缓存区即整体
+              // 布局；里程碑多（长目标周期上百节点）时旧 Column 一次性全建，
+              // 现在滚动到哪建到哪。
+              itemCount: milestones.length,
+              itemBuilder: (context, i) => _MilestoneCard(
+                milestone: milestones[i],
+                onEdit: () => _editMilestone(context, ref, milestones[i]),
+                onToggleDone: () => _toggleDone(context, ref, milestones[i]),
+                onDelete: () => _deleteMilestone(context, ref, milestones[i]),
+              ),
             );
           },
         ),
