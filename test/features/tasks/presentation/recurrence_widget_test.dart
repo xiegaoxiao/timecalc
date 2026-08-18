@@ -396,10 +396,38 @@ void main() {
 
       await openGoalDetail(tester);
 
-      // 展开前：无子任务行（无复选框）。
-      expect(find.byType(Checkbox), findsNothing);
+      // 详情页任务区有预览（8 条）：滚动到组头可见后展开。
+      await tester.scrollUntilVisible(
+        find.byTooltip('展开重复任务'),
+        100,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('展开重复任务'));
+      await tester.pumpAndSettle();
 
-      // 滚动到组头可见后展开。
+      // 预览语义：滚动到底也只能看到前 8 行 + 「查看全部」入口，
+      // 不可能构建全部 $total 个实例（详情页定位已是「预览 + 查看全部」）。
+      final previewCheckboxes = find.descendant(
+        of: find.byType(TaskListSection),
+        matching: find.byType(Checkbox),
+      );
+      expect(
+        previewCheckboxes.evaluate().length,
+        lessThan(total),
+        reason: '详情页预览不应构建全部 $total 个子任务行',
+      );
+      expect(find.textContaining('查看全部'), findsOneWidget);
+
+      // 进目标全部任务页（该页列表无预览）：在完整列表上验证懒加载语义。
+      await tester.scrollUntilVisible(
+        find.textContaining('查看全部'),
+        100,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('查看全部'));
+      await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
         find.byTooltip('展开重复任务'),
         100,
@@ -412,7 +440,8 @@ void main() {
       // 展开后未滚动：任务区为单卡 + ProgressiveRows 视口驱动懒构建
       // （2026-08-16 v2：仅构建视口 + 预加载边距内的行，替代此前的
       // 「逐帧全量构建」）——小视口下实例化的复选框数应远小于总数。
-      // （IndexedStack 常驻的今天页另有任务复选框，限定任务区内计数。）
+      // （IndexedStack 常驻的今天页另有任务复选框，限定任务区内计数；
+      // 详情页在路由栈下层 offstage，不参与 find。）
       final sectionCheckboxes = find.descendant(
         of: find.byType(TaskListSection),
         matching: find.byType(Checkbox),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/providers/app_refresh.dart';
@@ -10,12 +11,14 @@ import '../../../services/countdown_service.dart';
 import '../../../services/duration_format.dart';
 import '../../../services/load_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
+import '../../../shared/widgets/collapsible_section.dart';
 import '../../../shared/widgets/page_skeletons.dart';
 import '../../../shared/widgets/section_header.dart';
 import '../../settings/data/settings_repository.dart';
 import '../../settings/data/settings_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
 import '../../tasks/presentation/task_list_section.dart';
+import '../../tasks/presentation/task_section_actions.dart';
 import '../data/goal_repository_provider.dart';
 import '../data/subject_repository_provider.dart';
 import 'goal_form_dialog.dart';
@@ -56,30 +59,54 @@ class GoalDetailPage extends ConsumerWidget {
   }
 }
 
-class GoalDetailBody extends ConsumerWidget {
+class GoalDetailBody extends ConsumerStatefulWidget {
   const GoalDetailBody({super.key, required this.goal});
 
   final Goal goal;
 
+  /// 未分类任务区预览行数（2026-08-18）：任务超出该条数时详情页只展示
+  /// 前 N 条 + 「查看全部」行，避免几百个任务时整页长滚。
+  static const int unassignedPreviewLimit = 8;
+
+  /// 里程碑区预览行数（2026-08-18）：与任务区预览对称，里程碑超出该
+  /// 条数时详情页只展示前 N 条 + 「查看全部」行。
+  static const int milestonesPreviewLimit = 8;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final subjectsAsync = ref.watch(subjectListProvider(goal.id));
-    final tasksAsync = ref.watch(taskListProvider(goal.id));
+  ConsumerState<GoalDetailBody> createState() => _GoalDetailBodyState();
+}
+
+class _GoalDetailBodyState extends ConsumerState<GoalDetailBody> {
+  /// 未分类任务区折叠状态（2026-08-18）：任务多时收起该区即可避免整页
+  /// 长滚。局部状态只重建本页 slivers，里程碑/科目区各自管理折叠。
+  bool _unassignedExpanded = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final subjectsAsync = ref.watch(subjectListProvider(widget.goal.id));
+    final tasksAsync = ref.watch(taskListProvider(widget.goal.id));
 
     return CustomScrollView(
       slivers: [
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          sliver: SliverToBoxAdapter(child: _GoalHeader(goal: goal)),
+          sliver: SliverToBoxAdapter(
+            child: _GoalHeader(goal: widget.goal),
+          ),
         ),
         const SliverToBoxAdapter(child: Divider(height: 32)),
         // 里程碑区（FR-2）：目标概览 → 里程碑 → 任务（PRD §7 层级）。
+        // 预览截断（2026-08-18）：超出 8 条时只展示前 8 条 + 「查看
+        // 全部」行跳目标全部里程碑页，与任务区预览对称。
         SliverPadding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           sliver: SliverToBoxAdapter(
             child: MilestoneSection(
-              goalId: goal.id,
-              deadlineDate: goal.deadlineDate,
+              goalId: widget.goal.id,
+              deadlineDate: widget.goal.deadlineDate,
+              previewLimit: GoalDetailBody.milestonesPreviewLimit,
+              onViewAll: () =>
+                  context.push('/goals/${widget.goal.id}/milestones'),
             ),
           ),
         ),
@@ -97,7 +124,7 @@ class GoalDetailBody extends ConsumerWidget {
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               sliver: SliverToBoxAdapter(
-                child: _LoadSection(goal: goal, tasks: tasks),
+                child: _LoadSection(goal: widget.goal, tasks: tasks),
               ),
             ),
           ],
@@ -105,12 +132,12 @@ class GoalDetailBody extends ConsumerWidget {
         const SliverToBoxAdapter(child: Divider(height: 32)),
         SliverPadding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          sliver: SliverToBoxAdapter(child: SubjectManager(goalId: goal.id)),
+          sliver: SliverToBoxAdapter(
+            child: SubjectManager(goalId: widget.goal.id),
+          ),
         ),
         const SliverToBoxAdapter(child: Divider(height: 32)),
         // 未归属科目的任务在详情页直接管理（无科目页可进）。
-        // TaskListSection 自身是 SliverMainAxisGroup（含懒加载 SliverList，
-        // 展开状态内部维护），直接作为一条 sliver 嵌入。
         ...subjectsAsync.when(
           loading: () => const <Widget>[],
           error: (error, _) => [
@@ -131,21 +158,49 @@ class GoalDetailBody extends ConsumerWidget {
               final unassigned =
                   tasks.where((t) => t.subjectId == null).toList();
               return [
-                TaskListSection(
-                  goalId: goal.id,
-                  subjects: subjects,
-                  tasks: unassigned,
-                  // JSON 导入为「替换」语义：替换整个目标的任务计划，
-                  // 因此传入目标全部未归档任务供对话框展示将被替换的清单。
-                  currentTasks: tasks,
-                  title: '未分类任务',
-                  description: '不归属特定科目的安排，如科目复习/复盘、考研报名等',
-                  emptyText: '还没有此类任务。可点「添加任务」或「批量添加」创建',
-                  // 全量跨页刷新（FR-3 验收）：完成/编辑/删除任务影响今日页、
-                  // 日历与进度页（completedTasksProvider/allTodoTasksProvider
-                  // 若不失效，进度页热力图与剩余工作量停留陈旧，回归教训）。
-                  onChanged: () => invalidateAppData(ref),
+                // 任务区可折叠（2026-08-18）：区块头整行可点展开/收起，
+                // 折叠时 sliver 列表不挂载，页面更短；「N 个」摘要显示
+                // 任务规模。添加/导入等操作组常驻头部行，折叠时入口
+                // 不消失。头部为独立 sliver，列表展开与否由本页状态控制。
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  sliver: SliverToBoxAdapter(
+                    child: CollapsibleSection(
+                      icon: Icons.checklist,
+                      title: '未分类任务',
+                      summary: '${unassigned.length} 个',
+                      expanded: _unassignedExpanded,
+                      onChanged: (v) =>
+                          setState(() => _unassignedExpanded = v),
+                      // 无 body：列表本身是 sliver，由外部按状态渲染。
+                      trailing: TaskSectionActions(
+                        goalId: widget.goal.id,
+                        subjects: subjects,
+                        // JSON 导入为「替换」语义：替换整个目标的任务计划，
+                        // 因此传入目标全部未归档任务供对话框展示将被替换的清单。
+                        currentTasks: tasks,
+                      ),
+                    ),
+                  ),
                 ),
+                if (_unassignedExpanded)
+                  TaskListSection(
+                    goalId: widget.goal.id,
+                    subjects: subjects,
+                    tasks: unassigned,
+                    description: '不归属特定科目的安排，如科目复习/复盘、考研报名等',
+                    emptyText: '还没有此类任务。可点「添加任务」或「批量添加」创建',
+                    // 预览截断（2026-08-18）：详情页只展示前 8 条任务，
+                    // 超出时末尾追加「查看全部」行跳目标全部任务页——任务
+                    // 几百个时详情页不至于太长、也看得到全部内容。
+                    previewLimit: GoalDetailBody.unassignedPreviewLimit,
+                    onViewAll: () =>
+                        context.push('/goals/${widget.goal.id}/tasks'),
+                    // 全量跨页刷新（FR-3 验收）：完成/编辑/删除任务影响今日页、
+                    // 日历与进度页（completedTasksProvider/allTodoTasksProvider
+                    // 若不失效，进度页热力图与剩余工作量停留陈旧，回归教训）。
+                    onChanged: () => invalidateAppData(ref),
+                  ),
               ];
             },
           ),

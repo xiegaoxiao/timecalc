@@ -8,10 +8,8 @@ import '../../../core/utils/date_text.dart';
 import '../../../shared/widgets/progressive_rows.dart';
 import '../../../shared/widgets/section_header.dart';
 import '../data/recurrence_repository_provider.dart';
-import 'batch_task_form_dialog.dart';
 import 'recurrence_task_dialog.dart';
-import 'task_form_dialog.dart';
-import 'task_import_dialog.dart';
+import 'task_section_actions.dart';
 import 'task_tile.dart';
 
 /// 任务列表区域（FR-3.1/FR-3.2）：创建、编辑、删除、完成任务。
@@ -43,6 +41,8 @@ class TaskListSection extends ConsumerStatefulWidget {
     this.defaultSubjectId,
     this.showAddButton = true,
     this.currentTasks,
+    this.previewLimit,
+    this.onViewAll,
   });
 
   final int goalId;
@@ -60,6 +60,15 @@ class TaskListSection extends ConsumerStatefulWidget {
   /// JSON 导入将替换的目标当前任务清单（替换针对整个目标，父级可传入
   /// 全部任务；默认取本区域的 [tasks]）。
   final List<Task>? currentTasks;
+
+  /// 预览行数上限（2026-08-18）：非空且行数超出时列表只构建前
+  /// [previewLimit] 行，末尾追加一行「查看全部」入口（见 [_RowPlan.viewAll]）。
+  /// 仅当 [onViewAll] 也传入时才生效，否则保持全量——科目任务页等
+  /// 「本身就是全量目的地」的调用不传即可。
+  final int? previewLimit;
+
+  /// 点击「查看全部 N 个任务」行的回调（如跳转目标全部任务页）。
+  final VoidCallback? onViewAll;
 
   @override
   ConsumerState<TaskListSection> createState() => _TaskListSectionState();
@@ -88,7 +97,8 @@ class _TaskListSectionState extends ConsumerState<TaskListSection> {
     final units = _groupTasksCached(widget.tasks);
     // 扁平行计划：单任务 / 组头 / 组实例，一次构建、index 直接定位——
     // 替代旧版 _buildRow 对每个可见行线性扫描全部 units（O(可见行×分组数)）。
-    final rows = _flattenRows(units);
+    // 预览模式下在行计划层面截断并追加「查看全部」行（见 _applyPreviewLimit）。
+    final rows = _applyPreviewLimit(_flattenRows(units));
     // 一次批量查询目标下全部模板，父卡片按 id 取（避免每张父卡片各自
     // watch 单个模板 provider 造成 N+1 数据库查询）。
     final templates = ref
@@ -176,72 +186,32 @@ class _TaskListSectionState extends ConsumerState<TaskListSection> {
     return rows;
   }
 
+  /// 预览限制（2026-08-18）：行数超出 [previewLimit] 时截断为前
+  /// [previewLimit] 行 + 一条「查看全部」行。仅当 [previewLimit] 与
+  /// [onViewAll] 同时传入才生效；否则返回原行计划（行为完全不变）。
+  /// 「查看全部」上的任务总数以 [widget.tasks] 计（含已完成，与详情页
+  /// 「未分类任务区」传入的任务清单口径一致）。
+  List<_RowPlan> _applyPreviewLimit(List<_RowPlan> rows) {
+    final limit = widget.previewLimit;
+    if (limit == null || widget.onViewAll == null || rows.length <= limit) {
+      return rows;
+    }
+    return [...rows.take(limit), _RowPlan.viewAll(widget.tasks.length)];
+  }
+
   Widget _header(BuildContext context) {
     // 区块头统一 SectionHeader（2026-08-16 视觉升级）：与全应用同语言。
+    // 操作组（添加任务/批量添加/更多操作）复用 TaskSectionActions
+    // （2026-08-18 提取：详情页/科目页折叠头部行同样展示该操作组）。
     return SectionHeader(
       icon: Icons.checklist,
       title: widget.title!,
       trailing: widget.showAddButton
-          ? Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextButton.icon(
-                  onPressed: () => TaskFormDialog.show(
-                    context,
-                    goalId: widget.goalId,
-                    subjects: widget.subjects,
-                    defaultSubjectId: widget.defaultSubjectId,
-                  ),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('添加任务'),
-                ),
-                TextButton.icon(
-                  onPressed: () => BatchTaskFormDialog.show(
-                    context,
-                    goalId: widget.goalId,
-                    subjects: widget.subjects,
-                    defaultSubjectId: widget.defaultSubjectId,
-                  ),
-                  icon: const Icon(Icons.playlist_add, size: 18),
-                  label: const Text('批量添加'),
-                ),
-                // 高级操作（JSON 导入/重复任务）折叠进「更多操作」：空态下主操作
-                // 已覆盖绝大多数场景，避免一行四个按钮的视觉噪音与小屏溢出。
-                PopupMenuButton<String>(
-                  tooltip: '更多操作',
-                  onSelected: (action) {
-                    switch (action) {
-                      case 'import':
-                        TaskImportDialog.show(
-                          context,
-                          goalId: widget.goalId,
-                          subjects: widget.subjects,
-                          // JSON 导入为「替换」语义：传入将被替换并保留为历史的
-                          // 目标当前任务清单。
-                          currentTasks: widget.currentTasks ?? widget.tasks,
-                        );
-                        break;
-                      case 'recurrence':
-                        RecurrenceTaskDialog.show(
-                          context,
-                          goalId: widget.goalId,
-                          subjects: widget.subjects,
-                        );
-                        break;
-                    }
-                  },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(
-                      value: 'import',
-                      child: Text('JSON 导入'),
-                    ),
-                    PopupMenuItem(
-                      value: 'recurrence',
-                      child: Text('重复任务'),
-                    ),
-                  ],
-                ),
-              ],
+          ? TaskSectionActions(
+              goalId: widget.goalId,
+              subjects: widget.subjects,
+              defaultSubjectId: widget.defaultSubjectId,
+              currentTasks: widget.currentTasks ?? widget.tasks,
             )
           : null,
     );
@@ -267,8 +237,18 @@ class _TaskListSectionState extends ConsumerState<TaskListSection> {
     int index,
   ) {
     final plan = rows[index];
+    if (plan.isViewAll) {
+      // 预览截断的「查看全部」入口行（2026-08-18）：任务多时列表只展示
+      // 前 N 条，点此行去全量目的地（如目标全部任务页）。
+      return ListTile(
+        onTap: widget.onViewAll,
+        leading: const Icon(Icons.visibility_outlined, size: 20),
+        title: Text('查看全部 ${plan.viewAllCount} 个任务'),
+        trailing: const Icon(Icons.chevron_right),
+      );
+    }
     if (plan.isHeader) {
-      final unit = plan.unit;
+      final unit = plan.unit!;
       final templateId = unit.templateId!;
       return RecurrenceGroupTile(
         goalId: widget.goalId,
@@ -282,7 +262,7 @@ class _TaskListSectionState extends ConsumerState<TaskListSection> {
       );
     }
     return TaskTile(
-      task: plan.task ?? plan.unit.task!,
+      task: plan.task ?? plan.unit!.task!,
       subjects: widget.subjects,
       showPlannedDate: true,
       onChanged: widget.onChanged,
@@ -338,18 +318,27 @@ class _ListUnit {
 
 /// 扁平行构建计划（[_flattenRows] 一次性生成，行 index 直接定位）。
 class _RowPlan {
-  const _RowPlan.single(this.unit) : task = null;
-  const _RowPlan.header(this.unit) : task = null;
-  const _RowPlan.instance(this.unit, Task this.task);
+  const _RowPlan.single(this.unit) : task = null, viewAllCount = 0;
+  const _RowPlan.header(this.unit) : task = null, viewAllCount = 0;
+  const _RowPlan.instance(this.unit, this.task) : viewAllCount = 0;
 
-  final _ListUnit unit;
+  /// 「查看全部 N 个任务」行（预览截断时追加在列表末尾）。
+  const _RowPlan.viewAll(this.viewAllCount) : unit = null, task = null;
+
+  final _ListUnit? unit;
   final Task? task;
 
+  /// 「查看全部」行上展示的任务总数。
+  final int viewAllCount;
+
   /// 重复模板折叠组的父卡片头行。
-  bool get isHeader => unit.isGroup && task == null;
+  bool get isHeader => unit != null && unit!.isGroup && task == null;
 
   /// 展开组的实例行（[task] 非空）。
-  bool get isInstance => unit.isGroup && task != null;
+  bool get isInstance => unit != null && unit!.isGroup && task != null;
+
+  /// 预览截断的「查看全部」行（见 [_TaskListSectionState._applyPreviewLimit]）。
+  bool get isViewAll => unit == null;
 }
 
 /// 重复任务折叠组头行（FR-4 迭代：手风琴折叠）。

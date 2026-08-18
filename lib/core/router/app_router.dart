@@ -8,6 +8,7 @@ import '../../features/backup/presentation/archived_tasks_page.dart';
 import '../../features/backup/presentation/backup_page.dart';
 import '../../features/goals/presentation/goal_detail_page.dart';
 import '../../features/goals/presentation/goal_list_page.dart';
+import '../../features/goals/presentation/goal_milestones_page.dart';
 import '../../features/plan/presentation/plan_page.dart';
 import '../../features/progress/presentation/progress_page.dart';
 import '../../features/settings/presentation/appearance_page.dart';
@@ -18,6 +19,7 @@ import '../../features/settings/presentation/settings_page.dart';
 import '../../features/settings/presentation/shortcuts_page.dart';
 import '../../features/tasks/data/recurrence_repository_provider.dart';
 import '../../features/tasks/data/task_repository_provider.dart';
+import '../../features/tasks/presentation/goal_tasks_page.dart';
 import '../../features/tasks/presentation/subject_task_page.dart';
 import '../../features/today/presentation/today_page.dart';
 import '../providers/clock_provider.dart';
@@ -132,6 +134,40 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           child: SubjectTaskPage(
             goalId: int.parse(state.pathParameters['goalId']!),
             subjectId: int.parse(state.pathParameters['subjectId']!),
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/goals/:goalId/tasks',
+        name: 'goalTasks',
+        // 目标全部任务页：详情页任务区预览截断后的全量入口
+        // （2026-08-18）。防御非法参数同详情页。
+        redirect: _redirectOnInvalidInt(['goalId']),
+        pageBuilder: (context, state) => CustomTransitionPage(
+          transitionDuration: const Duration(milliseconds: 150),
+          reverseTransitionDuration: const Duration(milliseconds: 120),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+          child: GoalTasksPage(
+            goalId: int.parse(state.pathParameters['goalId']!),
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/goals/:goalId/milestones',
+        name: 'goalMilestones',
+        // 目标全部里程碑页：详情页里程碑区预览截断后的全量入口
+        // （2026-08-18）。防御非法参数同详情页。
+        redirect: _redirectOnInvalidInt(['goalId']),
+        pageBuilder: (context, state) => CustomTransitionPage(
+          transitionDuration: const Duration(milliseconds: 150),
+          reverseTransitionDuration: const Duration(milliseconds: 120),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+          child: GoalMilestonesPage(
+            goalId: int.parse(state.pathParameters['goalId']!),
           ),
         ),
       ),

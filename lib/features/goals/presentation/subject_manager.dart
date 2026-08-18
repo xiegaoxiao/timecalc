@@ -7,8 +7,8 @@ import '../../../core/errors/app_guard.dart';
 import '../../../core/theme/accent_palette.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/chart_empty_state.dart';
+import '../../../shared/widgets/collapsible_section.dart';
 import '../../../shared/widgets/progressive_rows.dart';
-import '../../../shared/widgets/section_header.dart';
 import '../data/subject_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
 
@@ -16,77 +16,83 @@ import '../../tasks/data/task_repository_provider.dart';
 ///
 /// 每个科目显示任务数概览，点击进入该科目的任务列表页；
 /// 支持添加、重命名、删除。
-class SubjectManager extends ConsumerWidget {
+///
+/// 列表可折叠（2026-08-18）：区块头整行可点展开/收起，收起时仅保留头行
+/// 与「N 个」摘要，科目多时无需整页长滚。折叠状态为本组件局部状态，
+/// 只重建本区块。
+class SubjectManager extends ConsumerStatefulWidget {
   const SubjectManager({super.key, required this.goalId});
 
   final int goalId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final subjectsAsync = ref.watch(subjectListProvider(goalId));
-    final tasksAsync = ref.watch(taskListProvider(goalId));
+  ConsumerState<SubjectManager> createState() => _SubjectManagerState();
+}
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // 区块头统一 SectionHeader（2026-08-16 视觉升级）。
-        SectionHeader(
-          icon: Icons.label_outline,
-          title: '科目',
-          trailing: TextButton.icon(
-            onPressed: () => _addSubject(context, ref),
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('添加科目'),
-          ),
-        ),
-        const SizedBox(height: 8),
-        subjectsAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => AppErrorView(error: error),
-          data: (subjects) {
-            final taskCounts = <int, List<Task>>{};
-            final tasks = tasksAsync.valueOrNull ?? const <Task>[];
-            for (final task in tasks) {
-              final subjectId = task.subjectId;
-              if (subjectId != null) {
-                taskCounts.putIfAbsent(subjectId, () => []).add(task);
-              }
+class _SubjectManagerState extends ConsumerState<SubjectManager> {
+  @override
+  Widget build(BuildContext context) {
+    final subjectsAsync = ref.watch(subjectListProvider(widget.goalId));
+    final tasksAsync = ref.watch(taskListProvider(widget.goalId));
+
+    return CollapsibleSection(
+      icon: Icons.label_outline,
+      title: '科目',
+      summary: subjectsAsync.valueOrNull == null
+          ? null
+          : '${subjectsAsync.valueOrNull!.length} 个',
+      trailing: TextButton.icon(
+        onPressed: () => _addSubject(context, ref),
+        icon: const Icon(Icons.add, size: 18),
+        label: const Text('添加科目'),
+      ),
+      body: subjectsAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, _) => AppErrorView(error: error),
+        data: (subjects) {
+          final taskCounts = <int, List<Task>>{};
+          final tasks = tasksAsync.valueOrNull ?? const <Task>[];
+          for (final task in tasks) {
+            final subjectId = task.subjectId;
+            if (subjectId != null) {
+              taskCounts.putIfAbsent(subjectId, () => []).add(task);
             }
-            if (subjects.isEmpty) {
-              // 空态内容横向居中：本列 start 对齐，需给全宽内部才能居中。
-              return const SizedBox(
-                width: double.infinity,
-                child: ChartEmptyState(
-                  icon: Icons.label_outline,
-                  title: '还没有科目，点击「添加科目」按科目组织任务',
-                ),
-              );
-            }
-            return ProgressiveRows(
-              // 懒加载（2026-08-17）：科目列表按视口驱动渐进构建（同上
-              // 里程碑区），详情页中大科目数量不一次性全建。
-              itemCount: subjects.length,
-              itemBuilder: (context, i) {
-                final subject = subjects[i];
-                return _SubjectCard(
-                  goalId: goalId,
-                  subject: subject,
-                  taskCount: taskCounts[subject.id]?.length ?? 0,
-                  doneCount:
-                      taskCounts[subject.id]
-                          ?.where((t) => t.status == 'done')
-                          .length ??
-                      0,
-                  onTap: () =>
-                      context.push('/goals/$goalId/subjects/${subject.id}'),
-                  onRename: () => _renameSubject(context, ref, subject),
-                  onDelete: () => _deleteSubject(context, ref, subject),
-                );
-              },
+          }
+          if (subjects.isEmpty) {
+            // 空态内容横向居中：本列 start 对齐，需给全宽内部才能居中。
+            return const SizedBox(
+              width: double.infinity,
+              child: ChartEmptyState(
+                icon: Icons.label_outline,
+                title: '还没有科目，点击「添加科目」按科目组织任务',
+              ),
             );
-          },
-        ),
-      ],
+          }
+          return ProgressiveRows(
+            // 懒加载（2026-08-17）：科目列表按视口驱动渐进构建（同上
+            // 里程碑区），详情页中大科目数量不一次性全建。
+            itemCount: subjects.length,
+            itemBuilder: (context, i) {
+              final subject = subjects[i];
+              return _SubjectCard(
+                goalId: widget.goalId,
+                subject: subject,
+                taskCount: taskCounts[subject.id]?.length ?? 0,
+                doneCount:
+                    taskCounts[subject.id]
+                        ?.where((t) => t.status == 'done')
+                        .length ??
+                    0,
+                onTap: () => context.push(
+                  '/goals/${widget.goalId}/subjects/${subject.id}',
+                ),
+                onRename: () => _renameSubject(context, ref, subject),
+                onDelete: () => _deleteSubject(context, ref, subject),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 
@@ -114,13 +120,13 @@ class SubjectManager extends ConsumerWidget {
     final ok = await runDbAction(
       context,
       action: () => repo.create(
-        goalId: goalId,
+        goalId: widget.goalId,
         name: name,
         color: '#$accentHex',
       ),
     );
     if (!ok) return;
-    ref.invalidate(subjectListProvider(goalId));
+    ref.invalidate(subjectListProvider(widget.goalId));
   }
 
   Future<void> _renameSubject(
@@ -146,7 +152,7 @@ class SubjectManager extends ConsumerWidget {
       action: () => repo.rename(id: subject.id, name: name),
     );
     if (!ok) return;
-    ref.invalidate(subjectListProvider(goalId));
+    ref.invalidate(subjectListProvider(widget.goalId));
   }
 
   Future<void> _deleteSubject(
@@ -180,8 +186,8 @@ class SubjectManager extends ConsumerWidget {
       action: () => repo.delete(subject.id),
     );
     if (!ok) return;
-    ref.invalidate(subjectListProvider(goalId));
-    ref.invalidate(taskListProvider(goalId));
+    ref.invalidate(subjectListProvider(widget.goalId));
+    ref.invalidate(taskListProvider(widget.goalId));
   }
 }
 
