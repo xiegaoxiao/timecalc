@@ -7,7 +7,10 @@ import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../core/providers/app_refresh.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/date_text.dart';
+import '../../../shared/widgets/app_dialog.dart';
+import '../../../shared/widgets/app_form_field.dart';
 import '../../../shared/widgets/duration_step_input.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../data/task_repository_provider.dart';
@@ -37,14 +40,18 @@ class TaskFormDialog extends ConsumerStatefulWidget {
     List<Subject> subjects = const [],
     int? defaultSubjectId,
   }) {
-    return showDialog<bool>(
-      context: context,
-      builder: (_) => TaskFormDialog(
+    return AppDialog.show<bool>(
+      context,
+      title: task == null ? '创建任务' : '编辑任务',
+      titleIcon: Icons.task_outlined,
+      maxWidth: 520,
+      content: TaskFormDialog(
         goalId: goalId,
         task: task,
         subjects: subjects,
         defaultSubjectId: defaultSubjectId,
       ),
+      barrierDismissible: false,
     ).then((saved) => saved ?? false);
   }
 
@@ -215,113 +222,101 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return AlertDialog(
-      title: Text(_isEdit ? '编辑任务' : '创建任务'),
-      content: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return Form(
+      key: _formKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 任务标题
+          AppFormField(
+            controller: _titleController,
+            label: '任务标题 *',
+            hint: '例如：完成第一章复习',
+            autofocus: true,
+            maxLength: 200,
+            textInputAction: TextInputAction.next,
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return '请输入任务标题';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: AppTokens.spaceMd),
+
+          // 计划日期
+          AppDateField(
+            label: '计划日期 *',
+            value: DateFormat('yyyy-MM-dd').format(_plannedDate!),
+            onTap: _pickDate,
+          ),
+          const SizedBox(height: AppTokens.spaceLg),
+
+          // 预估时长
+          DurationStepInput(
+            label: '预估时长',
+            value: _estimatedMinutes,
+            allowEmpty: true,
+            showQuickButtons: true,
+            onChanged: (minutes) =>
+                setState(() => _estimatedMinutes = minutes),
+            hourFieldKey: const Key('taskHourField'),
+            minuteFieldKey: const Key('taskMinuteField'),
+          ),
+          const SizedBox(height: AppTokens.spaceLg),
+
+          // 科目选择
+          if (widget.subjects.isNotEmpty) ...[
+            DropdownButtonFormField<int?>(
+              initialValue: _subjectId,
+              decoration: AppFormField.defaultDecoration(
+                label: '科目（可选）',
+                prefixIcon: Icon(
+                  Icons.book_outlined,
+                  size: 20,
+                  color: _subjectId != null
+                      ? Theme.of(context).colorScheme.primary
+                      : AppTokens.neutralTextSecondaryLight,
+                ),
+                scheme: Theme.of(context).colorScheme,
+              ),
+              items: [
+                const DropdownMenuItem<int?>(value: null, child: Text('（无）')),
+                for (final s in widget.subjects)
+                  DropdownMenuItem<int?>(value: s.id, child: Text(s.name)),
+              ],
+              onChanged: (value) => setState(() => _subjectId = value),
+            ),
+            const SizedBox(height: AppTokens.spaceMd),
+          ],
+
+          // 备注
+          AppFormField(
+            controller: _noteController,
+            label: '备注（可选）',
+            maxLines: 2,
+          ),
+          const SizedBox(height: AppTokens.spaceSm),
+
+          // 底部按钮
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              TextFormField(
-                controller: _titleController,
-                autofocus: true,
-                maxLength: 200,
-                // 关闭内置右下角计数器（会与长输入文字/光标重叠），
-                // 计数改在输入框外部下方单独右对齐展示。
-                decoration: const InputDecoration(
-                  labelText: '任务标题 *',
-                  hintText: '例如：完成第一章复习',
-                  counterText: '',
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return '请输入任务标题';
-                  }
-                  return null;
-                },
+              TextButton(
+                onPressed:
+                    _saving ? null : () => Navigator.of(context).pop(),
+                child: const Text('取消'),
               ),
-              // 字数计数：输入框外部下方右对齐，不与输入内容重叠。
-              ValueListenableBuilder<TextEditingValue>(
-                valueListenable: _titleController,
-                builder: (context, value, _) => Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    '${value.text.length}/200',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: scheme.outline),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              InkWell(
-                onTap: _pickDate,
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: '计划日期 *',
-                    border: OutlineInputBorder(),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.event_outlined),
-                      const SizedBox(width: 8),
-                      Text(DateFormat('yyyy-MM-dd').format(_plannedDate!)),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              DurationStepInput(
-                label: '预估时长',
-                value: _estimatedMinutes,
-                allowEmpty: true,
-                // 完整弹窗提供快捷按钮：+15/30 分、+1 小时，免去点 150 次。
-                showQuickButtons: true,
-                onChanged: (minutes) => setState(() => _estimatedMinutes = minutes),
-                hourFieldKey: const Key('taskHourField'),
-                minuteFieldKey: const Key('taskMinuteField'),
-              ),
-              const SizedBox(height: 16),
-              if (widget.subjects.isNotEmpty)
-                DropdownButtonFormField<int?>(
-                  initialValue: _subjectId,
-                  decoration: const InputDecoration(
-                    labelText: '科目（可选）',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    const DropdownMenuItem<int?>(value: null, child: Text('（无）')),
-                    for (final s in widget.subjects)
-                      DropdownMenuItem<int?>(value: s.id, child: Text(s.name)),
-                  ],
-                  onChanged: (value) => setState(() => _subjectId = value),
-                ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _noteController,
-                decoration: const InputDecoration(
-                  labelText: '备注（可选）',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: 2,
+              const SizedBox(width: AppTokens.spaceSm),
+              FilledButton(
+                onPressed: _saving ? null : _save,
+                child: Text(_isEdit ? '保存' : '创建'),
               ),
             ],
           ),
-        ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: _saving ? null : () => Navigator.of(context).pop(),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: _saving ? null : _save,
-          child: Text(_isEdit ? '保存' : '创建'),
-        ),
-      ],
     );
   }
 }

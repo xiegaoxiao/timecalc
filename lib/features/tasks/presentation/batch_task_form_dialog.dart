@@ -6,8 +6,11 @@ import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../core/providers/app_refresh.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../services/duration_format.dart';
+import '../../../shared/widgets/app_dialog.dart';
+import '../../../shared/widgets/app_form_field.dart';
 import '../../../shared/widgets/duration_step_input.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../data/last_minutes_provider.dart';
@@ -37,18 +40,23 @@ class BatchTaskFormDialog extends ConsumerStatefulWidget {
     List<Subject> subjects = const [],
     int? defaultSubjectId,
   }) {
-    return showDialog<void>(
-      context: context,
-      builder: (_) => BatchTaskFormDialog(
+    return AppDialog.show<void>(
+      context,
+      title: '批量添加任务',
+      titleIcon: Icons.playlist_add_outlined,
+      maxWidth: 520,
+      content: BatchTaskFormDialog(
         goalId: goalId,
         subjects: subjects,
         defaultSubjectId: defaultSubjectId,
       ),
+      barrierDismissible: false,
     );
   }
 
   @override
-  ConsumerState<BatchTaskFormDialog> createState() => _BatchTaskFormDialogState();
+  ConsumerState<BatchTaskFormDialog> createState() =>
+      _BatchTaskFormDialogState();
 }
 
 class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
@@ -207,147 +215,193 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
     final intervalDays =
         int.tryParse(_intervalController.text.trim()) ?? 1;
 
-    return AlertDialog(
-      title: const Text('批量添加任务'),
-      content: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return Form(
+      key: _formKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 任务标题（多行输入）
+          AppFormField(
+            controller: _titlesController,
+            label: '任务标题（每行一个）*',
+            hint: '例如：\n真题 2013\n真题 2014\n真题 2015',
+            autofocus: true,
+            maxLines: 6,
+            maxLength: null,
+            contentPadding: const EdgeInsets.all(AppTokens.spaceMd),
+            validator: (_) {
+              if (lines.isEmpty) return '请至少输入一个任务标题';
+              return null;
+            },
+            // 输入变化时重建预览（下方「将创建 N 个任务」实时更新）。
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: AppTokens.spaceMd),
+
+          // 科目选择
+          if (widget.subjects.isNotEmpty) ...[
+            DropdownButtonFormField<int?>(
+              initialValue: _subjectId,
+              decoration: AppFormField.defaultDecoration(
+                label: '科目',
+                prefixIcon: Icon(
+                  Icons.book_outlined,
+                  size: 20,
+                  color: _subjectId != null
+                      ? Theme.of(context).colorScheme.primary
+                      : AppTokens.neutralTextSecondaryLight,
+                ),
+                scheme: Theme.of(context).colorScheme,
+              ),
+              items: [
+                const DropdownMenuItem<int?>(
+                  value: null,
+                  child: Text('未分类'),
+                ),
+                for (final s in widget.subjects)
+                  DropdownMenuItem<int?>(value: s.id, child: Text(s.name)),
+              ],
+              onChanged: (value) => setState(() => _subjectId = value),
+            ),
+            const SizedBox(height: AppTokens.spaceMd),
+          ],
+
+          // 日期安排标题
+          Row(
             children: [
-              TextFormField(
-                controller: _titlesController,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: '任务标题（每行一个）*',
-                  hintText: '例如：\n真题 2013\n真题 2014\n真题 2015',
-                  border: OutlineInputBorder(),
-                  alignLabelWithHint: true,
-                ),
-                maxLines: 6,
-                onChanged: (_) => setState(() {}),
-                validator: (_) {
-                  if (lines.isEmpty) return '请至少输入一个任务标题';
-                  return null;
-                },
+              Icon(
+                Icons.calendar_today_outlined,
+                size: 16,
+                color: AppTokens.neutralTextSecondaryLight,
               ),
-              const SizedBox(height: 12),
-              if (widget.subjects.isNotEmpty)
-                DropdownButtonFormField<int?>(
-                  initialValue: _subjectId,
-                  decoration: const InputDecoration(
-                    labelText: '科目',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    const DropdownMenuItem<int?>(value: null, child: Text('未分类')),
-                    for (final s in widget.subjects)
-                      DropdownMenuItem<int?>(value: s.id, child: Text(s.name)),
-                  ],
-                  onChanged: (value) => setState(() => _subjectId = value),
-                ),
-              const SizedBox(height: 12),
-              Text('日期安排', style: Theme.of(context).textTheme.bodySmall),
-              RadioGroup<bool>(
-                groupValue: _useInterval,
-                onChanged: (value) =>
-                    setState(() => _useInterval = value ?? false),
-                child: const Column(
-                  children: [
-                    RadioListTile<bool>(
-                      value: false,
-                      title: Text('全部同一天'),
-                      dense: true,
-                    ),
-                    RadioListTile<bool>(
-                      value: true,
-                      title: Text('每 N 天一个（按顺序排列）'),
-                      dense: true,
-                    ),
-                  ],
-                ),
-              ),
-              Row(
-                children: [
-                  Expanded(
-                    child: InkWell(
-                      onTap: _pickStartDate,
-                      child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: '起始日期',
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                        ),
-                        child: Text(DateFormat('yyyy-MM-dd').format(_startDate)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  if (_useInterval)
-                    Expanded(
-                      child: TextFormField(
-                        controller: _intervalController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: '间隔天数',
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                        ),
-                        onChanged: (v) {
-                          // 仅回显变化触发重绘；_intervalDays 已废弃为
-                          // 保存时的兜底解析源，输入以 validator 为准。
-                          setState(() {});
-                        },
-                        validator: (value) {
-                          final text = (value ?? '').trim();
-                          if (text.isEmpty) return '请输入间隔天数';
-                          final n = int.tryParse(text);
-                          if (n == null || n < 1) {
-                            return '间隔天数必须是 ≥1 的整数';
-                          }
-                          return null;
-                        },
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              DurationStepInput(
-                label: '预估时长',
-                value: _estimatedMinutes,
-                allowEmpty: true,
-                onChanged: (minutes) =>
-                    setState(() => _estimatedMinutes = minutes),
-                hourFieldKey: const Key('batchHourField'),
-                minuteFieldKey: const Key('batchMinuteField'),
-              ),
-              const SizedBox(height: 12),
-              // 实时预览：生成数量与日期范围（不写库，用户确认后单事务创建）。
+              const SizedBox(width: AppTokens.spaceSm),
               Text(
-                lines.isEmpty
-                    ? '输入标题后将在此预览'
-                    : '将创建 ${lines.length} 个任务'
-                        '${_useInterval ? '，自 ${DateFormat('yyyy-MM-dd').format(_startDate)} 起每 $intervalDays 天一个' : '，日期 ${DateFormat('yyyy-MM-dd').format(_startDate)}'}'
-                        '${totalMinutes > 0 ? '，共 ${DurationFormat.minutes(totalMinutes)}' : ''}',
+                '日期安排',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
+                      color: AppTokens.neutralTextSecondaryLight,
+                      fontWeight: FontWeight.w500,
                     ),
               ),
             ],
           ),
-        ),
+          const SizedBox(height: AppTokens.spaceSm),
+
+          // 日期安排选项
+          RadioGroup<bool>(
+            groupValue: _useInterval,
+            onChanged: (value) =>
+                setState(() => _useInterval = value ?? false),
+            child: Row(
+              children: [
+                Expanded(
+                  child: RadioListTile<bool>(
+                    value: false,
+                    title: const Text('全部同一天', style: TextStyle(fontSize: 13)),
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+                Expanded(
+                  child: RadioListTile<bool>(
+                    value: true,
+                    title: const Text('每 N 天一个', style: TextStyle(fontSize: 13)),
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppTokens.spaceSm),
+
+          // 日期选择行
+          Row(
+            children: [
+              Expanded(
+                flex: _useInterval ? 1 : 2,
+                child: AppDateField(
+                  label: '起始日期',
+                  value: DateFormat('yyyy-MM-dd').format(_startDate),
+                  onTap: _pickStartDate,
+                ),
+              ),
+              if (_useInterval) ...[
+                const SizedBox(width: AppTokens.spaceMd),
+                Expanded(
+                  child: AppFormField(
+                    controller: _intervalController,
+                    label: '间隔天数',
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => setState(() {}),
+                    validator: (value) {
+                      final text = (value ?? '').trim();
+                      if (text.isEmpty) return '请输入间隔天数';
+                      final n = int.tryParse(text);
+                      if (n == null || n < 1) {
+                        return '间隔天数必须是 ≥1 的整数';
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: AppTokens.spaceMd),
+
+          // 预估时长
+          DurationStepInput(
+            label: '预估时长',
+            value: _estimatedMinutes,
+            allowEmpty: true,
+            onChanged: (minutes) =>
+                setState(() => _estimatedMinutes = minutes),
+            hourFieldKey: const Key('batchHourField'),
+            minuteFieldKey: const Key('batchMinuteField'),
+          ),
+          const SizedBox(height: AppTokens.spaceMd),
+
+          // 实时预览
+          Container(
+            padding: const EdgeInsets.all(AppTokens.spaceMd),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+            ),
+            child: Text(
+              lines.isEmpty
+                  ? '输入标题后将在此预览'
+                  : '将创建 ${lines.length} 个任务'
+                      '${_useInterval ? '，自 ${DateFormat('yyyy-MM-dd').format(_startDate)} 起每 $intervalDays 天一个' : '，日期 ${DateFormat('yyyy-MM-dd').format(_startDate)}'}'
+                      '${totalMinutes > 0 ? '，共 ${DurationFormat.minutes(totalMinutes)}' : ''}',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+            ),
+          ),
+          const SizedBox(height: AppTokens.spaceSm),
+
+          // 底部按钮
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed:
+                    _saving ? null : () => Navigator.of(context).pop(),
+                child: const Text('取消'),
+              ),
+              const SizedBox(width: AppTokens.spaceSm),
+              FilledButton(
+                onPressed: _saving ? null : _save,
+                child: Text(_saving ? '创建中…' : '创建'),
+              ),
+            ],
+          ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: _saving ? null : () => Navigator.of(context).pop(),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: _saving ? null : _save,
-          child: Text(_saving ? '创建中…' : '创建'),
-        ),
-      ],
     );
   }
 }

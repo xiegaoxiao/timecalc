@@ -20,7 +20,7 @@ import '../../../shared/nav_helper.dart';
 /// - 单目标通栏大卡（占满内容宽度，消除孤卡小角）；
 /// - 大号完成度 %、彩色进度条、统计块（已完成 x/y / 学习时长 / 剩余时间）；
 /// - 无任务时 `0%` 与 `--` 占位（区分「没计划」与「0 完成」）；
-/// - 多目标双列网格。
+/// - 多目标通栏单列卡片流。
 void main() {
   late AppDatabase db;
   late GoalRepository goals;
@@ -146,8 +146,8 @@ void main() {
     expect(find.text('--'), findsNWidgets(2)); // 学习时长 / 剩余时间
   });
 
-  testWidgets('多目标：自适应双列网格（左右各一卡）', (tester) async {
-    // 宽桌面视口（1400px 内容区）下才出现双列；默认 800 视口只够单列。
+  testWidgets('多目标：通栏单列卡片流（每卡占满内容宽度）', (tester) async {
+    // 2026-08 改版：不再按视口宽度自适应双列，一律通栏单列，信息更完整。
     tester.view.physicalSize = const Size(1400, 900);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -161,12 +161,14 @@ void main() {
     expect(find.text('考研数学'), findsOneWidget);
     expect(find.text('Java 后端'), findsOneWidget);
 
-    // 两个卡片左右分列：中心 x 坐标相差明显（单列通栏时几乎相同）。
+    // 两张卡各自通栏：中心 x 坐标几乎相同（单列叠放），均接近内容区中线。
     final cards = goalCardFinder();
     expect(cards, findsNWidgets(2));
     final firstX = tester.getCenter(cards.at(0)).dx;
     final secondX = tester.getCenter(cards.at(1)).dx;
-    expect((firstX - secondX).abs(), greaterThan(200));
+    expect((firstX - secondX).abs(), lessThan(10));
+    final width = tester.getSize(cards.at(0)).width;
+    expect(width, greaterThan(500));
   });
 
   testWidgets('系统放大字号（textScaler 2.0）：卡片按内容自适应高度，不溢出（回归）', (tester) async {

@@ -64,7 +64,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 填写截止日期：日期选择器默认显示当月（2026-08），选择 20 日。
-    await tester.tap(find.text('请选择日期'));
+    await tester.tap(find.text('截止日期 *'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('20'));
     await tester.pumpAndSettle();
@@ -90,7 +90,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextFormField).first, '考研');
-    await tester.tap(find.text('请选择日期'));
+    await tester.tap(find.text('截止日期 *'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('20'));
     await tester.pumpAndSettle();
@@ -319,7 +319,7 @@ void main() {
     expect(await db.select(db.goals).get(), isEmpty);
 
     // 补选截止日期后正常创建。
-    await tester.tap(find.text('请选择日期'));
+    await tester.tap(find.text('截止日期 *'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('20'));
     await tester.pumpAndSettle();

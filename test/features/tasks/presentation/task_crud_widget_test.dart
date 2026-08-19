@@ -499,7 +499,8 @@ void main() {
     // 点击编辑按钮打开重命名对话框。
     await tester.tap(find.byTooltip('重命名科目「数学」'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('重命名科目「数学」'), findsOneWidget);
+    // AppDialog 标题区展示「重命名科目」。
+    expect(find.text('重命名科目'), findsOneWidget);
 
     // 修改为「高等数学」。
     await tester.enterText(find.byType(TextField).last, '高等数学');
@@ -561,6 +562,9 @@ void main() {
     // 预览显示将创建 3 个任务。
     expect(find.textContaining('将创建 3 个任务'), findsOneWidget);
 
+    // 弹窗内容限高后可滚动，底部「创建」可能落在视口外：先滚动到可见。
+    await tester.ensureVisible(find.text('创建'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('创建'));
     await tester.pumpAndSettle();
 
@@ -584,9 +588,11 @@ void main() {
     await tester.pumpAndSettle();
 
     // 选择「每 N 天一个」。
-    await tester.tap(find.text('每 N 天一个（按顺序排列）'));
+    await tester.tap(find.text('每 N 天一个'));
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('创建'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('创建'));
     await tester.pumpAndSettle();
 
@@ -612,6 +618,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField).first, '660 第1天\n660 第2天');
     await tester.pumpAndSettle();
+    // 科目下拉使弹窗更高，底部按钮在视口外：先滚动到「创建」再点按。
+    await tester.ensureVisible(find.text('创建'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('创建'));
     await tester.pumpAndSettle();
 
@@ -635,7 +644,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 对话框关闭，科目已创建。
-    expect(find.widgetWithText(AlertDialog, '添加科目'), findsNothing);
+    expect(find.widgetWithText(Dialog, '添加科目'), findsNothing);
     expect(find.widgetWithText(Card, '数学'), findsOneWidget);
     expect((await subjects.byGoal(goalId)).single.name, '数学');
   });
@@ -651,7 +660,7 @@ void main() {
     await tester.tap(find.text('添加'));
     await tester.pumpAndSettle();
     expect(find.text('科目名称不能为空'), findsOneWidget);
-    expect(find.widgetWithText(AlertDialog, '添加科目'), findsOneWidget);
+    expect(find.widgetWithText(Dialog, '添加科目'), findsOneWidget);
 
     // 继续输入后错误即时清除（AutovalidateMode.onUserInteraction）。
     await tester.enterText(find.byType(TextFormField), '数学');
@@ -678,7 +687,7 @@ void main() {
     expect(find.text('4/100'), findsOneWidget);
   });
 
-  testWidgets('添加科目对话框：点击遮罩可关闭且不创建（AlertDialog 默认）', (tester) async {
+  testWidgets('添加科目对话框：点遮罩不关闭且不创建（模态保护输入）', (tester) async {
     await pumpApp(tester);
     await openGoalDetail(tester);
 
@@ -686,10 +695,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField), '数学');
 
-    // 点击对话框外的遮罩区域：对话框关闭，不创建科目。
+    // 点击对话框外的遮罩区域：对话框保持打开（barrierDismissible: false，
+    // 避免误触丢失输入），科目未创建。
     await tester.tapAt(const Offset(10, 10));
     await tester.pumpAndSettle();
-    expect(find.widgetWithText(AlertDialog, '添加科目'), findsNothing);
+    expect(find.widgetWithText(Dialog, '添加科目'), findsOneWidget);
     expect(await subjects.byGoal(goalId), isEmpty);
   });
 

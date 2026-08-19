@@ -4,6 +4,9 @@ import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
+import '../../../core/theme/app_tokens.dart';
+import '../../../shared/widgets/app_dialog.dart';
+import '../../../shared/widgets/app_form_field.dart';
 import '../../../shared/widgets/duration_step_input.dart';
 import '../data/task_repository_provider.dart';
 
@@ -27,12 +30,16 @@ class QuickTaskFormDialog extends ConsumerStatefulWidget {
     required DateTime date,
     required List<Goal> goals,
   }) {
-    return showDialog<void>(
-      context: context,
-      builder: (_) => QuickTaskFormDialog(
+    return AppDialog.show<void>(
+      context,
+      title: '快速添加任务',
+      titleIcon: Icons.bolt_outlined,
+      maxWidth: 440,
+      content: QuickTaskFormDialog(
         date: date,
         goals: goals,
       ),
+      barrierDismissible: false,
     );
   }
 
@@ -95,75 +102,89 @@ class _QuickTaskFormDialogState extends ConsumerState<QuickTaskFormDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('添加任务'),
-      content: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+    return Form(
+      key: _formKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 目标选择
+          DropdownButtonFormField<int?>(
+            initialValue: _goalId,
+            decoration: AppFormField.defaultDecoration(
+              label: '目标 *',
+              prefixIcon: Icon(
+                Icons.flag_outlined,
+                size: 20,
+                color: _goalId != null
+                    ? Theme.of(context).colorScheme.primary
+                    : AppTokens.neutralTextSecondaryLight,
+              ),
+              scheme: Theme.of(context).colorScheme,
+            ),
+            items: [
+              for (final g in widget.goals)
+                DropdownMenuItem<int?>(value: g.id, child: Text(g.title)),
+            ],
+            onChanged: (value) => setState(() => _goalId = value),
+          ),
+          const SizedBox(height: AppTokens.spaceMd),
+
+          // 任务标题
+          AppFormField(
+            controller: _titleController,
+            label: '任务标题 *',
+            hint: '例如：完成第一章复习',
+            autofocus: true,
+            maxLength: 200,
+            textInputAction: TextInputAction.next,
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return '请输入任务标题';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: AppTokens.spaceLg),
+
+          // 预估时长
+          DurationStepInput(
+            label: '预估时长',
+            value: _estimatedMinutes,
+            allowEmpty: true,
+            onChanged: (minutes) =>
+                setState(() => _estimatedMinutes = minutes),
+            hourFieldKey: const Key('quickHourField'),
+            minuteFieldKey: const Key('quickMinuteField'),
+          ),
+          const SizedBox(height: AppTokens.spaceMd),
+
+          // 备注
+          AppFormField(
+            controller: _noteController,
+            label: '备注（可选）',
+            maxLines: 2,
+          ),
+          const SizedBox(height: AppTokens.spaceSm),
+
+          // 底部按钮
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              DropdownButtonFormField<int?>(
-                initialValue: _goalId,
-                decoration: const InputDecoration(
-                  labelText: '目标 *',
-                  border: OutlineInputBorder(),
-                ),
-                items: [
-                  for (final g in widget.goals)
-                    DropdownMenuItem<int?>(value: g.id, child: Text(g.title)),
-                ],
-                onChanged: (value) => setState(() => _goalId = value),
+              TextButton(
+                onPressed:
+                    _saving ? null : () => Navigator.of(context).pop(),
+                child: const Text('取消'),
               ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _titleController,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: '任务标题 *',
-                  hintText: '例如：完成第一章复习',
-                ),
-                maxLength: 200,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return '请输入任务标题';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              DurationStepInput(
-                label: '预估时长',
-                value: _estimatedMinutes,
-                allowEmpty: true,
-                onChanged: (minutes) =>
-                    setState(() => _estimatedMinutes = minutes),
-                hourFieldKey: const Key('quickHourField'),
-                minuteFieldKey: const Key('quickMinuteField'),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _noteController,
-                decoration: const InputDecoration(
-                  labelText: '备注（可选）',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: 2,
+              const SizedBox(width: AppTokens.spaceSm),
+              FilledButton(
+                onPressed: _saving ? null : _save,
+                child: const Text('创建'),
               ),
             ],
           ),
-        ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: _saving ? null : () => Navigator.of(context).pop(),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: _saving ? null : _save,
-          child: const Text('创建'),
-        ),
-      ],
     );
   }
 }

@@ -5,6 +5,9 @@ import 'package:go_router/go_router.dart';
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/theme/accent_palette.dart';
+import '../../../core/theme/app_tokens.dart';
+import '../../../shared/widgets/app_dialog.dart';
+import '../../../shared/widgets/app_form_field.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/chart_empty_state.dart';
 import '../../../shared/widgets/collapsible_section.dart';
@@ -97,13 +100,17 @@ class _SubjectManagerState extends ConsumerState<SubjectManager> {
   }
 
   Future<void> _addSubject(BuildContext context, WidgetRef ref) async {
-    final name = await showDialog<String>(
-      context: context,
-      builder: (_) => const _SubjectNameDialog(
+    final name = await AppDialog.show<String>(
+      context,
+      title: '添加科目',
+      titleIcon: Icons.label_outline,
+      maxWidth: 400,
+      content: const _SubjectNameDialog(
         title: '添加科目',
         hintText: '例如：政治',
         confirmLabel: '添加',
       ),
+      barrierDismissible: false,
     );
     if (name == null || name.isEmpty) return;
     if (!context.mounted) return;
@@ -134,14 +141,18 @@ class _SubjectManagerState extends ConsumerState<SubjectManager> {
     WidgetRef ref,
     Subject subject,
   ) async {
-    final name = await showDialog<String>(
-      context: context,
-      builder: (_) => _SubjectNameDialog(
+    final name = await AppDialog.show<String>(
+      context,
+      title: '重命名科目',
+      titleIcon: Icons.edit_outlined,
+      maxWidth: 400,
+      content: _SubjectNameDialog(
         title: '重命名科目「${subject.name}」',
         initialValue: subject.name,
         hintText: '例如：高等数学',
         confirmLabel: '保存',
       ),
+      barrierDismissible: false,
     );
     if (name == null || name.isEmpty || name == subject.name) return;
     if (!context.mounted) return;
@@ -257,9 +268,8 @@ class _SubjectCard extends StatelessWidget {
 /// - 回车提交：`onFieldSubmitted` + `TextInputAction.done`，无需鼠标点按钮；
 /// - 空内容防呆：validator 校验失败显示「科目名称不能为空」红字 + 红边框，
 ///   用户继续输入后自动清除（AutovalidateMode.onUserInteraction）；
-/// - 字数计数（N/100）移到输入框外部下方右对齐，不再挤在边框内右下角
-///   与输入文字/光标重叠；
-/// - 点遮罩关闭由 AlertDialog 默认提供（barrierDismissible: true）。
+/// - 字数计数（N/100）由 AppFormField 内置计数器在输入框底部展示；
+/// - 点遮罩不关闭（barrierDismissible: false，避免误触丢失输入）。
 class _SubjectNameDialog extends StatefulWidget {
   const _SubjectNameDialog({
     required this.title,
@@ -303,64 +313,50 @@ class _SubjectNameDialogState extends State<_SubjectNameDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return AlertDialog(
-      title: Text(widget.title),
-      content: Form(
-        key: _formKey,
-        // 用户继续输入时即时重校验，错误提示随之清除（而非停留在已修正的
-        // 错误上）。
-        autovalidateMode: AutovalidateMode.onUserInteraction,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextFormField(
-              controller: _controller,
-              autofocus: true,
-              maxLength: _maxLength,
-              textInputAction: TextInputAction.done,
-              decoration: InputDecoration(
-                labelText: '科目名称',
-                hintText: widget.hintText,
-                // 关闭内置右下角计数器（会与输入文字/光标拥挤），
-                // 计数改在输入框外部下方单独右对齐展示。
-                counterText: '',
+    return Form(
+      key: _formKey,
+      // 用户继续输入时即时重校验，错误提示随之清除（而非停留在已修正的
+      // 错误上）。
+      autovalidateMode: AutovalidateMode.onUserInteraction,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 科目名称输入
+          AppFormField(
+            controller: _controller,
+            label: '科目名称',
+            hint: widget.hintText,
+            autofocus: true,
+            maxLength: _maxLength,
+            textInputAction: TextInputAction.done,
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return '科目名称不能为空';
+              }
+              return null;
+            },
+            onFieldSubmitted: (_) => _submit(),
+          ),
+          const SizedBox(height: AppTokens.spaceSm),
+
+          // 底部按钮
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('取消'),
               ),
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return '科目名称不能为空';
-                }
-                return null;
-              },
-              onFieldSubmitted: (_) => _submit(),
-            ),
-            // 字数计数：输入框外部下方右对齐，不与输入内容重叠。
-            ValueListenableBuilder<TextEditingValue>(
-              valueListenable: _controller,
-              builder: (context, value, _) => Align(
-                alignment: Alignment.centerRight,
-                child: Text(
-                  '${value.text.length}/$_maxLength',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: scheme.outline),
-                ),
+              const SizedBox(width: AppTokens.spaceSm),
+              FilledButton(
+                onPressed: _submit,
+                child: Text(widget.confirmLabel),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: _submit,
-          child: Text(widget.confirmLabel),
-        ),
-      ],
     );
   }
 }

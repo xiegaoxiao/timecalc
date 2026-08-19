@@ -132,7 +132,7 @@ void main() {
     // AppBar 添加按钮可用：弹窗打开后取消。
     await tester.tap(find.text('添加里程碑'));
     await tester.pumpAndSettle();
-    expect(find.text('请选择日期'), findsOneWidget); // 弹窗内容特有
+    expect(find.text('里程碑日期 *'), findsOneWidget); // 弹窗内容特有
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
   });

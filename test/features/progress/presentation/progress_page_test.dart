@@ -712,6 +712,9 @@ void main() {
     await tester.tap(find.text('+30分'));
     await tester.pump();
     expect(find.text('当前共 2 小时 30 分'), findsOneWidget);
+    // 弹窗内容限高后可滚动，底部「保存」可能落在视口外：先滚动到可见。
+    await tester.ensureVisible(find.text('保存'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 

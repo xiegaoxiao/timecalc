@@ -5,7 +5,10 @@ import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/date_text.dart';
+import '../../../shared/widgets/app_dialog.dart';
+import '../../../shared/widgets/app_form_field.dart';
 import '../data/goal_repository_provider.dart';
 
 /// 创建/编辑目标对话框（FR-1.1：名称与截止日期为必填项）。
@@ -19,9 +22,12 @@ class GoalFormDialog extends ConsumerStatefulWidget {
 
   /// 返回创建出的目标 id；取消或编辑保存返回 null。
   static Future<int?> show(BuildContext context, {Goal? goal}) {
-    return showDialog<int>(
-      context: context,
-      builder: (_) => GoalFormDialog(goal: goal),
+    return AppDialog.show<int>(
+      context,
+      title: goal == null ? '创建目标' : '编辑目标',
+      titleIcon: Icons.flag_outlined,
+      content: GoalFormDialog(goal: goal),
+      barrierDismissible: false,
     );
   }
 
@@ -135,149 +141,149 @@ class _GoalFormDialogState extends ConsumerState<GoalFormDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return AlertDialog(
-      title: Text(_isEdit ? '编辑目标' : '创建目标'),
-      content: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextFormField(
-                controller: _titleController,
-                autofocus: true,
-                maxLength: 200,
-                // 关闭内置右下角计数器（会与长输入文字/光标重叠），
-                // 计数改在输入框外部下方单独右对齐展示。
-                decoration: const InputDecoration(
-                  labelText: '目标名称 *',
-                  hintText: '例如：考研',
-                  counterText: '',
+    return Form(
+      key: _formKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 目标名称
+          AppFormField(
+            controller: _titleController,
+            label: '目标名称 *',
+            hint: '例如：考研',
+            autofocus: true,
+            maxLength: 200,
+            textInputAction: TextInputAction.next,
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return '请输入目标名称';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: AppTokens.spaceMd),
+
+          // 截止日期
+          FormField<DateTime>(
+            key: _deadlineFieldKey,
+            validator: (value) =>
+                _deadline == null ? '请选择截止日期' : null,
+            builder: (field) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AppDateField(
+                  label: '截止日期 *',
+                  value: _deadline == null
+                      ? null
+                      : DateFormat('yyyy-MM-dd').format(_deadline!),
+                  onTap: _pickDeadline,
+                  errorText: field.errorText,
                 ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return '请输入目标名称';
-                  }
-                  return null;
-                },
-              ),
-              // 字数计数：输入框外部下方右对齐，不与输入内容重叠。
-              ValueListenableBuilder<TextEditingValue>(
-                valueListenable: _titleController,
-                builder: (context, value, _) => Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    '${value.text.length}/200',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: scheme.outline),
-                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppTokens.spaceMd),
+
+          // 描述
+          AppFormField(
+            controller: _descriptionController,
+            label: '描述（可选）',
+            hint: '目标背景、范围说明',
+            maxLines: 2,
+          ),
+
+          if (!_isEdit) ...[
+            const SizedBox(height: AppTokens.spaceLg),
+            // 创建时批量添加科目
+            Row(
+              children: [
+                Icon(
+                  Icons.book_outlined,
+                  size: 16,
+                  color: AppTokens.neutralTextSecondaryLight,
                 ),
-              ),
-              const SizedBox(height: 12),
-              // 截止日期为必填项；用 FormField 承载校验（FR-1.1），
-              // 不选日期直接提交时展示错误而非空值解包崩溃。
-              FormField<DateTime>(
-                key: _deadlineFieldKey,
-                validator: (value) =>
-                    _deadline == null ? '请选择截止日期' : null,
-                builder: (field) => Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    InkWell(
-                      onTap: _pickDeadline,
-                      child: InputDecorator(
-                        decoration: InputDecoration(
-                          labelText: '截止日期 *',
-                          border: const OutlineInputBorder(),
-                          errorText: field.errorText,
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.event_outlined),
-                            const SizedBox(width: 8),
-                            Text(
-                              _deadline == null
-                                  ? '请选择日期'
-                                  : DateFormat('yyyy-MM-dd').format(_deadline!),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _descriptionController,
-                decoration: const InputDecoration(
-                  labelText: '描述（可选）',
-                  hintText: '目标背景、范围说明',
-                ),
-                maxLines: 2,
-              ),
-              if (!_isEdit) ...[
-                const SizedBox(height: 12),
-                // 创建时批量添加科目（如考研：政治/英语/数学/408）。
+                const SizedBox(width: AppTokens.spaceSm),
                 Text(
                   '科目（可选，可添加多个）',
-                  style: Theme.of(context).textTheme.bodySmall,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTokens.neutralTextSecondaryLight,
+                      ),
                 ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _subjectController,
-                        decoration: const InputDecoration(
-                          hintText: '例如：政治',
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                        ),
-                        onSubmitted: (_) => _addSubject(),
+              ],
+            ),
+            const SizedBox(height: AppTokens.spaceSm),
+            Row(
+              children: [
+                Expanded(
+                  child: AppFormField(
+                    controller: _subjectController,
+                    hint: '例如：政治',
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (_) => _addSubject(),
+                  ),
+                ),
+                const SizedBox(width: AppTokens.spaceSm),
+                IconButton.filled(
+                  tooltip: '添加科目',
+                  onPressed: _addSubject,
+                  icon: const Icon(Icons.add, size: 20),
+                  style: IconButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (_subjectNames.isNotEmpty) ...[
+              const SizedBox(height: AppTokens.spaceMd),
+              Wrap(
+                spacing: AppTokens.spaceSm,
+                runSpacing: AppTokens.spaceSm,
+                children: [
+                  for (final name in _subjectNames)
+                    Chip(
+                      label: Text(
+                        name,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                      side: BorderSide.none,
+                      deleteIcon: const Icon(Icons.close, size: 16),
+                      onDeleted: () =>
+                          setState(() => _subjectNames.remove(name)),
+                      deleteButtonTooltipMessage: '移除科目「$name」',
+                      shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(AppTokens.radiusSm),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    IconButton.filledTonal(
-                      tooltip: '添加科目',
-                      onPressed: _addSubject,
-                      icon: const Icon(Icons.add),
-                    ),
-                  ],
-                ),
-                if (_subjectNames.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final name in _subjectNames)
-                        Chip(
-                          label: Text(name),
-                          onDeleted: () => setState(() => _subjectNames.remove(name)),
-                          deleteButtonTooltipMessage: '移除科目「$name」',
-                        ),
-                    ],
-                  ),
                 ],
-              ],
+              ),
+            ],
+          ],
+          const SizedBox(height: AppTokens.spaceSm),
+
+          // 底部按钮
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: _saving
+                    ? null
+                    : () => Navigator.of(context).pop(),
+                child: const Text('取消'),
+              ),
+              const SizedBox(width: AppTokens.spaceSm),
+              FilledButton(
+                onPressed: _saving ? null : _save,
+                child: Text(_isEdit ? '保存' : '创建'),
+              ),
             ],
           ),
-        ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: _saving ? null : () => Navigator.of(context).pop(),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: _saving ? null : _save,
-          child: Text(_isEdit ? '保存' : '创建'),
-        ),
-      ],
     );
   }
 }

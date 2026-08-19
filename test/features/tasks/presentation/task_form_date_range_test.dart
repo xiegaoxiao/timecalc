@@ -128,12 +128,15 @@ void main() {
     await tester.pumpAndSettle();
 
     // 启用「每 N 天一个」，间隔 3。
-    await tester.tap(find.text('每 N 天一个（按顺序排列）'));
+    await tester.tap(find.text('每 N 天一个'));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.widgetWithText(TextFormField, '间隔天数'),
       '3',
     );
+    await tester.pumpAndSettle();
+    // 弹窗内容限高后可滚动，底部「创建」可能落在视口外：先滚动到可见。
+    await tester.ensureVisible(find.text('创建'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('创建'));
     await tester.pumpAndSettle();

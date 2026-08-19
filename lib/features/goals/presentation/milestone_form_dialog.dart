@@ -4,7 +4,10 @@ import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/date_text.dart';
+import '../../../shared/widgets/app_dialog.dart';
+import '../../../shared/widgets/app_form_field.dart';
 import '../data/milestone_repository_provider.dart';
 
 /// 添加/编辑里程碑对话框（FR-2.1）。
@@ -34,13 +37,17 @@ class MilestoneFormDialog extends ConsumerStatefulWidget {
     required String deadlineDate,
     Milestone? milestone,
   }) {
-    return showDialog<bool>(
-      context: context,
-      builder: (_) => MilestoneFormDialog(
+    return AppDialog.show<bool>(
+      context,
+      title: milestone == null ? '添加里程碑' : '编辑里程碑',
+      titleIcon: Icons.flag_outlined,
+      maxWidth: 440,
+      content: MilestoneFormDialog(
         goalId: goalId,
         deadlineDate: deadlineDate,
         milestone: milestone,
       ),
+      barrierDismissible: false,
     );
   }
 
@@ -138,101 +145,100 @@ class _MilestoneFormDialogState extends ConsumerState<MilestoneFormDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(_isEdit ? '编辑里程碑' : '添加里程碑'),
-      content: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return Form(
+      key: _formKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 里程碑名称
+          AppFormField(
+            controller: _titleController,
+            label: '里程碑名称 *',
+            hint: '例如：完成一轮复习',
+            autofocus: true,
+            maxLength: 200,
+            textInputAction: TextInputAction.next,
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return '请输入里程碑名称';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: AppTokens.spaceMd),
+
+          // 日期
+          FormField<DateTime>(
+            key: _dateFieldKey,
+            validator: (value) {
+              final date = _date;
+              if (date == null) return '请选择里程碑日期';
+              return _validateDate(date);
+            },
+            builder: (field) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AppDateField(
+                  label: '里程碑日期 *',
+                  value: _date == null
+                      ? null
+                      : DateFormat('yyyy-MM-dd').format(_date!),
+                  onTap: _pickDate,
+                  errorText: field.errorText,
+                ),
+                if (_date != null) ...[
+                  const SizedBox(height: AppTokens.spaceSm),
+                  Text(
+                    _validateDate(_date!) == null
+                        ? '目标截止日：${widget.deadlineDate}'
+                        : '目标截止日：${widget.deadlineDate}（里程碑不应晚于它）',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: _validateDate(_date!) == null
+                              ? Theme.of(context).colorScheme.outline
+                              : Theme.of(context).colorScheme.error,
+                        ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: AppTokens.spaceSm),
+
+          // 提示文本
+          Container(
+            padding: const EdgeInsets.all(AppTokens.spaceMd),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+            ),
+            child: Text(
+              '里程碑日期原则上不得晚于目标截止日（${widget.deadlineDate}）。',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+            ),
+          ),
+          const SizedBox(height: AppTokens.spaceSm),
+
+          // 底部按钮
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              TextFormField(
-                controller: _titleController,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: '里程碑名称 *',
-                  hintText: '例如：完成一轮复习',
-                ),
-                maxLength: 200,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return '请输入里程碑名称';
-                  }
-                  return null;
-                },
+              TextButton(
+                onPressed:
+                    _saving ? null : () => Navigator.of(context).pop(),
+                child: const Text('取消'),
               ),
-              const SizedBox(height: 12),
-              // 日期为必填项；FormField 承载必填校验与 FR-2.2 截止日校验，
-              // 不选日期直接提交时展示错误而非空值解包崩溃。
-              FormField<DateTime>(
-                key: _dateFieldKey,
-                validator: (value) {
-                  final date = _date;
-                  if (date == null) return '请选择里程碑日期';
-                  return _validateDate(date);
-                },
-                builder: (field) => Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    InkWell(
-                      onTap: _pickDate,
-                      child: InputDecorator(
-                        decoration: InputDecoration(
-                          labelText: '里程碑日期 *',
-                          border: const OutlineInputBorder(),
-                          errorText: field.errorText,
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.event_outlined),
-                            const SizedBox(width: 8),
-                            Text(
-                              _date == null
-                                  ? '请选择日期'
-                                  : DateFormat('yyyy-MM-dd').format(_date!),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    if (_date != null) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        _validateDate(_date!) == null
-                            ? '目标截止日：${widget.deadlineDate}'
-                            : '目标截止日：${widget.deadlineDate}（里程碑不应晚于它）',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: _validateDate(_date!) == null
-                                  ? Theme.of(context).colorScheme.outline
-                                  : Theme.of(context).colorScheme.error,
-                            ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                '里程碑日期原则上不得晚于目标截止日（${widget.deadlineDate}）。',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.outline,
-                    ),
+              const SizedBox(width: AppTokens.spaceSm),
+              FilledButton(
+                onPressed: _saving ? null : _save,
+                child: Text(_isEdit ? '保存' : '添加'),
               ),
             ],
           ),
-        ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: _saving ? null : () => Navigator.of(context).pop(),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: _saving ? null : _save,
-          child: Text(_isEdit ? '保存' : '添加'),
-        ),
-      ],
     );
   }
 }

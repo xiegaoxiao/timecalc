@@ -307,7 +307,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(cta);
     await tester.pumpAndSettle();
-    expect(find.widgetWithText(Dialog, '添加任务'), findsOneWidget);
+    expect(find.widgetWithText(Dialog, '快速添加任务'), findsOneWidget);
 
     // 取消关闭（不落库）。
     await tester.tap(find.text('取消'));

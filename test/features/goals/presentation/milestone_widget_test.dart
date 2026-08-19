@@ -82,7 +82,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 选择日期（当月 2026-08，选 20 日）。
-    await tester.tap(find.text('请选择日期'));
+    await tester.tap(find.text('里程碑日期 *'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('20'));
     await tester.pumpAndSettle();
@@ -121,7 +121,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 当月（2026-08）选 20 日，晚于截止日 2026-08-10。
-    await tester.tap(find.text('请选择日期'));
+    await tester.tap(find.text('里程碑日期 *'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('20'));
     await tester.pumpAndSettle();
