@@ -134,8 +134,9 @@ class _TodayPageState extends ConsumerState<TodayPage> {
         return Scaffold(
           appBar: AppBar(title: const Text('今天')),
           body: AppErrorView(
-            error:
-                goalsAsync.hasError ? goalsAsync.error! : settingsAsync.error!,
+            error: goalsAsync.hasError
+                ? goalsAsync.error!
+                : settingsAsync.error!,
             onRetry: () {
               ref.invalidate(goalListProvider);
               ref.invalidate(settingsProvider);
@@ -217,7 +218,8 @@ class _TodayPageState extends ConsumerState<TodayPage> {
     final subjectsByGoal = <int, List<Subject>>{
       for (final gid in goalIdsForSubjects)
         gid:
-            ref.watch(subjectListProvider(gid)).valueOrNull ?? const <Subject>[],
+            ref.watch(subjectListProvider(gid)).valueOrNull ??
+            const <Subject>[],
     };
     final availableMinutes = settings.dailyAvailableMinutes;
     final load = _load.dayLoad(todayTasks);
@@ -233,7 +235,8 @@ class _TodayPageState extends ConsumerState<TodayPage> {
     final hasAnyTask = activeTodoTasks.isNotEmpty || todayTasks.isNotEmpty;
     // 今日任务区空态（显示 _TodayEmptyView）：此时标题行右上角按钮隐藏，
     // 由空态大按钮承担唯一「添加任务」入口，避免两个相同入口。
-    final todayEmpty = todayTasks.isEmpty && !tasksLoading && tasksError == null;
+    final todayEmpty =
+        todayTasks.isEmpty && !tasksLoading && tasksError == null;
 
     // 今日任务全部完成庆祝（v1.11）：从非全完成跃迁到全完成（且确有任务）
     // 时在 Overlay 层播一次彩带；首帧即全完成不触发，非全完成后复位标记。
@@ -298,7 +301,10 @@ class _TodayPageState extends ConsumerState<TodayPage> {
                       context,
                       action: () => ref
                           .read(taskRepositoryProvider)
-                          .deferMany(unfinished.map((t) => t.id).toList(), next),
+                          .deferMany(
+                            unfinished.map((t) => t.id).toList(),
+                            next,
+                          ),
                     );
                     if (ok) onChanged();
                   },
@@ -388,10 +394,7 @@ class _TodayPageState extends ConsumerState<TodayPage> {
                   child: LinearProgressIndicator(minHeight: 2),
                 ),
               if (todayTasks.isEmpty && tasksError != null)
-                _SectionError(
-                  error: tasksError,
-                  onRetry: onRetryTasks,
-                ),
+                _SectionError(error: tasksError, onRetry: onRetryTasks),
               if (todayTasks.isEmpty && !tasksLoading && tasksError == null)
                 _TodayEmptyView(
                   onAddTask: addGoals.isEmpty
@@ -488,6 +491,7 @@ class _LoadOverviewCard extends StatelessWidget {
     final hasTodayTask = stats.totalCount > 0;
     final progress = hasTodayTask ? stats.doneCount / stats.totalCount : 0.0;
     return Card(
+      clipBehavior: Clip.antiAlias,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -501,12 +505,15 @@ class _LoadOverviewCard extends StatelessWidget {
               trailing: over > 0
                   ? Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
+                        horizontal: 10,
+                        vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: semantics.warning.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                        color: semantics.warning.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: semantics.warning.withValues(alpha: 0.35),
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -516,14 +523,14 @@ class _LoadOverviewCard extends StatelessWidget {
                             size: 14,
                             color: semantics.warning,
                           ),
-                          const SizedBox(width: 4),
+                          const SizedBox(width: 6),
                           Flexible(
                             child: Text(
                               '超出 ${DurationFormat.minutes(over)}',
                               style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(
                                     color: semantics.warning,
-                                    fontWeight: FontWeight.w600,
+                                    fontWeight: FontWeight.w700,
                                   ),
                             ),
                           ),
@@ -532,7 +539,7 @@ class _LoadOverviewCard extends StatelessWidget {
                     )
                   : null,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -540,8 +547,8 @@ class _LoadOverviewCard extends StatelessWidget {
                 // 值变化经 TweenAnimationBuilder 平滑过渡（勾选定稿后
                 // 环会从旧比例滑到新比例，而非跳变）。
                 SizedBox(
-                  width: 72,
-                  height: 72,
+                  width: 74,
+                  height: 74,
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
@@ -555,10 +562,9 @@ class _LoadOverviewCard extends StatelessWidget {
                                 value: hasTodayTask ? value : 0,
                                 strokeWidth: 6,
                                 strokeCap: StrokeCap.round,
-                                backgroundColor:
-                                    scheme.surfaceContainerHighest,
+                                backgroundColor: scheme.surfaceContainerHighest,
                                 valueColor: AlwaysStoppedAnimation(
-                                  scheme.primary,
+                                  over > 0 ? semantics.warning : scheme.primary,
                                 ),
                               ),
                         ),
@@ -597,27 +603,31 @@ class _LoadOverviewCard extends StatelessWidget {
                       Row(
                         children: [
                           _MetricCell(
+                            icon: Icons.timer_outlined,
                             label: '今日总计',
                             value: hasTodayTask
                                 ? DurationFormat.minutes(load)
                                 : '-- 分',
                           ),
                           _MetricCell(
+                            icon: Icons.schedule_outlined,
                             label: '可用时长',
                             value: DurationFormat.minutes(available),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 14),
                       Row(
                         children: [
                           _MetricCell(
+                            icon: Icons.check_circle_outline,
                             label: '已完成',
                             value: hasTodayTask
                                 ? DurationFormat.minutes(stats.doneMinutes)
                                 : '-- 分',
                           ),
                           _MetricCell(
+                            icon: Icons.flag_outlined,
                             label: '目标剩余',
                             value: hasAnyTask
                                 ? DurationFormat.minutes(remainingMinutes)
@@ -637,10 +647,11 @@ class _LoadOverviewCard extends StatelessWidget {
   }
 }
 
-/// 负载概览指标格：小标签 + 等宽数字数值（2026-08-16 仪表盘化）。
+/// 负载概览指标格：图标 + 小标签 + 等宽数字数值（2026-08-19 视觉升级）。
 class _MetricCell extends StatelessWidget {
-  const _MetricCell({required this.label, required this.value});
+  const _MetricCell({this.icon, required this.label, required this.value});
 
+  final IconData? icon;
   final String label;
   final String value;
 
@@ -651,13 +662,22 @@ class _MetricCell extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: scheme.outline),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 12, color: scheme.outline),
+                const SizedBox(width: 4),
+              ],
+              Text(
+                label,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: scheme.outline),
+              ),
+            ],
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 3),
           Text(
             value,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -694,31 +714,54 @@ class _UnfinishedBanner extends StatelessWidget {
     return Card(
       color: scheme.errorContainer,
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.event_busy, color: scheme.onErrorContainer),
-                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: scheme.onErrorContainer.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.event_busy,
+                    size: 18,
+                    color: scheme.onErrorContainer,
+                  ),
+                ),
+                const SizedBox(width: 10),
                 Expanded(
-                  child: Text(
-                    '昨日及更早有 $count 个未完成任务',
-                    style: TextStyle(
-                      color: scheme.onErrorContainer,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '昨日及更早有 $count 个未完成任务',
+                        style: TextStyle(
+                          color: scheme.onErrorContainer,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '原计划不会被自动更改，请选择处理方式',
+                        style: TextStyle(
+                          color: scheme.onErrorContainer.withValues(
+                            alpha: 0.85,
+                          ),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              '原计划不会被自动更改，请选择处理方式',
-              style: TextStyle(color: scheme.onErrorContainer),
-            ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             // 三个操作分两级行动（2026-08-16 降噪）：主操作「延期至下一
             // 可用日」实心、次操作「选择日期」tonal，「保留原日期」为最弱
             // 的 TextButton——它是「暂不处理」，不该与延期同等抢眼。
@@ -726,9 +769,10 @@ class _UnfinishedBanner extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: [
-                FilledButton(
+                FilledButton.icon(
                   onPressed: onDeferNext,
-                  child: const Text('延期至下一可用日'),
+                  icon: const Icon(Icons.arrow_forward, size: 16),
+                  label: const Text('延期至下一可用日'),
                 ),
                 FilledButton.tonal(
                   onPressed: onDeferPickDate,
@@ -737,7 +781,7 @@ class _UnfinishedBanner extends StatelessWidget {
                 TextButton(
                   onPressed: onKeepOriginal,
                   style: TextButton.styleFrom(
-                    foregroundColor: Theme.of(context).colorScheme.onErrorContainer,
+                    foregroundColor: scheme.onErrorContainer,
                   ),
                   child: const Text('保留原日期'),
                 ),
@@ -774,82 +818,122 @@ class _OverdueTasksSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    // 浅红背景：在 banner 的 errorContainer 之上叠加低透明度，视觉更轻。
-    final background = Color.alphaBlend(
-      scheme.errorContainer.withValues(alpha: 0.30),
-      scheme.surface,
-    );
     return Card(
-      color: background,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: scheme.error.withValues(alpha: 0.30)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          // 左侧红色警示带：提示逾期状态，但不再把整张卡染红，避免视觉过重。
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: Container(width: 4, color: scheme.error),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 14, 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.error_outline, size: 18, color: scheme.error),
-                const SizedBox(width: 8),
-                Text(
-                  '过期任务',
-                  style: TextStyle(
-                    color: scheme.error,
-                    fontWeight: FontWeight.w600,
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(5),
+                      decoration: BoxDecoration(
+                        color: scheme.error.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.error_outline,
+                        size: 16,
+                        color: scheme.error,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '过期任务',
+                      style: TextStyle(
+                        color: scheme.error,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: scheme.error.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '${tasks.length} 个未处理',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.error,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const Spacer(),
+                const SizedBox(height: 4),
                 Text(
-                  '${tasks.length} 个未处理',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: scheme.error),
+                  '以下任务原计划日期已过，请逐条延期或完成',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 8),
+                ProgressiveRows(
+                  itemCount: tasks.length,
+                  // 单卡分组行：任务之间细分隔线（与今日任务列表同形态），
+                  // 分块渐进构建（过期任务无上限，防首帧全量 build）。
+                  itemBuilder: (context, i) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (i > 0)
+                        const Divider(height: 1, indent: 12, endIndent: 12),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6, bottom: 2),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: scheme.error.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            '原计划 ${formatLocalDate(parseLocalDate(tasks[i].plannedDate))}'
+                            ' · 已逾期 ${_overdueDays(today, tasks[i].plannedDate)} 天',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: scheme.error,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 11,
+                                ),
+                          ),
+                        ),
+                      ),
+                      TaskTile(
+                        // 按任务身份复用 element：定稿后区块收缩时，划线/透明度
+                        // 动画不会错播到相邻任务上（幻影动画）。
+                        key: ValueKey('overdue-task-${tasks[i].id}'),
+                        task: tasks[i],
+                        goalTitle: goalsById[tasks[i].goalId]?.title,
+                        subjects: subjectsByGoal[tasks[i].goalId],
+                        onChanged: onChanged,
+                        // 过期任务勾选同样走 5 秒撤回：期间保持勾选显示，5 秒后才消失。
+                        enableCompleteUndo: true,
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 2),
-            Text(
-              '以下任务原计划日期已过，请逐条延期或完成',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 4),
-            ProgressiveRows(
-              itemCount: tasks.length,
-              // 单卡分组行：任务之间细分隔线（与今日任务列表同形态），
-              // 分块渐进构建（过期任务无上限，防首帧全量 build）。
-              itemBuilder: (context, i) => Column(
-                children: [
-                  if (i > 0)
-                    const Divider(height: 1, indent: 12, endIndent: 12),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      '原计划 ${formatLocalDate(parseLocalDate(tasks[i].plannedDate))}'
-                      ' · 已逾期 ${_overdueDays(today, tasks[i].plannedDate)} 天',
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(color: scheme.error),
-                    ),
-                  ),
-                  TaskTile(
-                    // 按任务身份复用 element：定稿后区块收缩时，划线/透明度
-                    // 动画不会错播到相邻任务上（幻影动画）。
-                    key: ValueKey('overdue-task-${tasks[i].id}'),
-                    task: tasks[i],
-                    goalTitle: goalsById[tasks[i].goalId]?.title,
-                    subjects: subjectsByGoal[tasks[i].goalId],
-                    onChanged: onChanged,
-                    // 过期任务勾选同样走 5 秒撤回：期间保持勾选显示，5 秒后才消失。
-                    enableCompleteUndo: true,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -947,8 +1031,8 @@ class _TodayEmptyView extends StatelessWidget {
             Text(
               '小提示：可以在「计划」页按周批量添加学习任务',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
+                color: Theme.of(context).colorScheme.outline,
+              ),
             ),
           ],
         ],
@@ -984,10 +1068,7 @@ class _SectionError extends StatelessWidget {
               '$error',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: scheme.onErrorContainer,
-                fontSize: 12,
-              ),
+              style: TextStyle(color: scheme.onErrorContainer, fontSize: 12),
             ),
           ),
           TextButton(onPressed: onRetry, child: const Text('重试')),
@@ -1052,7 +1133,10 @@ class _CountdownCard extends ConsumerWidget {
     return Animate(
       key: ValueKey('countdown-${goal.id}'),
       effects: [
-        FadeEffect(duration: AppTokens.motionSlow, curve: AppTokens.motionCurve),
+        FadeEffect(
+          duration: AppTokens.motionSlow,
+          curve: AppTokens.motionCurve,
+        ),
         SlideEffect(
           begin: const Offset(0, -0.04),
           end: Offset.zero,
@@ -1066,101 +1150,138 @@ class _CountdownCard extends ConsumerWidget {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppTokens.radiusXl),
         ),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            // 渐变取当前色系（绿色/蓝色主题各自变化，2026-08-16 解耦）。
-            colors: [
-              Theme.of(context).extension<AccentPalette>()!.brandDeep,
-              Theme.of(context).extension<AccentPalette>()!.brandBright,
-            ],
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              // 渐变取当前色系（绿色/蓝色主题各自变化，2026-08-16 解耦）。
+              colors: [
+                Theme.of(context).extension<AccentPalette>()!.brandDeep,
+                Theme.of(context).extension<AccentPalette>()!.brandBright,
+              ],
+            ),
           ),
-        ),
-        child: InkWell(
-          onTap: () => context.push('/goals/${goal.id}'),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  goal.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: onHero,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '截止 ${formatLocalDate(parseLocalDate(goal.deadlineDate))}',
-                  style: TextStyle(color: onHeroSoft, fontSize: 12),
-                ),
-                // 倒计时是 hero 的视觉焦点：大号数字 + 阶段图标，一眼抓住剩余量。
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Icon(phaseIcon, size: 18, color: onHero),
-                    const SizedBox(width: 6),
-                    Text(
-                      CountdownService.label(phase, days),
-                      style: TextStyle(
-                        color: onHero,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 22,
-                        // 等宽数字：倒计时天数逐日变化时数字列对齐不抖动。
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
-                  ],
-                ),
-                // 时间进度条：已走过时长占比（创建日→截止日），每天打开首页
-                // 直观感受「这段旅程走了多少」。
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 4,
-                    backgroundColor: Colors.white24,
-                    valueColor: const AlwaysStoppedAnimation(Colors.white),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                // 学习日剩余（按计划偏好排除休息日），与目标详情页口径一致。
-                Text(
-                  '约 $studyDays 个学习日',
-                  style: TextStyle(color: onHeroSoft, fontSize: 12),
-                ),
-                // FR-2.3：首页仅展示距离最近的一个未完成里程碑。
-                if (nextMilestone.valueOrNull case final milestone?) ...[
-                  const SizedBox(height: 4),
+          child: InkWell(
+            onTap: () => context.push('/goals/${goal.id}'),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 14, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 标题行：目标名 + 右侧紧凑倒计时徽标。
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.flag_outlined, size: 14, color: onHeroSoft),
-                      const SizedBox(width: 4),
                       Expanded(
-                        child: Text(
-                          '下一里程碑：${milestone.title} · ${milestone.date}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: onHeroSoft, fontSize: 13),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              goal.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: onHero,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 16,
+                                height: 1.3,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '截止 ${formatLocalDate(parseLocalDate(goal.deadlineDate))}',
+                              style: TextStyle(color: onHeroSoft, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // 紧凑倒计时徽标：与标题同行，字号收敛，避免「剩余 493 天」
+                      // 独占大块面积导致视觉失衡。
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.22),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(phaseIcon, size: 14, color: onHero),
+                            const SizedBox(width: 5),
+                            Text(
+                              CountdownService.label(phase, days),
+                              style: TextStyle(
+                                color: onHero,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                                // 等宽数字：倒计时天数逐日变化时数字列对齐不抖动。
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
+                  // 时间进度条：已走过时长占比（创建日→截止日），每天打开首页
+                  // 直观感受「这段旅程走了多少」。
+                  const SizedBox(height: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 5,
+                      borderRadius: BorderRadius.circular(4),
+                      backgroundColor: Colors.white24,
+                      valueColor: const AlwaysStoppedAnimation(Colors.white),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // 学习日 + 下一里程碑：同一行浅色信息，降低视觉重量。
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.calendar_today_outlined,
+                        size: 12,
+                        color: onHeroSoft,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '约 $studyDays 个学习日',
+                        style: TextStyle(color: onHeroSoft, fontSize: 12),
+                      ),
+                      if (nextMilestone.valueOrNull case final milestone?) ...[
+                        const SizedBox(width: 12),
+                        Icon(Icons.flag_outlined, size: 12, color: onHeroSoft),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            '${milestone.title} · ${milestone.date}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: onHeroSoft, fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ],
-              ],
+              ),
             ),
           ),
         ),
       ),
-    ),
-  );
+    );
   }
 }
 
@@ -1188,10 +1309,7 @@ class _EmptyView extends StatelessWidget {
             child: Icon(Icons.today_outlined, size: 32, color: scheme.primary),
           ),
           const SizedBox(height: 16),
-          Text(
-            '今天没有安排',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+          Text('今天没有安排', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
           Text(
             hasAnyGoal ? '所有目标已结束或归档' : '创建一个目标，开始倒计时',
