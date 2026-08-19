@@ -335,12 +335,10 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 }
 
-/// 宽窗口桌面壳：侧栏（NavigationRail）+ 内容区。
+/// 宽窗口桌面壳：自定义侧栏 + 内容区。
 ///
-/// 侧栏为 104px 导航面板（品牌标识由顶部自定义标题栏独家承担，侧栏不再
-/// 重复 Logo）；底色统一承载 Rail，右侧细分隔线。NavigationRail 类型
-/// 保留（test/shared/nav_helper.dart 依赖 find.byType 定位导航），选中态
-/// 样式由 navigationRailTheme 提供（app_theme.dart）。
+/// 侧栏为 200px 导航面板：导航菜单选中态左侧主色竖条指示器，顶部与底部
+/// 留白干净（品牌由顶部自定义标题栏承担）。视觉风格对标设计稿。
 class _DesktopShell extends StatelessWidget {
   const _DesktopShell({
     required this.navigationShell,
@@ -361,11 +359,12 @@ class _DesktopShell extends StatelessWidget {
     return Scaffold(
       body: Row(
         children: [
-          // 侧栏面板：NavigationRail；底色与右侧分隔线统一，
-          // 与自定义标题栏构成同一「产品外壳」语言。
           Container(
+            // key 供测试定位自定义侧栏导航项（nav_helper.dart）。
+            key: const ValueKey('desktop-sidebar'),
+            width: 200,
             decoration: BoxDecoration(
-              color: isDark ? scheme.surfaceContainerLow : scheme.surface,
+              color: isDark ? scheme.surfaceContainerLow : Colors.white,
               border: Border(
                 right: BorderSide(
                   color: isDark
@@ -374,23 +373,73 @@ class _DesktopShell extends StatelessWidget {
                 ),
               ),
             ),
-            child: NavigationRail(
-              selectedIndex: navigationShell.currentIndex,
-              onDestinationSelected: onDestinationSelected,
-              labelType: NavigationRailLabelType.all,
-              groupAlignment: -0.9,
-              destinations: [
-                for (final destination in AppDestination.values)
-                  NavigationRailDestination(
-                    icon: Icon(destination.icon),
-                    selectedIcon: Icon(destination.selectedIcon),
-                    label: Text(destination.label),
-                  ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 16),
+                ...List.generate(AppDestination.values.length, (index) {
+                  final dest = AppDestination.values[index];
+                  final isSelected = index == navigationShell.currentIndex;
+                  return _buildNavItem(context, dest, isSelected, index);
+                }),
+                const Spacer(),
               ],
             ),
           ),
           Expanded(child: content),
         ],
+      ),
+    );
+  }
+
+  Widget _buildNavItem(
+    BuildContext context,
+    AppDestination dest,
+    bool isSelected,
+    int index,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    final icon = isSelected ? dest.selectedIcon : dest.icon;
+    final color = isSelected ? scheme.primary : scheme.onSurfaceVariant;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+          onTap: () => onDestinationSelected(index),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                if (isSelected)
+                  Container(
+                    width: 3,
+                    height: 20,
+                    margin: const EdgeInsets.only(right: 12),
+                    decoration: BoxDecoration(
+                      color: scheme.primary,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  )
+                else
+                  const SizedBox(width: 15),
+                Icon(icon, size: 20, color: color),
+                const SizedBox(width: 12),
+                Text(
+                  dest.label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight:
+                        isSelected ? FontWeight.w600 : FontWeight.w500,
+                    color: color,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
