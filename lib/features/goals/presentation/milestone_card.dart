@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/tables.dart';
 import '../../../core/utils/date_text.dart';
+import '../../../shared/widgets/completion_checkbox.dart';
 
 /// 里程碑卡片（2026-08-18 从 MilestoneSection 提取复用）：纯展示，
 /// 操作（编辑/勾选完成/删除）由回调注入，供详情页与全部里程碑页共用。
@@ -29,7 +30,7 @@ class MilestoneCard extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
-        leading: Checkbox(
+        leading: CompletionCheckbox(
           value: done,
           // NFR-4：完成状态不只依赖颜色（划线 + Checkbox）。
           semanticLabel: '标记里程碑「${milestone.title}」为${done ? '未完成' : '已完成'}',

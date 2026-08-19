@@ -8,6 +8,7 @@ import '../../../core/providers/clock_provider.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../services/defer_service.dart';
 import '../../../services/duration_format.dart';
+import '../../../shared/widgets/completion_checkbox.dart';
 import '../../goals/data/subject_repository_provider.dart';
 import '../../settings/data/settings_repository.dart';
 import '../../settings/data/settings_repository_provider.dart';
@@ -209,18 +210,11 @@ class _TaskTileState extends ConsumerState<TaskTile> {
       // 单卡列表行（2026-08-16 视觉升级）：TaskTile 自身不再包 Card，
       // 由外层列表容器提供统一卡片 + 行间分隔线（今天页/计划页/目标页）。
       child: ListTile(
-        leading: Checkbox(
+        leading: CompletionCheckbox(
           value: done,
           // 读屏可读的名称（NFR-4）：任务完成复选框不依赖相邻文本推断。
           semanticLabel: done ? '标记未完成' : '标记完成',
           onChanged: _toggle,
-          // Things 式圆环勾选（保持 Checkbox 类型与语义，tap 测试不受影响）：
-          // 圆形描边 → 品牌绿实心填充 + 白勾。
-          shape: const CircleBorder(),
-          side: BorderSide(
-            width: 1.5,
-            color: Theme.of(context).colorScheme.outline,
-          ),
         ),
         title: Row(
           children: [
