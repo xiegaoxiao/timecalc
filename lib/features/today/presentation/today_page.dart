@@ -32,6 +32,11 @@ import '../../tasks/data/task_repository_provider.dart';
 import '../../tasks/presentation/quick_task_form_dialog.dart';
 import '../../tasks/presentation/task_tile.dart';
 
+/// 今日负载卡数值动画时长（v1.17）：进度环 + 四个指标数字共用。
+/// 比全局 motionSlow(320ms) 更慢（800ms），勾选任务后数字滑落从容、
+/// 松弛可辨；对称缓动 easeInOutCubic。
+const _kMetricAnimDuration = Duration(milliseconds: 800);
+
 /// 今天页：目标倒计时 + 今日任务闭环（M2）。
 ///
 /// 结构（自上而下）：
@@ -502,32 +507,33 @@ class _LoadOverviewCard extends StatelessWidget {
                 // 今日完成进度环：品牌绿圆头弧 + 中心「N/M 完成」，
                 // 值变化经 TweenAnimationBuilder 平滑过渡（勾选定稿后
                 // 环会从旧比例滑到新比例，而非跳变）。
+                //
+                // v1.17 平衡修整：圆弧用对称缓动（easeInOutCubic）——旧
+                // easeOut 前快后慢，扫弧「冲刺后拖尾」观感失衡；中心 N/M
+                // 与圆弧同源计数，勾选后数字随圆弧一起滑到新比例，不脱节。
                 SizedBox(
                   width: 74,
                   height: 74,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Positioned.fill(
-                        child: TweenAnimationBuilder<double>(
-                          tween: Tween(end: progress),
-                          duration: AppTokens.motionSlow,
-                          curve: AppTokens.motionCurve,
-                          builder: (context, value, _) =>
-                              CircularProgressIndicator(
-                                value: hasTodayTask ? value : 0,
-                                strokeWidth: 6,
-                                strokeCap: StrokeCap.round,
-                                backgroundColor: scheme.surfaceContainerHighest,
-                                valueColor: AlwaysStoppedAnimation(
-                                  over > 0 ? semantics.warning : scheme.primary,
-                                ),
-                              ),
-                        ),
-                      ),
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(end: progress),
+                    duration: _kMetricAnimDuration,
+                    curve: Curves.easeInOutCubic,
+                    builder: (context, value, _) {
+                      final animatedDone = (value * stats.totalCount).round();
+                      return Stack(
+                        alignment: Alignment.center,
                         children: [
+                          Positioned.fill(
+                            child: CircularProgressIndicator(
+                              value: hasTodayTask ? value : 0,
+                              strokeWidth: 6,
+                              strokeCap: StrokeCap.round,
+                              backgroundColor: scheme.surfaceContainerHighest,
+                              valueColor: AlwaysStoppedAnimation(
+                                over > 0 ? semantics.warning : scheme.primary,
+                              ),
+                            ),
+                          ),
                           // 中心 N/M（等宽数字）：FittedBox 防系统放大字号时
                           // 撑爆 72px 固定环；环 + 分数即「完成比例」语义，
                           // 无需再叠「完成」小标签（与指标格「已完成」互补）。
@@ -535,7 +541,7 @@ class _LoadOverviewCard extends StatelessWidget {
                             fit: BoxFit.scaleDown,
                             child: Text(
                               hasTodayTask
-                                  ? '${stats.doneCount}/${stats.totalCount}'
+                                  ? '$animatedDone/${stats.totalCount}'
                                   : '--',
                               style: Theme.of(context).textTheme.titleMedium
                                   ?.copyWith(
@@ -547,56 +553,66 @@ class _LoadOverviewCard extends StatelessWidget {
                             ),
                           ),
                         ],
-                      ),
-                    ],
+                      );
+                    },
                   ),
                 ),
-                const SizedBox(width: 20),
-                // 指标 3 列布局（v1.17 精修）：左侧「今日总计 / 已完成」、
-                // 右侧「今日可用 / 目标剩余」，环与两列信息块间距均衡；
-                // 目标剩余作最醒目数字（大字号 + 主色）。
+                const SizedBox(width: 24),
+                // 环与数字网格之间的细分隔线（v1.17）：让左右两栏彻底分开，
+                // 不再只是贴在一起的数字区。
+                Container(width: 1, height: 56, color: scheme.outlineVariant.withValues(alpha: 0.5)),
+                const SizedBox(width: 24),
+                // 指标 2×2 网格（v1.17 对齐修整）：两行 × 两列等高网格，
+                // 取代左右独立 Column——旧布局左右列高度不一致（目标剩余
+                // 大号撑高右列），环按整行居中时数字块上下错位。现在：
+                //  第一行 今日总计 | 今日可用
+                //  第二行 已完成   | 目标剩余（高亮）
+                // 行间/列间间距统一，环与网格整体垂直居中。
                 Expanded(
-                  child: Row(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Expanded(
-                        child: Column(
-                          children: [
-                            _MetricCell(
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: _MetricCell(
                               icon: Icons.timer_outlined,
                               label: '今日总计',
-                              value: hasTodayTask
-                                  ? DurationFormat.minutes(load)
-                                  : '-- 分',
+                              minutes: hasTodayTask ? load : null,
                             ),
-                            const SizedBox(height: 18),
-                            _MetricCell(
-                              icon: Icons.check_circle_outline,
-                              label: '已完成',
-                              value: hasTodayTask
-                                  ? DurationFormat.minutes(stats.doneMinutes)
-                                  : '-- 分',
-                            ),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        child: Column(
-                          children: [
-                            _MetricCell(
+                          ),
+                          const SizedBox(width: 24),
+                          Expanded(
+                            child: _MetricCell(
                               icon: Icons.schedule_outlined,
                               label: '今日可用',
-                              value: DurationFormat.minutes(available),
+                              minutes: available,
                             ),
-                            const SizedBox(height: 18),
-                            _MetricHighlight(
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: _MetricCell(
+                              icon: Icons.check_circle_outline,
+                              label: '已完成',
+                              minutes:
+                                  hasTodayTask ? stats.doneMinutes : null,
+                            ),
+                          ),
+                          const SizedBox(width: 24),
+                          Expanded(
+                            child: _MetricHighlight(
                               icon: Icons.flag_outlined,
                               label: '目标剩余',
-                              value: hasAnyTask
-                                  ? DurationFormat.minutes(remainingMinutes)
-                                  : '-- 分',
+                              minutes: hasAnyTask ? remainingMinutes : null,
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -611,12 +627,15 @@ class _LoadOverviewCard extends StatelessWidget {
 }
 
 /// 负载概览指标格：图标 + 小标签 + 等宽数字数值（2026-08-19 视觉升级）。
+///
+/// [minutes] 为 null 时显示 `-- 分`（无数据语义）；有值经
+/// [_AnimatedMinutesValue] 渲染，数值变化时随动画计数（v1.17）。
 class _MetricCell extends StatelessWidget {
-  const _MetricCell({this.icon, required this.label, required this.value});
+  const _MetricCell({this.icon, required this.label, required this.minutes});
 
   final IconData? icon;
   final String label;
-  final String value;
+  final int? minutes;
 
   @override
   Widget build(BuildContext context) {
@@ -640,8 +659,8 @@ class _MetricCell extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 3),
-        Text(
-          value,
+        _AnimatedMinutesValue(
+          minutes: minutes,
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w600,
             fontFeatures: const [FontFeature.tabularFigures()],
@@ -658,12 +677,12 @@ class _MetricHighlight extends StatelessWidget {
   const _MetricHighlight({
     required this.icon,
     required this.label,
-    required this.value,
+    required this.minutes,
   });
 
   final IconData icon;
   final String label;
-  final String value;
+  final int? minutes;
 
   @override
   Widget build(BuildContext context) {
@@ -685,8 +704,8 @@ class _MetricHighlight extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 3),
-        Text(
-          value,
+        _AnimatedMinutesValue(
+          minutes: minutes,
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.w700,
             color: scheme.primary,
@@ -694,6 +713,30 @@ class _MetricHighlight extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 分钟数动画值：null 显示 `-- 分`（无数据）；有值用 TweenAnimationBuilder
+/// 计数，数值变化时从旧值滑到新值，与进度环同时长同缓动（v1.17）。
+class _AnimatedMinutesValue extends StatelessWidget {
+  const _AnimatedMinutesValue({required this.minutes, required this.style});
+
+  final int? minutes;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    final minutes = this.minutes;
+    if (minutes == null) {
+      return Text('-- 分', style: style);
+    }
+    return TweenAnimationBuilder<double>(
+      tween: Tween(end: minutes.toDouble()),
+      duration: _kMetricAnimDuration,
+      curve: Curves.easeInOutCubic,
+      builder: (context, value, _) =>
+          Text(DurationFormat.minutes(value.round()), style: style),
     );
   }
 }
