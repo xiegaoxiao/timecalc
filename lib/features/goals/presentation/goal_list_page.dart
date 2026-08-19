@@ -256,18 +256,19 @@ class _EmptyView extends StatelessWidget {
 }
 
 
-/// 目标卡片（v1.13 Dashboard 大卡 + 信息层级重构）。
+/// 目标卡片（v1.14 视觉升级：左侧色带 + 圆环进度 + 2×2 指标格）。
 ///
 /// 结构（自上而下）：
-/// 1. 标题行：目标专属色圆点 + 标题（2 行）｜右侧 ⋮ 操作菜单；
-/// 2. 进度行：大号完成度 %（无任务灰 `0%`）+ 右侧倒计时胶囊徽标；
-/// 3. 彩色粗进度条（8px，目标专属色，与 % 构成同一信息块）；
-/// 4. 起止日期区间 `yyyy.MM.dd → yyyy.MM.dd`；
-/// 5. 数据行（标题 + 数值结构）：已完成 x/y · 学习时长 · 剩余时间；
+/// 1. 左侧 4px 目标专属色带，贯穿整卡作为视觉锚点；
+/// 2. 标题行：目标专属色圆点 + 标题（2 行）｜右侧 ⋮ 操作菜单；
+/// 3. 进度概览：圆环进度（中心百分比）+ 2×2 指标格
+///    （已完成 / 学习时长 / 剩余时间 / 剩余天数）；
+/// 4. 彩色粗进度条（8px，目标专属色，圆头，带生长动画）；
+/// 5. 起止日期区间 `yyyy.MM.dd → yyyy.MM.dd`；
 /// 6. 底部「查看详情 →」引导性主操作。
 ///
 /// 状态颜色跟随倒计时阶段（进行中=目标色/今天=琥珀/逾期=红/已结束=灰），
-/// 每张卡以目标专属稳定色板区分，双列网格中靠色块快速定位目标。
+/// 每张卡以目标专属稳定色板区分，列表中靠色块快速定位目标。
 /// 描述刻意不在卡片展示（卡片信息密度优先，详情页可见），避免卡片
 /// 中部出现大段空白/冗余文本。
 class _GoalCard extends ConsumerStatefulWidget {
@@ -358,169 +359,235 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
       child: InkWell(
         // push 压入导航栈，详情页 AppBar 自动出现返回箭头。
         onTap: () => _openDetail(context, ref),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 8, 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // —— 第 1 行：色点 + 标题 + 操作菜单（信息层级最高）——
-              Row(
-                children: [
-                  // 目标专属色圆点（状态定位色标）。
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: accent,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      goal.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            height: 1.25,
-                          ),
-                    ),
-                  ),
-                  PopupMenuButton<String>(
-                    tooltip: '目标操作',
-                    icon: const Icon(Icons.more_horiz),
-                    iconSize: 20,
-                    onSelected: (action) =>
-                        _handleAction(context, ref, action),
-                    itemBuilder: (_) => [
-                      const PopupMenuItem(value: 'edit', child: Text('编辑')),
-                      const PopupMenuItem(
-                        value: 'complete',
-                        child: Text('标记已完成'),
-                      ),
-                      const PopupMenuItem(
-                        value: 'abandon',
-                        child: Text('标记已放弃'),
-                      ),
-                      const PopupMenuItem(value: 'archive', child: Text('归档')),
-                      const PopupMenuItem(value: 'delete', child: Text('删除')),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              // —— 进度行：大号完成度 % 与进度条构成同一信息块 ——
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  // 大号完成度数字：视觉权重第一；无任务时灰字 `0%`
-                  // 占位（区分「没计划」与「0 完成」）。
-                  Text(
-                    '$percent%',
-                    style: TextStyle(
-                      fontSize: 32,
-                      height: 1,
-                      fontWeight: FontWeight.w700,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                      color: total == 0 ? scheme.outline : accent,
-                    ),
-                  ),
-                  const Spacer(),
-                  // 倒计时徽标：胶囊底色 + 阶段文案（文字不只依赖颜色）。
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: phaseColor.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      CountdownService.label(phase, days),
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: phaseColor,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              // —— 彩色粗进度条（8px，目标专属色，mhabit 式）——
-              // 入场从 0 生长到当前进度（2026-08-16，与进度环同款 320ms
-              // 生长感；数据刷新时平滑跟随新值）。
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: TweenAnimationBuilder<double>(
-                  tween: Tween(end: progress),
-                  duration: const Duration(milliseconds: 320),
-                  curve: Curves.easeOutCubic,
-                  builder: (context, value, _) => LinearProgressIndicator(
-                    value: value,
-                    minHeight: 8,
-                    backgroundColor: scheme.surfaceContainerHighest
-                        .withValues(alpha: 0.5),
-                    valueColor: AlwaysStoppedAnimation(accent),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              // —— 起止日期区间（创建日 → 截止日）——
-              Row(
-                children: [
-                  Icon(Icons.schedule_outlined, size: 14, color: scheme.outline),
-                  const SizedBox(width: 6),
-                  Text(
-                    '${_dotDate(goal.createdAt.toLocal())} → '
-                    '${_dotDate(parseLocalDate(goal.deadlineDate))}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              // —— 数据行：已完成 / 学习时长 / 剩余时间（标题+数值结构）——
-              Row(
+        child: Stack(
+          children: [
+            // 左侧目标专属色带：4px 贯穿整卡，一眼区分不同目标。
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: Container(width: 4, color: accent),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 8, 10),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _CardStat(
-                    title: '已完成',
-                    value: total == 0 ? '-- / --' : '$done / $total',
+                  // —— 标题行：色点 + 标题 + 操作菜单 ——
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 目标专属色圆点（与左侧色带呼应）。
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: accent,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          goal.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                height: 1.3,
+                              ),
+                        ),
+                      ),
+                      PopupMenuButton<String>(
+                        tooltip: '目标操作',
+                        icon: const Icon(Icons.more_horiz),
+                        iconSize: 22,
+                        onSelected: (action) =>
+                            _handleAction(context, ref, action),
+                        itemBuilder: (_) => [
+                          const PopupMenuItem(
+                            value: 'edit',
+                            child: Text('编辑'),
+                          ),
+                          const PopupMenuItem(
+                            value: 'complete',
+                            child: Text('标记已完成'),
+                          ),
+                          const PopupMenuItem(
+                            value: 'abandon',
+                            child: Text('标记已放弃'),
+                          ),
+                          const PopupMenuItem(
+                            value: 'archive',
+                            child: Text('归档'),
+                          ),
+                          const PopupMenuItem(
+                            value: 'delete',
+                            child: Text('删除'),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  _CardStat(
-                    title: '学习时长',
-                    value: total == 0
-                        ? '--'
-                        : DurationFormat.minutes(doneMinutes),
+                  const SizedBox(height: 16),
+                  // —— 进度概览：圆环 + 2×2 指标格 ——
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // 圆环进度：中心显示百分比，与今天页负载环同款语言。
+                      SizedBox(
+                        width: 72,
+                        height: 72,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Positioned.fill(
+                              child: TweenAnimationBuilder<double>(
+                                tween: Tween(end: progress),
+                                duration: const Duration(milliseconds: 320),
+                                curve: Curves.easeOutCubic,
+                                builder: (context, value, _) =>
+                                    CircularProgressIndicator(
+                                  value: value,
+                                  strokeWidth: 6,
+                                  strokeCap: StrokeCap.round,
+                                  backgroundColor: scheme
+                                      .surfaceContainerHighest
+                                      .withValues(alpha: 0.5),
+                                  valueColor: AlwaysStoppedAnimation(accent),
+                                ),
+                              ),
+                            ),
+                            Text(
+                              '$percent%',
+                              style: TextStyle(
+                                fontSize: 18,
+                                height: 1,
+                                fontWeight: FontWeight.w700,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                                color: total == 0 ? scheme.outline : accent,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      // 2×2 指标格：已完成 / 学习时长 / 剩余时间 / 剩余天数。
+                      Expanded(
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _CardStat(
+                                    title: '已完成',
+                                    value: total == 0
+                                        ? '-- / --'
+                                        : '$done / $total',
+                                  ),
+                                ),
+                                Expanded(
+                                  child: _CardStat(
+                                    title: '学习时长',
+                                    value: total == 0
+                                        ? '--'
+                                        : DurationFormat.minutes(doneMinutes),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _CardStat(
+                                    title: '剩余时间',
+                                    value: total == 0
+                                        ? '--'
+                                        : DurationFormat.minutes(
+                                            remainingMinutes,
+                                          ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: _CardStat(
+                                    title: '剩余天数',
+                                    value: CountdownService.label(phase, days),
+                                    valueColor: phaseColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  _CardStat(
-                    title: '剩余时间',
-                    value: total == 0
-                        ? '--'
-                        : DurationFormat.minutes(remainingMinutes),
+                  const SizedBox(height: 16),
+                  // —— 彩色粗进度条（8px，目标专属色，圆头）——
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: TweenAnimationBuilder<double>(
+                      tween: Tween(end: progress),
+                      duration: const Duration(milliseconds: 320),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, value, _) => LinearProgressIndicator(
+                        value: value,
+                        minHeight: 8,
+                        borderRadius: BorderRadius.circular(4),
+                        backgroundColor: scheme.surfaceContainerHighest
+                            .withValues(alpha: 0.5),
+                        valueColor: AlwaysStoppedAnimation(accent),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  // —— 起止日期区间（创建日 → 截止日）——
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.schedule_outlined,
+                        size: 14,
+                        color: scheme.outline,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '${_dotDate(goal.createdAt.toLocal())} → '
+                          '${_dotDate(parseLocalDate(goal.deadlineDate))}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  // —— 底部：查看详情（引导性主操作）——
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        foregroundColor: accent,
+                      ),
+                      onPressed: () => _openDetail(context, ref),
+                      icon: const Text('查看详情'),
+                      label: const Icon(Icons.arrow_forward, size: 16),
+                    ),
                   ),
                 ],
               ),
-              // —— 底部：查看详情（引导性主操作）——
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                  ),
-                  onPressed: () => _openDetail(context, ref),
-                  child: const Text('查看详情 →'),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -531,7 +598,9 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
     final mm = date.month.toString().padLeft(2, '0');
     final dd = date.day.toString().padLeft(2, '0');
     return '${date.year}.$mm.$dd';
-  }  /// 打开详情页：**立即导航 + 后台预热数据**（2026-08-16 二次卡顿修复）。
+  }
+
+  /// 打开详情页：**立即导航 + 后台预热数据**（2026-08-16 二次卡顿修复）。
   ///
   /// 此前「数据先到再导航」（await 预取，最多 800ms 兜底）在真实文件库上
   /// 把查询延迟直接转嫁成点击响应延迟——点卡片后数百毫秒无任何反馈，
@@ -690,41 +759,45 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
 
 /// 卡片统计块：小号标题在上、加粗数值在下（Todoist/Linear 风格信息层级）。
 ///
-/// 三块等宽（Expanded）排布，标题用次级色、数值用主文字色，形成
-/// 「先看数值、再看语义」的阅读顺序，替代旧版一长串平铺文字。
+/// 标题用次级色、数值用主文字色，形成「先看数值、再看语义」的阅读顺序，
+/// 替代旧版一长串平铺文字；[valueColor] 可高亮状态色（如逾期/今天）。
 class _CardStat extends StatelessWidget {
-  const _CardStat({required this.title, required this.value});
+  const _CardStat({
+    required this.title,
+    required this.value,
+    this.valueColor,
+  });
 
   final String title;
   final String value;
+  final Color? valueColor;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                  fontSize: 12,
-                ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              // 等宽数字：完成数/时长逐日变化时列对齐不抖动（2026-08-16）。
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontSize: 12,
+              ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: valueColor,
+                // 等宽数字：完成数/时长逐日变化时列对齐不抖动（2026-08-16）。
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+        ),
+      ],
     );
   }
 }
