@@ -21,6 +21,13 @@ final taskListProvider =
   return ref.watch(taskRepositoryProvider).byGoal(goalId);
 });
 
+/// 科目下任务列表异步状态（科目任务页专用）：按科目懒加载，避免整取
+/// 目标全部任务再内存过滤。
+final subjectTaskListProvider =
+    FutureProvider.family<List<Task>, int>((ref, subjectId) {
+  return ref.watch(taskRepositoryProvider).bySubject(subjectId);
+});
+
 /// 指定计划日期（yyyy-MM-dd）的全部任务（跨目标，今日页用）。
 final tasksByDateProvider =
     FutureProvider.family<List<Task>, String>((ref, date) {

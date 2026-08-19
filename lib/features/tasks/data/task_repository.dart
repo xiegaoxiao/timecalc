@@ -26,6 +26,21 @@ class TaskRepository {
     return query.get();
   }
 
+  /// 返回某科目下的全部未归档任务（科目任务页专用）。
+  ///
+  /// 按科目直接查询而非先整取 goalId 全部任务再内存过滤，实现数据层
+  /// 懒加载：科目下任务多但其余科目无任务时，不拉取无关行。
+  Future<List<Task>> bySubject(int subjectId) {
+    final query = _db.select(_db.tasks)
+      ..where((t) => t.subjectId.equals(subjectId) & t.archivedAt.isNull())
+      ..orderBy([
+        (t) => OrderingTerm.asc(t.plannedDate),
+        (t) => OrderingTerm.asc(t.sortOrder),
+        (t) => OrderingTerm.asc(t.id),
+      ]);
+    return query.get();
+  }
+
   /// 批量统计各目标的未归档任务「总数 / 已完成数 / 预估分钟数」（目标卡片用）。
   ///
   /// 一次 IN 查询 + Dart 内存分组，避免目标列表逐卡 `byGoal` 造成 N+1。

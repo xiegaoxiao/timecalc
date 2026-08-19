@@ -38,7 +38,8 @@ class _SubjectTaskPageState extends ConsumerState<SubjectTaskPage> {
   @override
   Widget build(BuildContext context) {
     final subjectsAsync = ref.watch(subjectListProvider(widget.goalId));
-    final tasksAsync = ref.watch(taskListProvider(widget.goalId));
+    // 按科目懒加载本科目任务，而非整取目标全部任务再内存过滤。
+    final tasksAsync = ref.watch(subjectTaskListProvider(widget.subjectId));
     final subject = subjectsAsync.valueOrNull
         ?.where((s) => s.id == widget.subjectId)
         .firstOrNull;
@@ -59,12 +60,12 @@ class _SubjectTaskPageState extends ConsumerState<SubjectTaskPage> {
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (error, _) => AppErrorView(
               error: error,
-              onRetry: () => ref.invalidate(taskListProvider(widget.goalId)),
+              onRetry: () =>
+                  ref.invalidate(subjectTaskListProvider(widget.subjectId)),
             ),
             data: (tasks) {
-              final subjectTasks = tasks
-                  .where((t) => t.subjectId == widget.subjectId)
-                  .toList();
+              // 数据已按科目懒加载，无需再次内存过滤。
+              final subjectTasks = tasks;
               return CustomScrollView(
                 slivers: [
                   SliverPadding(
