@@ -10,6 +10,8 @@ class DurationFormat {
 
   /// 将分钟数转为人类可读时长文本。
   static String minutes(int minutes) {
+    // 防御（审查 #16）：负数分钟（手工改库/导入反常值）不输出意义不明文案。
+    if (minutes < 0) return '0 分';
     final hours = minutes ~/ 60;
     final rest = minutes % 60;
     if (hours == 0) return '$rest 分';

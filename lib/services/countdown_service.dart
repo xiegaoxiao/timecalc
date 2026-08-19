@@ -36,12 +36,20 @@ class CountdownService {
     required DateTime today,
     required String status,
   }) {
-    final deadline = parseLocalDate(deadlineDate);
+    // 已归档/已完成/已放弃的目标先早退：即使 deadlineDate 是手工改库或
+    // 恢复产生的脏数据（无法解析），也不应让倒计时界面崩溃。
     if (status == GoalStatus.completed ||
         status == GoalStatus.abandoned ||
         status == GoalStatus.archived) {
       // terminated 的 days 固定为 0：label 对 terminated 恒返回「已结束」，
       // 不展示天数；0 与 today 分支一致，杜绝截止日为过去日期时负数外漏。
+      return (CountdownPhase.terminated, 0);
+    }
+
+    final deadline = tryParseLocalDate(deadlineDate);
+    if (deadline == null) {
+      // 防御：活跃目标的截止日无法解析（脏数据）时停止倒计时，避免把
+      // 损坏日期误判为逾期或崩溃。
       return (CountdownPhase.terminated, 0);
     }
 

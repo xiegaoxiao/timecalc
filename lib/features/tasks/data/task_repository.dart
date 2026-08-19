@@ -183,6 +183,10 @@ class TaskRepository {
   }) {
     final now = clock().toUtc();
     return _db.transaction(() async {
+      // 防御（审查 #3）：校验科目确实属于该目标，防止跨目标脏外键。
+      if (subjectId != null) {
+        await _assertSubjectBelongsToGoal(subjectId, goalId);
+      }
       final id = await _db.into(_db.tasks).insert(TasksCompanion.insert(
             goalId: goalId,
             subjectId: Value(subjectId),
@@ -223,6 +227,18 @@ class TaskRepository {
     final start = parseLocalDate(startDate);
     final cleanTitles = titles.map((t) => t.trim()).where((t) => t.isNotEmpty).toList();
     if (cleanTitles.isEmpty) return Future.value(0);
+
+    // 防御（审查 #9）：`dateIntervalDays * (条数-1)` 可能使日期越过 Dart 年份
+    // 上限抛 RangeError。事务前试算末条日期，越界则明确报错，避免整批回滚。
+    try {
+      addLocalDays(start, dateIntervalDays * (cleanTitles.length - 1));
+    } on RangeError {
+      throw ArgumentError.value(
+        dateIntervalDays * (cleanTitles.length - 1),
+        '批量任务跨度',
+        '批量任务日期跨度过大',
+      );
+    }
 
     return _db.transaction(() async {
       var count = 0;
@@ -311,7 +327,7 @@ class TaskRepository {
       final existing = await (_db.select(_db.subjects)
             ..where((s) => s.goalId.equals(goalId)))
           .get();
-      final nameToId = {for (final s in existing) s.name: s.id};
+      final nameToId = {for (final s in existing) s.name.trim(): s.id};
       var maxSort = existing.isEmpty
           ? -1
           : existing.map((s) => s.sortOrder).reduce((a, b) => a > b ? a : b);
@@ -375,8 +391,11 @@ class TaskRepository {
   }
 
   /// 恢复归档任务：重新进入未归档状态（回到其计划日期参与负载与列表）。
+  /// 任务不存在时不写库（幂等 no-op）。
   Future<void> restoreArchived(int id) {
     return _db.transaction(() async {
+      final current = await byId(id);
+      if (current == null) return;
       await (_db.update(_db.tasks)..where((t) => t.id.equals(id))).write(
         TasksCompanion(
           archivedAt: const Value(null),
@@ -387,8 +406,11 @@ class TaskRepository {
   }
 
   /// 完成任务状态切换（todo <-> done）。事务封装（NFR-2）。
+  /// 目标不存在时不写库（幂等 no-op，与 [update]/[defer] 一致）。
   Future<void> setDone(int id, bool done) {
     return _db.transaction(() async {
+      final current = await byId(id);
+      if (current == null) return;
       await (_db.update(_db.tasks)..where((t) => t.id.equals(id))).write(
         TasksCompanion(
           status: Value(done ? TaskStatus.done : TaskStatus.todo),
@@ -409,7 +431,10 @@ class TaskRepository {
     return _db.transaction(() async {
       final now = clock().toUtc();
       for (final batch in _chunkIds(ids)) {
-        await (_db.update(_db.tasks)..where((t) => t.id.isIn(batch))).write(
+        // 防御（审查 #14）：排除归档任务，避免误改已归档的历史记录。
+        await (_db.update(_db.tasks)
+              ..where((t) => t.id.isIn(batch) & t.archivedAt.isNull()))
+            .write(
           TasksCompanion(
             status: Value(done ? TaskStatus.done : TaskStatus.todo),
             completedAt: Value(done ? now : null),
@@ -437,6 +462,11 @@ class TaskRepository {
     return _db.transaction(() async {
       final current = await byId(id);
       if (current == null) return;
+      // 防御（审查 #3）：显式指派科目时校验其属于任务当前所属目标。
+      final newSubjectId = subjectId?.present ?? false ? subjectId!.value : null;
+      if (newSubjectId != null) {
+        await _assertSubjectBelongsToGoal(newSubjectId, current.goalId);
+      }
       final original =
           _originalDateOnReschedule(current: current, newPlannedDate: plannedDate);
       await (_db.update(_db.tasks)..where((t) => t.id.equals(id))).write(
@@ -498,7 +528,8 @@ class TaskRepository {
           'UPDATE tasks SET planned_date = ?, '
           'original_planned_date = COALESCE(original_planned_date, planned_date), '
           'updated_at = ? '
-          'WHERE id IN ($placeholders) AND planned_date != ?',
+          'WHERE id IN ($placeholders) AND planned_date != ? '
+          'AND archived_at IS NULL',
           variables: [
             Variable.withString(newPlannedDate),
             Variable.withDateTime(clock().toUtc()),
@@ -510,6 +541,22 @@ class TaskRepository {
       }
       return affected;
     });
+  }
+
+  /// 防御（审查 #3）：校验科目存在且属于给定目标，防止写入跨目标脏外键。
+  /// 科目不存在时同样抛错（上层表单必填校验已前置，此处兜底）。
+  Future<void> _assertSubjectBelongsToGoal(int subjectId, int goalId) async {
+    final subject = await (_db.select(_db.subjects)
+          ..where((s) => s.id.equals(subjectId)))
+        .getSingleOrNull();
+    if (subject == null) {
+      throw ArgumentError('科目不存在：$subjectId');
+    }
+    if (subject.goalId != goalId) {
+      throw ArgumentError(
+        '科目不属于该目标（科目目标 ${subject.goalId} != 目标 $goalId）',
+      );
+    }
   }
 
   /// 把 id 列表切成 ≤ [kMaxInListSize] 的批（SQLite 绑定变量数上限防护，L1）。

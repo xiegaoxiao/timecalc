@@ -417,7 +417,11 @@ class PlanImportParser {
       // 每周例行项（daily_must_do，与科目平级）→ 每天重复模板。
       // 条目为字符串（历史写法，无时长）或对象 { "title": ..., "minutes": 30 }。
       final mustDo = subjects['daily_must_do'];
-      if (mustDo is List && weekStart != null) {
+      // 防御（审查 #23）：类型非法（对象/字符串等非 List）时补一条 issue，
+      // 与同层「类型错误一律记 issue」的约定一致，而非静默吞掉。
+      if (mustDo != null && mustDo is! List) {
+        issues.add(ImportIssue('daily_must_do 必须是数组', location: location));
+      } else if (mustDo is List && weekStart != null) {
         final weekEnd = _weekRangeEnd(week['week_range']);
         for (var mi = 0; mi < mustDo.length; mi++) {
           final item = mustDo[mi];
@@ -455,11 +459,13 @@ class PlanImportParser {
 
       // 科目任务（daily_breakdown）。
       for (final entry in subjects.entries) {
-        final name = entry.key;
+        // 防御（审查 #11）：科目名 trim 后再做空/长/去重/入库，与
+        // task_import_parser 的口径一致，避免「 数学」与「数学」分裂成两个科目。
+        final name = entry.key.trim();
         if (name == 'daily_must_do') continue;
         // 长度校验（M10，subjects.name ≤ 100）：空/超长科目名会静默写入
         // 或触发 DB 约束异常（L11 曾因空科目名导致 subject_manager 崩溃）。
-        if (name.trim().isEmpty) {
+        if (name.isEmpty) {
           issues.add(ImportIssue('科目名称不能为空', location: location));
           continue;
         }

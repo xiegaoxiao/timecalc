@@ -58,7 +58,7 @@ class BackupManifest {
 
   /// 备份类型；未知/非法值（未来版本或手工构造）为 null，恢复前拒绝。
   final BackupType? type;
-  final DateTime exportedAtUtc;
+  final DateTime? exportedAtUtc;
   final int appSchemaVersion;
   final String appVersion;
   final int goalCount;
@@ -76,6 +76,9 @@ class BackupManifest {
     if (version != BackupFormat.version) return '备份版本不受支持（$version）';
     // type 为 null（未知类型，从 JSON 解析未识别）时同样拒绝。
     if (type != BackupType.full) return '不支持的备份类型';
+    // exportedAtUtc 为 null（损坏时间戳解析失败）时拒绝，而非在预览中
+    // 显示误导性的「1970-01-01」。
+    if (exportedAtUtc == null) return '备份时间缺失';
     if (goalCount < 0 || subjectCount < 0 || taskCount < 0 ||
         recurrenceTemplateCount < 0 || milestoneCount < 0 ||
         checklistItemCount < 0) {
@@ -90,7 +93,7 @@ class BackupManifest {
       'version': version,
       // 类型未知时（仅理论上，导出端恒为 full）按 'unknown' 落盘。
       'type': type?.value ?? 'unknown',
-      'exportedAtUtc': exportedAtUtc.toUtc().toIso8601String(),
+      'exportedAtUtc': exportedAtUtc?.toUtc().toIso8601String() ?? '',
       'appSchemaVersion': appSchemaVersion,
       'appVersion': appVersion,
       'counts': {
@@ -123,7 +126,7 @@ class BackupManifest {
       format: rawFormat is String ? rawFormat : '',
       version: (json['version'] as num?)?.toInt() ?? 0,
       type: BackupType.fromValue(rawType is String ? rawType : null),
-      exportedAtUtc: exported ?? DateTime.fromMillisecondsSinceEpoch(0),
+      exportedAtUtc: exported,
       appSchemaVersion: (json['appSchemaVersion'] as num?)?.toInt() ?? 0,
       appVersion: rawAppVersion is String ? rawAppVersion : '',
       goalCount: (counts['goals'] as num?)?.toInt() ?? 0,

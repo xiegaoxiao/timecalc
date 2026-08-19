@@ -25,8 +25,10 @@ class RecurrenceService {
 
   /// 生成 [startDate] 起、[from]~[to]（含，yyyy-MM-dd）内的发生日。
   ///
-  /// [from]/[to] 缺省时默认 [from]=startDate、[to]=startDate+30 天
-  /// （FR-4.3 未来 30 天窗口）。未知类型返回空列表。
+  /// [from]/[to] 缺省时默认 [from]=startDate、[to]=[from]+30 天（FR-4.3 未来
+  /// 30 天窗口）。即显式传入 [from] 时，未传的 [to] 跟随 [from] 而非回到
+  /// startDate，避免 `from > startDate+30` 产生空/非法窗口（审查 #18）。
+  /// 未知类型返回空列表；[to] 早于 [from] 时显式返回空。
   List<String> occurrences({
     required String ruleType,
     required Map<String, dynamic> json,
@@ -35,7 +37,8 @@ class RecurrenceService {
     String? to,
   }) {
     final effectiveFrom = from ?? startDate;
-    final effectiveTo = to ?? _plusDays(startDate, 30);
+    final effectiveTo = to ?? _plusDays(effectiveFrom, 30);
+    if (effectiveTo.compareTo(effectiveFrom) < 0) return const [];
     return _registry.occurrences(
       type: ruleType,
       json: json,

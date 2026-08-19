@@ -84,7 +84,7 @@ Future<void> downgradeCleanup(Migrator m) async {
   }
 }
 
-/// TimeCalc 本地数据库（schema v13）。
+/// TimeCalc 本地数据库（schema v14）。
 ///
 /// v1：目标/科目/任务三张表。
 /// v2：Tasks 增加 original_planned_date；新增 Settings 计划偏好表（M2）。

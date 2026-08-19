@@ -45,7 +45,10 @@ class SettingsRepository {
 
   /// 更新每周可用日。按 ISO 星期（1=周一…7=周日）升序编码为逗号分隔文本。
   Future<void> updateAvailableWeekdays(Set<int> weekdays) {
-    final sorted = weekdays.toList()..sort();
+    // 防御（审查 #12）：写侧同样过滤 1~7 外脏值，与读侧 decodeWeekdays
+    // 一致，避免非法值落库后仅被读侧静默丢弃。
+    final valid = weekdays.where((d) => d >= 1 && d <= 7);
+    final sorted = valid.toList()..sort();
     return _update(SettingsCompanion(
       availableWeekdays: Value(sorted.join(',')),
     ));

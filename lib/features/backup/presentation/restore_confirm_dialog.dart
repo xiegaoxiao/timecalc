@@ -33,7 +33,7 @@ class RestoreConfirmDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final backupTime = manifest.exportedAtUtc.toLocal();
+    final backupTime = manifest.exportedAtUtc?.toLocal();
     return AlertDialog(
       title: const Text('从备份恢复'),
       content: Column(
@@ -44,7 +44,9 @@ class RestoreConfirmDialog extends StatelessWidget {
           const SizedBox(height: 12),
           _InfoRow(
             label: '备份时间',
-            value: DateFormat('yyyy-MM-dd HH:mm').format(backupTime),
+            value: backupTime == null
+                ? '未知'
+                : DateFormat('yyyy-MM-dd HH:mm').format(backupTime),
           ),
           _InfoRow(label: '目标数', value: '${manifest.goalCount}'),
           _InfoRow(label: '任务数', value: '${manifest.taskCount}'),

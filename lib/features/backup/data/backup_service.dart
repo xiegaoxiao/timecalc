@@ -69,6 +69,10 @@ class BackupService {
   /// 备份文件（压缩后）大小上限：超过则拒绝读取（zip bomb 防御，NFR-2）。
   static const int _maxBackupBytes = 100 * 1024 * 1024; // 100 MB
 
+  /// 备份解压后总内容大小上限：压缩体积校验拦不住高压缩比子文件的放大，
+  /// 额外限制解压总长，防止把内存撑爆（zip bomb 深度防御）。
+  static const int _maxUncompressedBytes = 512 * 1024 * 1024; // 512 MB
+
   /// 导出全部业务数据为带版本号的备份文件（FR-9.1）。
   ///
   /// 在单个事务内读取全部业务表（快照一致），打包 zip 写入 [targetFile]。
@@ -149,9 +153,14 @@ class BackupService {
 
   /// 读取并校验备份文件清单（FR-9.2 恢复前展示摘要）。
   ///
-  /// 只读操作，不触碰当前数据库。格式/版本/类型不合法时抛 [BackupException]。
+  /// 只读操作，不触碰当前数据库。格式/版本/类型不合法时抛 [BackupException]，
+  /// 与 [restoreBackup] 的校验保持一致，避免「预览正常、恢复才报错」的割裂。
   Future<BackupManifest> readBackupManifest(File file) async {
     final payload = await _unpack(file);
+    final validationError = payload.manifest.validate();
+    if (validationError != null) {
+      throw BackupException(validationError);
+    }
     return payload.manifest;
   }
 
@@ -284,6 +293,21 @@ class BackupService {
   /// - 计划偏好不合并（当前设置保持不变）。
   Future<void> _mergeRestore(BackupPayload payload) async {
     await _db.transaction(() async {
+      // 防御：同一备份内出现同键目标（title+deadlineDate+status 相同）时，
+      // 下方按去重键会静默丢弃后者、并把科目/任务归并到前者，造成无形
+      // 数据丢失——合并前先检测并拒绝。
+      final withinBackupKeys = <String>{};
+      for (final json in payload.goals) {
+        final key = _goalKey(
+          json['title'] as String,
+          json['deadlineDate'] as String,
+          json['status'] as String? ?? 'active',
+        );
+        if (!withinBackupKeys.add(key)) {
+          throw const BackupException('备份包含重复目标（已取消合并）');
+        }
+      }
+
       // 已有目标按去重键索引。
       final existingGoals = await _db.select(_db.goals).get();
       final goalKeyToId = <String, int>{
@@ -478,11 +502,13 @@ class BackupService {
                     previousAutoBackupEnabled,
                 localBackupFolder: payload.settings.first['localBackupFolder'] as String? ??
                     previousLocalBackupFolder,
-                lastAutoBackupAt: payload.settings.first['lastAutoBackupAt'] == null
-                    ? previousLastAutoBackupAt
-                    : DateTime.tryParse(
-                        payload.settings.first['lastAutoBackupAt'] as String,
-                      ),
+                lastAutoBackupAt: () {
+                  final raw = payload.settings.first['lastAutoBackupAt'];
+                  // 缺失或非法（非字符串/格式损坏）时保留恢复前的值，
+                  // 避免把自动备份的「距上次不足 24h」冷却判据误清空。
+                  if (raw is! String) return previousLastAutoBackupAt;
+                  return DateTime.tryParse(raw) ?? previousLastAutoBackupAt;
+                }(),
                 themeMode: payload.settings.first['themeMode'] as String? ??
                     previousThemeMode,
                 accentColor: payload.settings.first['accentColor'] as String? ??
@@ -529,6 +555,14 @@ class BackupService {
       archive = ZipDecoder().decodeBytes(bytes, verify: true);
     } catch (_) {
       throw const BackupException('文件损坏或不是 TimeCalc 备份文件');
+    }
+    // zip bomb 深度防御：解压后总内容超上限即拒绝（压缩体积校验拦不住
+    // 高压缩比子文件的放大，一次性 decodeBytes 会把全部内容载入内存）。
+    // 各子文件声明解压大小之和即为解压后总长。
+    final uncompressedBytes =
+        archive.files.fold<int>(0, (sum, file) => sum + file.size);
+    if (uncompressedBytes > _maxUncompressedBytes) {
+      throw const BackupException('备份内容超出允许范围，已拒绝读取');
     }
 
     final manifestFile = archive.findFile(_manifestPath);

@@ -10,11 +10,14 @@ class SubjectRepository {
   final AppDatabase _db;
   final DateTime Function() clock;
 
-  /// 返回目标下的全部科目，按 sortOrder 升序。
+  /// 返回目标下的全部科目，按 sortOrder 升序（同序号以 id 兜底，保证稳定）。
   Future<List<Subject>> byGoal(int goalId) {
     final query = _db.select(_db.subjects)
       ..where((s) => s.goalId.equals(goalId))
-      ..orderBy([(s) => OrderingTerm.asc(s.sortOrder)]);
+      ..orderBy([
+        (s) => OrderingTerm.asc(s.sortOrder),
+        (s) => OrderingTerm.asc(s.id),
+      ]);
     return query.get();
   }
 

@@ -7,14 +7,39 @@
 /// 偏移一小时，导致文本日期错位）。
 library;
 
+/// 严格 `yyyy-MM-dd` 格式（年 4 位，月/日 2 位，数值范围另行校验）。
+final RegExp _datePattern = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+
 /// 解析 `yyyy-MM-dd` 为本地日期（day 固定为当天，不携带时刻）。
+///
+/// 不校验入参格式：若 [yyyyMMdd] 不是合法的 `yyyy-MM-dd`（段数不足、含
+/// 非数字、或年月日越界），会抛 [RangeError]/[FormatException]。请优先
+/// 使用容错版 [tryParseLocalDate]，仅当调用方已确保格式时才用本函数。
 DateTime parseLocalDate(String yyyyMMdd) {
+  final parsed = tryParseLocalDate(yyyyMMdd);
+  if (parsed == null) {
+    throw FormatException('不是合法的本地日期文本: $yyyyMMdd');
+  }
+  return parsed;
+}
+
+/// 容错解析 `yyyy-MM-dd`：格式或范围非法时返回 `null`（不抛异常）。
+///
+/// 用于防御外部脏数据（手工改库、备份/导入恢复的非规范日期），解析失败
+/// 由调用方决定回退；同时校验真实天数，避免 `2026-02-31` 被 [DateTime]
+/// 静默归一化为 3 月 3 日。
+DateTime? tryParseLocalDate(String yyyyMMdd) {
+  if (!_datePattern.hasMatch(yyyyMMdd)) return null;
   final parts = yyyyMMdd.split('-');
-  return DateTime(
-    int.parse(parts[0]),
-    int.parse(parts[1]),
-    int.parse(parts[2]),
-  );
+  final year = int.parse(parts[0]);
+  final month = int.parse(parts[1]);
+  final day = int.parse(parts[2]);
+  if (year < 1 || year > 9999) return null;
+  if (month < 1 || month > 12) return null;
+  if (day < 1 || day > 31) return null;
+  final maxDay = DateTime(year, month + 1, 0).day;
+  if (day > maxDay) return null;
+  return DateTime(year, month, day);
 }
 
 /// 把本地日期格式化为 `yyyy-MM-dd`。

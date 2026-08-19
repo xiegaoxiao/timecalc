@@ -120,7 +120,9 @@ class IntervalRecurrenceHandler extends RecurrenceRuleHandler {
     required String to,
   }) {
     final n = json['everyNDays'];
-    if (n is! int) return const [];
+    // 防御：只校验类型不够——0 或负数会让下方 while 死循环无限 append、
+    // _firstAtOrAfter 除零。与 validate() 一致回退为空（宽容处理脏规则）。
+    if (n is! int || n < 1) return const [];
     final out = <String>[];
     final start = _parse(startDate);
     final fromD = _parse(from);

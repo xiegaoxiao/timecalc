@@ -239,6 +239,9 @@ class StatisticsService {
     final month = int.tryParse(parts[1]);
     final day = int.tryParse(parts[2]);
     if (year == null || month == null || day == null) return null;
+    // 防御（审查 #17）：年份越界时 DateTime(...) 抛 ArgumentError，
+    // 补充 1~9999 区间校验，与「解析失败直接跳过」的容错契约一致。
+    if (year < 1 || year > 9999) return null;
     return DateTime(year, month, day);
   }
 

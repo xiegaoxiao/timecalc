@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:drift/drift.dart' show Value;
 import '../../../core/database/database.dart';
 import '../../../core/database/tables.dart';
 import '../../../core/errors/app_guard.dart';
@@ -603,7 +604,7 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
             status: 'completed',
             // 走 clockProvider（可注入/固定时钟），避免 UI 层裸 DateTime.now()
             // 绕过注入时钟，导致完成时间无法在测试中精确断言。
-            completedAt: ref.read(clockProvider)().toUtc(),
+            completedAt: Value(ref.read(clockProvider)().toUtc()),
           ),
         );
         if (!ok) return;

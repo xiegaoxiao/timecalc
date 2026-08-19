@@ -20,9 +20,11 @@ class DeferService {
     required DateTime today,
     required Set<int> availableWeekdays,
   }) {
-    final weekdays = availableWeekdays.isEmpty
-        ? const {1, 2, 3, 4, 5, 6, 7}
-        : availableWeekdays;
+    // 防御（审查 #15）：过滤 1~7 外的脏值，过滤后为空（含原始空集）回退
+    // 全周可用；否则非空但与 1~7 无交集的集合会让下方 while 死循环。
+    final normalized = availableWeekdays.where((d) => d >= 1 && d <= 7).toSet();
+    final weekdays =
+        normalized.isEmpty ? const {1, 2, 3, 4, 5, 6, 7} : normalized;
 
     var candidate = addLocalDays(today, 1);
     while (!weekdays.contains(_isoWeekday(candidate))) {

@@ -128,8 +128,10 @@ class LoadService {
         entry.key: _aggregate(
           entry.value,
           availableMinutes: availableMinutes,
+          // 防御：任务 plannedDate 可能是手工改库/恢复的非规范日期，解析
+          // 失败时该日按「非可用星期」置灰，不产生任何超出徽标（不崩溃）。
           weekdayAvailable: weekdays.contains(
-            parseLocalDate(entry.key).weekday,
+            tryParseLocalDate(entry.key)?.weekday ?? 0,
           ),
         ),
     };

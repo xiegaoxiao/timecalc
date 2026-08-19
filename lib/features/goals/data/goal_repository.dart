@@ -90,14 +90,14 @@ class GoalRepository {
   }
 
   /// 更新目标的基础字段。字符串字段为 null 表示不修改；
-  /// [description] 传 `Value(null)` 表示显式清空描述。
+  /// [description]/[completedAt] 传 `Value(null)` 表示显式清空。
   Future<void> update({
     required int id,
     String? title,
     String? deadlineDate,
     Value<String?>? description,
     String? status,
-    DateTime? completedAt,
+    Value<DateTime?>? completedAt,
   }) {
     return _db.transaction(() async {
       final now = clock().toUtc();
@@ -108,8 +108,7 @@ class GoalRepository {
               deadlineDate == null ? const Value.absent() : Value(deadlineDate),
           description: description ?? const Value.absent(),
           status: status == null ? const Value.absent() : Value(status),
-          completedAt:
-              completedAt == null ? const Value.absent() : Value(completedAt),
+          completedAt: completedAt ?? const Value.absent(),
           updatedAt: Value(now),
         ),
       );
