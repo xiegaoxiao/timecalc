@@ -54,9 +54,9 @@ class _CompletionCheckboxState extends State<CompletionCheckbox>
     super.didUpdateWidget(oldWidget);
     if (widget.value && !oldWidget.value) {
       _controller.forward(from: 0.0);
-    } else if (!widget.value && oldWidget.value) {
-      _controller.reverse();
     }
+    // 取消勾选无需动画：build 中 scale 在未勾选时恒为 1.0，过渡由
+    // AnimatedContainer/AnimatedOpacity 完成，reverse() 无视觉作用。
   }
 
   @override

@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -61,61 +59,8 @@ class _TodayPageState extends ConsumerState<TodayPage> {
   /// 避免每次刷新/操作重复播放骚扰用户。
   bool _celebratedDone = false;
 
-  /// Telegram 式撤回 SnackBar 控制器：仅精确关闭本撤回条，避免误关
-  /// 其它页面/流程弹出的 SnackBar（IndexedStack 下各页常驻，App 级
-  /// ScaffoldMessenger 全局共享）。
-  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _undoSnackBar;
-
   @override
   Widget build(BuildContext context) {
-    // 勾选完成 → 进入 5 秒撤回批次。SnackBar 单实例（2026-08-16 动画
-    // 流畅度优化）：只在「空 → 非空」弹出、「非空 → 空」收起；批次增长时
-    // 不再关旧开新（连续勾选时出入场动画反复启停是掉帧感的主要来源），
-    // 计数与倒计时由内容组件 [_UndoSnackBarContent] 原地更新。
-    ref.listen<Set<int>>(taskCompletionControllerProvider, (previous, next) {
-      final wasEmpty = previous == null || previous.isEmpty;
-      if (next.isEmpty) {
-        // 批次清空（到期定稿 / 整批撤回）：收起撤回条。只关闭本撤回条，
-        // 不影响其它页面/流程的 SnackBar；已自行关闭则 close 为 no-op。
-        final current = _undoSnackBar;
-        if (current != null) {
-          _undoSnackBar = null;
-          current.close();
-        }
-        return;
-      }
-      if (!wasEmpty && _undoSnackBar != null) return; // 已在展示：原地更新
-      final messenger = ScaffoldMessenger.of(context);
-      final snack = messenger.showSnackBar(
-        SnackBar(
-          // 关闭完全由批次状态驱动（上方 listener close）；不设短 duration
-          // 抢在定稿前自动消失。此值仅作兜底（正常流程远早于 1 分钟收起）。
-          duration: const Duration(minutes: 1),
-          content: _UndoSnackBarContent(
-            totalSeconds: TaskCompletionController.undoWindow.inSeconds,
-          ),
-          action: SnackBarAction(
-            label: '撤回',
-            onPressed: () {
-              // 显式收起（undo() 清空批次时 listener 里引用已为 null，
-              // 若不在此关闭会一直展示到兜底 duration）。
-              final current = _undoSnackBar;
-              _undoSnackBar = null;
-              current?.close();
-              ref.read(taskCompletionControllerProvider.notifier).undo();
-            },
-          ),
-        ),
-      );
-      _undoSnackBar = snack;
-      // 无论何种原因关闭（到期/撤回/手动关），都清理引用，避免再对其 close。
-      unawaited(
-        snack.closed.whenComplete(() {
-          if (identical(_undoSnackBar, snack)) _undoSnackBar = null;
-        }),
-      );
-    });
-
     final today = ref.watch(clockProvider)();
     final todayStr = formatLocalDate(today);
 
@@ -251,8 +196,10 @@ class _TodayPageState extends ConsumerState<TodayPage> {
       _celebratedDone = false;
     }
 
-    return CustomScrollView(
-      // 头部区块：静态区块（概览/横幅/标题行等）用 SliverChildListDelegate
+    return Stack(
+      children: [
+        CustomScrollView(
+          // 头部区块：静态区块（概览/横幅/标题行等）用 SliverChildListDelegate
       // 一次性构建；进行中目标倒计时卡改为 ProgressiveRows 视口驱动懒构建
       // ——大目标量（批量导入）下每张卡还各自 watch 里程碑查询，只构建视口
       // 附近卡片，滚动到哪建到哪。今日任务列表在下方独立 Sliver 内，同样
@@ -435,8 +382,8 @@ class _TodayPageState extends ConsumerState<TodayPage> {
                         goalTitle: goalsById[todayTasks[i].goalId]?.title,
                         subjects: subjectsByGoal[todayTasks[i].goalId],
                         onChanged: onChanged,
-                        // 今日任务勾选走 5 秒撤回（Telegram 式）。
-                        enableCompleteUndo: true,
+                        // 今日任务：勾选仅划线、不消失，即时完成即可，无需撤回
+                        //（default enableCompleteUndo=false 不进入 5 秒批次）。
                       ),
                     ],
                   ),
@@ -444,6 +391,15 @@ class _TodayPageState extends ConsumerState<TodayPage> {
               ),
             ),
           ),
+      ],
+        ),
+        // 右下角批量撤销 FAB：圆形倒计时 + 撤回键。小尺寸悬浮于边角，
+        // 不占满整行，因此不会像整宽 SnackBar 那样盖住正在点选的任务。
+        Positioned(
+          right: 16,
+          bottom: 16,
+          child: _UndoFab(),
+        ),
       ],
     );
   }
@@ -939,58 +895,114 @@ class _OverdueTasksSection extends StatelessWidget {
   }
 }
 
-/// 撤回 SnackBar 内容：「已勾选 N 项任务 · M 秒后自动完成」。
+/// 右下角批量撤销 FAB：圆形倒计时动画 + 中央撤回键。
 ///
-/// 单实例 SnackBar 的内容组件（2026-08-16 动画流畅度优化）：计数经
-/// watch 批次 provider 原地更新；批次并入新任务时倒计时重置——与
-/// [TaskCompletionController] 的滚动窗口一致。倒计时仅作视觉反馈，
-/// 定稿本身仍由控制器的计时器负责，本组件不参与触发。
-class _UndoSnackBarContent extends ConsumerStatefulWidget {
-  const _UndoSnackBarContent({required this.totalSeconds});
-
-  /// 撤回窗口总时长（秒）。
-  final int totalSeconds;
+/// 取代原整宽底部 SnackBar：批次有任务时出现在右下角，尺寸小、不占满
+/// 整行，故不会盖住正在勾选/取消勾选的任务。倒计时圆环随剩余秒数收缩，
+/// 仅作视觉反馈；定稿仍由 [TaskCompletionController] 的计时器负责。
+class _UndoFab extends ConsumerStatefulWidget {
+  const _UndoFab();
 
   @override
-  ConsumerState<_UndoSnackBarContent> createState() =>
-      _UndoSnackBarContentState();
+  ConsumerState<_UndoFab> createState() => _UndoFabState();
 }
 
-class _UndoSnackBarContentState extends ConsumerState<_UndoSnackBarContent> {
-  late int _remaining;
-  Timer? _ticker;
+class _UndoFabState extends ConsumerState<_UndoFab>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
 
   @override
   void initState() {
     super.initState();
-    _startCountdown();
+    _controller = AnimationController(
+      vsync: this,
+      duration: TaskCompletionController.undoWindow,
+    );
   }
 
   @override
   void dispose() {
-    _ticker?.cancel();
+    _controller.dispose();
     super.dispose();
   }
 
-  void _startCountdown() {
-    _remaining = widget.totalSeconds;
-    _ticker?.cancel();
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      setState(() {
-        if (_remaining > 0) _remaining--;
-        if (_remaining == 0) _ticker?.cancel();
-      });
-    });
+  /// 重置倒计时：并入新任务 / 批次重启时从头开始（与控制器滚动窗口同步）。
+  void _resetCountdown() {
+    _controller.duration = TaskCompletionController.undoWindow;
+    _controller.forward(from: 0);
   }
 
   @override
   Widget build(BuildContext context) {
-    // 并入新任务 → 重置倒计时（与控制器滚动窗口同步）。
     ref.listen<Set<int>>(taskCompletionControllerProvider, (previous, next) {
-      if ((previous?.length ?? 0) < next.length) _startCountdown();
+      if ((previous?.length ?? 0) < next.length) _resetCountdown();
     });
-    final count = ref.watch(taskCompletionControllerProvider).length;
-    return Text('已勾选 $count 项任务 · $_remaining 秒后自动完成');
+    final batch = ref.watch(taskCompletionControllerProvider);
+    final visible = batch.isNotEmpty;
+    final scheme = Theme.of(context).colorScheme;
+
+    return AnimatedOpacity(
+      opacity: visible ? 1.0 : 0.0,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeInOut,
+      // 不可见时关闭命中，避免空白区误触。
+      child: IgnorePointer(
+        ignoring: !visible,
+        child: AnimatedScale(
+          // 出现时轻微放大，配合淡入更顺滑，而非只做透明度渐隐。
+          scale: visible ? 1.0 : 0.75,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutBack,
+          child: SizedBox(
+            width: 56,
+            height: 56,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // 倒计时圆环：1（满环）→ 0（即将定稿）。value 必须在 builder 内按
+                // _controller.value 逐帧取，避免捕获外层一次性局部变量导致
+                // 圆环停在初始状态不动。
+                AnimatedBuilder(
+                  animation: _controller,
+                  builder: (context, _) => CircularProgressIndicator(
+                    value: 1 - _controller.value,
+                    strokeWidth: 3,
+                    strokeCap: StrokeCap.round,
+                    backgroundColor: scheme.primary.withValues(alpha: 0.12),
+                    valueColor: AlwaysStoppedAnimation(scheme.primary),
+                  ),
+                ),
+                Center(
+                  child: Tooltip(
+                    message: '撤回 ${batch.length} 项勾选',
+                    child: Material(
+                      color: scheme.primary,
+                      shape: const CircleBorder(),
+                      clipBehavior: Clip.antiAlias,
+                      elevation: 2,
+                      child: InkWell(
+                        onTap: () => ref
+                            .read(taskCompletionControllerProvider.notifier)
+                            .undo(),
+                        child: const SizedBox(
+                          width: 44,
+                          height: 44,
+                          child: Icon(
+                            Icons.undo_rounded,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

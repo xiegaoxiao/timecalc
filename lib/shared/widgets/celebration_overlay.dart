@@ -1,10 +1,15 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:confetti/confetti.dart';
 import 'package:flutter/material.dart';
 
 /// 达成庆祝彩带（v1.11 动效升级）：今日任务全部完成时在 Overlay 层
-/// 播一次爆炸式彩带（低频、克制，不重复触发骚扰）。
+/// 播一次彩纸屑效果（低频、克制，不重复触发骚扰）。
+///
+/// 使用成熟的 [confetti] 库而非手写重绘：库内含插值与去活判定，平滑不卡顿；
+/// 配置为「自中心向上喷发、因重力落回」的礼花效果——视觉上彩纸从上方落下，
+/// 规避 explosive 从中心向两侧平铺（此前被判定为“从侧面洒下”）。
 ///
 /// 用法：[showCelebration] 插入 OverlayEntry，约 4 秒后自动移除；
 /// 彩带本身 IgnorePointer，不拦截任何交互。移除定时器由 overlay 自身
@@ -60,10 +65,13 @@ class _CelebrationOverlayState extends State<_CelebrationOverlay>
         child: RepaintBoundary(
           child: ConfettiWidget(
             confettiController: _controller,
-            blastDirectionality: BlastDirectionality.explosive,
-            // 40 粒在视觉上依然饱满，Windows 光栅化成本约降三分之一。
-            numberOfParticles: 40,
-            gravity: 0.3,
+            // 自中心向上喷发，再由重力落回，视觉上像彩纸从上方落下；
+            // 避免 explosive 的中心向两侧平铺（“从侧面洒下”）。
+            blastDirectionality: BlastDirectionality.directional,
+            blastDirection: -math.pi / 2,
+            gravity: 0.5,
+            emissionFrequency: 0.02,
+            numberOfParticles: 30,
             shouldLoop: false,
           ),
         ),
