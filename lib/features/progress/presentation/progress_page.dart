@@ -54,8 +54,9 @@ final _hm = DateFormat('HH:mm');
 ///
 /// 结构（自上而下）：
 /// 1. 今日概览：今日完成数/总数、今日已完成预估时长、目标剩余工作量；
-/// 2. 燃尽趋势（FR-7.3）：最近 30 天「剩余预估时长」随日期的变化 + 理想
-///    参考线（今日点 = 当前剩余；虚线按最晚截止日线性递减）；
+/// 2. 燃尽趋势（FR-7.3）：从今天起到最晚截止日的「剩余预估时长」计划燃尽
+///    曲线（今日点 = 当前剩余；按最晚截止日线性递减），避免展示无意义的
+///    历史平线；
 /// 3. 热力图：按「完成日期」统计最近 26 周完成任务数量（LeetCode 配色，
 ///    tooltip 与图例文本，状态不只依赖颜色，NFR-4）；
 /// 4. 任务耗时图（fl_chart，M7 迭代）：按周展示未来计划与已完成时长；
@@ -132,12 +133,12 @@ final progressHeatmapProvider = Provider<({
   );
 });
 
-/// 燃尽趋势数据（FR-7.3）：仅依赖未完成 + 已完成 + 最晚截止日。
+/// 燃尽趋势数据（FR-7.3）：仅依赖未完成 + 最晚截止日（前向燃尽）。
 final progressBurndownProvider = Provider<({
   List<BurndownPoint> points,
   int? currentRemaining,
-  int doneMinutes,
   DateTime today,
+  DateTime endDate,
 })?>((ref) {
   final tasks = ref.watch(progressTasksProvider).valueOrNull;
   if (tasks == null) return null;
@@ -152,21 +153,15 @@ final progressBurndownProvider = Provider<({
   final points = hasMinutes
       ? StatisticsService.burndownSeries(
           todoTasks: tasks.todo,
-          completedTasks: tasks.completed,
           today: today,
           endDate: endDate,
         )
       : const <BurndownPoint>[];
   return (
     points: points,
-    currentRemaining: points.isEmpty ? null : points.last.remaining,
-    doneMinutes: hasMinutes
-        ? StatisticsService.burndownWindowDoneMinutes(
-            completedTasks: tasks.completed,
-            today: today,
-          )
-        : 0,
+    currentRemaining: points.isEmpty ? null : points.first.remaining,
     today: today,
+    endDate: endDate,
   );
 });
 
@@ -179,12 +174,19 @@ final progressGanttProvider = Provider<({
   List<int> plannedPerWeek,
   List<int> completedPerWeek,
   bool hasAnyWeek,
+  int currentWeekIndex,
 })?>((ref) {
   final tasks = ref.watch(progressTasksProvider).valueOrNull;
   if (tasks == null) return null;
   final today = ref.watch(clockProvider)();
   final goals = ref.watch(goalListProvider).valueOrNull ?? const <Goal>[];
-  final weekStarts = StatisticsService.ganttWeekStarts(today);
+  // 任务耗时图主要展示未来计划，过去只保留 2 周上下文，未来 8 周，
+  // 避免刚创建计划时左侧出现大量空白历史周。
+  final weekStarts = StatisticsService.ganttWeekStarts(
+    today,
+    pastWeeks: 2,
+    futureWeeks: 8,
+  );
   final data = _progressStats.goalGanttData(
     todoTasks: tasks.todo,
     completedTasks: tasks.completed,
@@ -210,6 +212,15 @@ final progressGanttProvider = Provider<({
       break;
     }
   }
+  // 当前周在 weekStarts 中的下标，用于 X 轴标注「本周」。
+  final todayDay = DateTime(today.year, today.month, today.day);
+  final thisWeekStart = addLocalDays(todayDay, -(todayDay.weekday - 1));
+  final currentWeekIndex = weekStarts.indexWhere(
+    (ws) =>
+        ws.year == thisWeekStart.year &&
+        ws.month == thisWeekStart.month &&
+        ws.day == thisWeekStart.day,
+  );
   return (
     weekStarts: weekStarts,
     data: data,
@@ -217,6 +228,7 @@ final progressGanttProvider = Provider<({
     plannedPerWeek: plannedPerWeek,
     completedPerWeek: completedPerWeek,
     hasAnyWeek: hasAnyWeek,
+    currentWeekIndex: currentWeekIndex,
   );
 });
 
@@ -711,8 +723,6 @@ class _BurndownSection extends ConsumerWidget {
       scheme.primary.withValues(alpha: 0.28),
       scheme.primary.withValues(alpha: 0.0),
     ];
-    // 理想参考线用主题 outline：浅色浅灰、深色自动提亮（替代硬编码浅灰）。
-    final idealColor = scheme.outline;
     // 节点/图例描边：浅色下白色，深色下用 surface 兜住主色节点。
     final dotBorder = Theme.of(context).brightness == Brightness.dark
         ? scheme.surface
@@ -741,26 +751,16 @@ class _BurndownSection extends ConsumerWidget {
     final today = data.today;
     final points = data.points;
     final currentRemaining = data.currentRemaining;
-    final doneMinutes = data.doneMinutes;
     // provider 已按「是否有带时长数据」决定是否生成序列：有序列即有数据。
     final hasMinutes = points.isNotEmpty;
 
-    // 结论句（白话，取代原 FR 术语副标题）：一句话说清这张图讲什么。
-    // 拆成「消化了 X」（窗口内完成时长）+「还剩 Y」（当前剩余）两个数字，
-    // 按四种状态组句，避免 0 值产生「消化了 0」这类怪话。
+    // 结论句（白话）：说明这张图展示的是从今天到截止日的计划燃尽曲线。
     final String summary;
-    if (doneMinutes > 0 && (currentRemaining ?? 0) > 0) {
+    if ((currentRemaining ?? 0) > 0) {
+      final deadlineText = _md.format(data.endDate);
       summary =
-          '过去 30 天消化了 ${DurationFormat.minutes(doneMinutes)}，'
-          '还剩 ${DurationFormat.minutes(currentRemaining!)}';
-    } else if (doneMinutes > 0) {
-      summary =
-          '过去 30 天消化了 ${DurationFormat.minutes(doneMinutes)}，'
-          '带时长的任务已全部完成';
-    } else if ((currentRemaining ?? 0) > 0) {
-      summary =
-          '过去 30 天还没有完成任务，'
-          '还剩 ${DurationFormat.minutes(currentRemaining!)}';
+          '从 ${_md.format(today)} 到 $deadlineText，'
+          '计划燃尽 ${DurationFormat.minutes(currentRemaining!)}';
     } else {
       summary = '当前没有剩余工作量';
     }
@@ -824,6 +824,7 @@ class _BurndownSection extends ConsumerWidget {
                   today: today,
                   remainingColor: remainingColor,
                   areaGradient: areaGradient,
+                  endDate: data.endDate,
                 ),
               ),
               const SizedBox(height: 16),
@@ -833,10 +834,6 @@ class _BurndownSection extends ConsumerWidget {
                   _LegendDot(color: remainingColor, borderColor: dotBorder),
                   const SizedBox(width: 8),
                   const Text('剩余工作量', style: TextStyle(fontSize: 10)),
-                  const SizedBox(width: 16),
-                  _LegendDot(color: idealColor),
-                  const SizedBox(width: 8),
-                  const Text('匀速参考线', style: TextStyle(fontSize: 10)),
                 ],
               ),
             ],
@@ -847,28 +844,31 @@ class _BurndownSection extends ConsumerWidget {
   }
 }
 
-/// 燃尽折线图（fl_chart 重构）：实际剩余（平滑曲线 + 面积填充 + 白描边
-/// 节点）+ 理想参考线（虚线）+ 浅色网格 + 日期轴（最右端标注「今天」）
+/// 燃尽折线图（fl_chart 重构）：计划剩余量（平滑曲线 + 面积填充 + 白描边
+/// 节点）+ 浅色网格 + 日期轴（最左端标注「今天」、最右端标注截止日）
 /// + 悬停 tooltip。
 ///
 /// 视觉重构（M7 迭代增强）：
 /// - 面积填充：实际线下方 from 主题主色 28% 到透明（belowBarData gradient）；
 /// - 平滑曲线（isCurved）替代生硬折线；
 /// - 节点白描边（FlDotCirclePainter strokeColor 白），图更精致；
-/// - 理想线虚线（dashArray），浅灰；
 /// - X/Y 轴每 25% 浅色虚线网格，增加参考感；
 /// - 入场动画：TweenAnimationBuilder 高度 0→100% 从底部向上生长；
-/// - 整体 Semantics（NFR-4）+ 悬停 tooltip（日期 + 剩余 + 理想）。
+/// - 整体 Semantics（NFR-4）+ 悬停 tooltip（日期 + 剩余）。
 class _BurndownChart extends StatelessWidget {
   const _BurndownChart({
     required this.points,
     required this.today,
     required this.remainingColor,
     required this.areaGradient,
+    required this.endDate,
   });
 
   final List<BurndownPoint> points;
   final DateTime today;
+
+  /// 最晚截止日，用于在 X 轴最右端标注。
+  final DateTime endDate;
 
   /// 实际剩余线/节点色（当前主题主色，由 _BurndownSection 传入）。
   final Color remainingColor;
@@ -898,9 +898,6 @@ class _BurndownChart extends StatelessWidget {
     final remainingSpots = [
       for (final p in points) FlSpot(xOf(p.date), p.remaining.toDouble()),
     ];
-    final idealSpots = [
-      for (final p in points) FlSpot(xOf(p.date), p.ideal.toDouble()),
-    ];
 
     final axisStyle = Theme.of(
       context,
@@ -910,15 +907,15 @@ class _BurndownChart extends StatelessWidget {
     final maxY = _maxMinutes * 1.1;
 
     // 图整体读屏语义（NFR-4）：状态不只依赖颜色，辅以文本说明。
-    final semanticLabel = StringBuffer('剩余工作量趋势，最近 30 天剩余预估时长。');
-    semanticLabel.write(
-      '今日剩余 ${DurationFormat.minutes(points.last.remaining)}。',
+    final semanticLabel = StringBuffer(
+      '剩余工作量趋势，从今日起到截止日的计划燃尽曲线。',
     );
-    final avgMinutes = points.isEmpty
-        ? 0
-        : points.map((p) => p.remaining).reduce((a, b) => a + b) ~/
-              points.length;
-    semanticLabel.write('近 30 天平均 ${DurationFormat.minutes(avgMinutes)}。');
+    semanticLabel.write(
+      '今日剩余 ${DurationFormat.minutes(points.first.remaining)}，',
+    );
+    semanticLabel.write(
+      '预计 ${_md.format(endDate)} 燃尽。',
+    );
 
     return Semantics(
       label: semanticLabel.toString(),
@@ -1012,8 +1009,8 @@ class _BurndownChart extends StatelessWidget {
                   ),
                 ),
                 // X 轴：interval 随宽度动态放大（labelInterval），
-                // getTitlesWidget 内对非标签刻度返回空；最右端固定显示
-                // 「今天」（水平不旋转，避免与紧邻斜标签叠压）。
+                // getTitlesWidget 内对非标签刻度返回空；最左端固定显示
+                // 「今天」、最右端显示截止日（均水平不旋转，避免与斜标签叠压）。
                 bottomTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
@@ -1021,15 +1018,21 @@ class _BurndownChart extends StatelessWidget {
                     interval: labelInterval.toDouble(),
                     getTitlesWidget: (value, meta) {
                       final index = value.round();
-                      // 最右端（今天）优先：即使日期恰好落在标签刻度上，
-                      // 也标注「今天」而非日期。水平显示（不旋转），且
-                      // 日期标签跳过与「今天」距离不足 labelInterval 的
-                      // 紧邻项，避免两个标签挤在一起。
-                      if (index == points.length - 1) {
+                      // 最左端（今天）优先：水平显示「今天」，日期标签跳过
+                      // 与「今天」距离不足 labelInterval 的紧邻项，避免重叠。
+                      if (index == 0) {
                         return SideTitleWidget(
                           meta: meta,
                           space: 12,
                           child: Text('今天', style: axisStyle),
+                        );
+                      }
+                      // 最右端标注截止日，水平显示。
+                      if (index == points.length - 1) {
+                        return SideTitleWidget(
+                          meta: meta,
+                          space: 12,
+                          child: Text(_md.format(endDate), style: axisStyle),
                         );
                       }
                       if (index <= 0 ||
@@ -1068,12 +1071,9 @@ class _BurndownChart extends StatelessWidget {
                         return LineTooltipItem('', const TextStyle());
                       }
                       final point = points[index];
-                      final isRemaining = spot.barIndex == 0;
-                      final value = isRemaining ? point.remaining : point.ideal;
                       return LineTooltipItem(
                         '${_ymd.format(point.date)}\n'
-                        '${isRemaining ? '剩余' : '理想'} '
-                        '${DurationFormat.minutes(value)}',
+                        '剩余 ${DurationFormat.minutes(point.remaining)}',
                         TextStyle(
                           color: scheme.onInverseSurface,
                           fontSize: 11,
@@ -1114,16 +1114,6 @@ class _BurndownChart extends StatelessWidget {
                               : Colors.white,
                         ),
                   ),
-                ),
-                // 理想参考线：主题 outline 虚线（自动适配明暗）。
-                LineChartBarData(
-                  spots: idealSpots,
-                  isCurved: true,
-                  curveSmoothness: 0.3,
-                  color: scheme.outline,
-                  barWidth: 2,
-                  dashArray: [6, 4],
-                  dotData: const FlDotData(show: false),
                 ),
               ],
                 ),
@@ -1573,6 +1563,7 @@ class _GanttSection extends ConsumerWidget {
                   plannedPerWeek: plannedPerWeek,
                   completedPerWeek: completedPerWeek,
                   weekStarts: weekStarts,
+                  currentWeekIndex: data.currentWeekIndex,
                 ),
               ),
               const SizedBox(height: 12),
@@ -1601,8 +1592,10 @@ class _GanttSection extends ConsumerWidget {
 ///
 /// - 深色段=已完成时长（底），浅色段=未来计划时长（上），仅当对应段 >0
 ///   时加入，杜绝 fromY==toY 的空段；
-/// - X 轴每 3 周一个日期标签（M/d），Y 轴中文时长刻度（沿用燃尽图修复后
-///   的 reservedSize/space 配置，杜绝文字压线）；
+/// - 无数据周保留占位（toY=0），确保每周 X 轴位置固定、间隔均匀；
+/// - X 轴当前周标注「本周」，其余按密度显示「M/d 起」水平标签；
+/// - Y 轴中文时长刻度（沿用燃尽图修复后的 reservedSize/space 配置，
+///   杜绝文字压线）；
 /// - 悬停 tooltip 按 group.x 反查闭包捕获的每周数据（fl_chart 的
 ///   getTooltipItem 拿不到被触发的 stack 段，用数据源重建）；
 /// - 宽屏铺满，窄窗横向滚动；整体读屏语义（NFR-4）。
@@ -1611,11 +1604,15 @@ class _BarChart extends StatelessWidget {
     required this.plannedPerWeek,
     required this.completedPerWeek,
     required this.weekStarts,
+    required this.currentWeekIndex,
   });
 
   final List<int> plannedPerWeek;
   final List<int> completedPerWeek;
   final List<DateTime> weekStarts;
+
+  /// 当前周在 [weekStarts] 中的下标，X 轴对应位置标注「本周」。
+  final int currentWeekIndex;
 
   static const _chartHeight = 220.0;
 
@@ -1648,7 +1645,7 @@ class _BarChart extends StatelessWidget {
     for (var i = 0; i < weeks; i++) {
       final planned = plannedPerWeek[i];
       final completed = completedPerWeek[i];
-      if (planned + completed <= 0) continue; // 无数据周跳过（x 位置固定）
+      final hasData = planned + completed > 0;
       // 主题派生色（2026-08-16）：完成段=主色、计划段=主容器浅色，
       // 蓝色主题下整图跟随变蓝；深浅段对比同主题派生，明暗均成立。
       final stackItems = <BarChartRodStackItem>[
@@ -1666,12 +1663,16 @@ class _BarChart extends StatelessWidget {
           x: i,
           barRods: [
             BarChartRodData(
-              toY: (completed + planned).toDouble(),
+              // 无数据周也保留占位（toY=0），确保每周在 X 轴上位置固定、
+              // 间隔均匀，避免有数据周被压缩到一侧。
+              toY: hasData ? (completed + planned).toDouble() : 0,
               width: _barWidth,
               rodStackItems: stackItems,
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(3),
               ),
+              // 无数据周用透明占位，不渲染多余视觉元素。
+              color: hasData ? null : Colors.transparent,
             ),
           ],
           barsSpace: _groupSpace,
@@ -1697,11 +1698,11 @@ class _BarChart extends StatelessWidget {
             final chartWidth = constraints.maxWidth > minChartWidth
                 ? constraints.maxWidth
                 : minChartWidth;
-            // 旋转 45° 的日期标签水平投影约 30px；按图表实际宽度动态放大
-            // 周间隔，保证相邻标签中心距 ≥ 40px（窄窗不再互相覆盖）。
+            // 水平日期标签约 46px；按图表实际宽度动态放大周间隔，保证
+            // 相邻标签中心距 ≥ 48px（窄窗不再互相覆盖）。
             final perWeekPx = chartWidth / weeks;
-            const minLabelSpacing = 40.0;
-            var labelInterval = 3;
+            const minLabelSpacing = 48.0;
+            var labelInterval = 1;
             while (perWeekPx * labelInterval < minLabelSpacing) {
               labelInterval += 1;
             }
@@ -1768,26 +1769,37 @@ class _BarChart extends StatelessWidget {
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      // 旋转 45° 后斜文字需要更高占位 + 底部留白
-                      // （与燃尽图 56 统一，避免标签压到下方图例）。
-                      reservedSize: 56,
+                      // 水平文字所需占位小于斜文字，统一 40 即可。
+                      reservedSize: 40,
                       interval: labelInterval.toDouble(),
                       getTitlesWidget: (value, meta) {
                         final index = value.round();
-                        if (index < 0 ||
-                            index >= weeks ||
-                            index % labelInterval != 0) {
+                        if (index < 0 || index >= weeks) {
+                          return const SizedBox.shrink();
+                        }
+                        // 当前周固定显示「本周」，不受 interval 限制。
+                        if (index == currentWeekIndex) {
+                          return SideTitleWidget(
+                            meta: meta,
+                            space: 12,
+                            child: Text(
+                              '本周',
+                              style: axisStyle?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          );
+                        }
+                        // 其他位置按 interval 显示周起始日，格式「M/d 起」。
+                        if (index % labelInterval != 0) {
                           return const SizedBox.shrink();
                         }
                         return SideTitleWidget(
                           meta: meta,
                           space: 12,
-                          child: Transform.rotate(
-                            angle: -math.pi / 4, // -45°，向左下倾斜
-                            child: Text(
-                              _md.format(weekStarts[index]),
-                              style: axisStyle,
-                            ),
+                          child: Text(
+                            '${_md.format(weekStarts[index])} 起',
+                            style: axisStyle,
                           ),
                         );
                       },
