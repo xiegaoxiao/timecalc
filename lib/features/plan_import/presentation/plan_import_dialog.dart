@@ -9,6 +9,8 @@ import '../../../core/providers/clock_provider.dart';
 import '../../../core/providers/app_refresh.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../services/duration_format.dart';
+import '../../../shared/widgets/app_dialog.dart';
+import '../../../shared/widgets/app_form_field.dart';
 import '../data/plan_import_repository_provider.dart';
 import '../data/plan_json_picker.dart';
 import '../domain/plan_import_parser.dart';
@@ -34,10 +36,16 @@ PlanImportResult _parsePlanInIsolate((String, String) args) {
 class PlanImportDialog extends ConsumerStatefulWidget {
   const PlanImportDialog({super.key});
 
+  /// 通过统一卡片式 [AppDialog] 展示（与添加任务/批量添加/快速任务等
+  /// 表单对话框同一套组件、同一种视觉，而非常规 AlertDialog）。
   static Future<int?> show(BuildContext context) {
-    return showDialog<int>(
-      context: context,
-      builder: (_) => const PlanImportDialog(),
+    return AppDialog.show<int>(
+      context,
+      title: '导入完整计划',
+      titleIcon: Icons.article_outlined,
+      maxWidth: 680,
+      content: const PlanImportDialog(),
+      barrierDismissible: false,
     );
   }
 
@@ -227,103 +235,103 @@ class _PlanImportDialogState extends ConsumerState<PlanImportDialog> {
     final scheme = Theme.of(context).colorScheme;
     final result = _result;
 
-    return AlertDialog(
-      title: const Text('导入完整计划'),
-      constraints: const BoxConstraints(maxWidth: 680, maxHeight: 640),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          '粘贴「计划书」式 JSON（plan_name / stages / weekly_plan / '
+          'subjects / daily_breakdown / daily_must_do / unclassified），'
+          '一次创建目标、里程碑、科目、任务与每天重复模板。'
+          '任务可带预估时长 `minutes`（1～1440，进度页统计需要）：'
+          'unclassified 条目直接加 "minutes": 90，daily_breakdown 用 '
+          '{ "title": ..., "minutes": 180 } 对象，daily_must_do 用 '
+          '{ "title": ..., "minutes": 30 }（时长继承到每天实例）。'
+          '点「导入」会自动校验，校验不通过不会写入任何数据。',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 200,
+          child: AppFormField(
+            // 子组件模式：JSON 用等宽字体 + 撑满可滚动，复用统一表单边框样式。
+            child: TextField(
+              controller: _jsonController,
+              maxLines: null,
+              expands: true,
+              onChanged: (_) => _scheduleAutoValidate(),
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              decoration: AppFormField.defaultDecoration(
+                hint: '粘贴 JSON',
+                contentPadding: const EdgeInsets.all(8),
+                scheme: scheme,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
           children: [
-            Text(
-              '粘贴「计划书」式 JSON（plan_name / stages / weekly_plan / '
-              'subjects / daily_breakdown / daily_must_do / unclassified），'
-              '一次创建目标、里程碑、科目、任务与每天重复模板。'
-              '任务可带预估时长 `minutes`（1～1440，进度页统计需要）：'
-              'unclassified 条目直接加 "minutes": 90，daily_breakdown 用 '
-              '{ "title": ..., "minutes": 180 } 对象，daily_must_do 用 '
-              '{ "title": ..., "minutes": 30 }（时长继承到每天实例）。'
-              '点「导入」会自动校验，校验不通过不会写入任何数据。',
-              style: Theme.of(context).textTheme.bodySmall,
+            TextButton.icon(
+              onPressed: _importing ? null : _pickFile,
+              icon: const Icon(Icons.folder_open_outlined),
+              label: const Text('选择文件'),
             ),
-            const SizedBox(height: 12),
-            Container(
-              height: 200,
-              decoration: BoxDecoration(
-                border: Border.all(color: scheme.outlineVariant),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              padding: const EdgeInsets.all(8),
-              child: TextField(
-                controller: _jsonController,
-                maxLines: null,
-                expands: true,
-                onChanged: (_) => _scheduleAutoValidate(),
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                decoration: const InputDecoration(
-                  border: InputBorder.none,
-                  hintText: '粘贴 JSON',
+            TextButton.icon(
+              onPressed: _validate,
+              icon: const Icon(Icons.check_circle_outline),
+              label: const Text('校验'),
+            ),
+            if (result != null) ...[
+              const SizedBox(width: 8),
+              Text(
+                result.isValid
+                    ? '校验通过：${result.plan!.tasks.length} 个任务'
+                    : '发现 ${result.issues.length} 个问题',
+                style: TextStyle(
+                  color: result.isValid ? scheme.primary : scheme.error,
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                TextButton.icon(
-                  onPressed: _importing ? null : _pickFile,
-                  icon: const Icon(Icons.folder_open_outlined),
-                  label: const Text('选择文件'),
-                ),
-                TextButton.icon(
-                  onPressed: _validate,
-                  icon: const Icon(Icons.check_circle_outline),
-                  label: const Text('校验'),
-                ),
-                if (result != null) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    result.isValid
-                        ? '校验通过：${result.plan!.tasks.length} 个任务'
-                        : '发现 ${result.issues.length} 个问题',
-                    style: TextStyle(
-                      color: result.isValid ? scheme.primary : scheme.error,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            if (result != null && result.issues.isNotEmpty)
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 160),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (final issue in result.issues)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Text(
-                            '• ${issue.location != null ? '${issue.location}：' : ''}${issue.message}',
-                            style: TextStyle(color: scheme.error, fontSize: 12),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            if (result != null && result.isValid)
-              _PlanPreview(plan: result.plan!),
+            ],
           ],
         ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: _importing ? null : () => Navigator.of(context).pop(),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: _importing ? null : _import,
-          child: Text(_importing ? '导入中…' : '导入'),
+        if (result != null && result.issues.isNotEmpty)
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 160),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final issue in result.issues)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        '• ${issue.location != null ? '${issue.location}：' : ''}${issue.message}',
+                        style:
+                            TextStyle(color: scheme.error, fontSize: 12),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        if (result != null && result.isValid)
+          _PlanPreview(plan: result.plan!),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            TextButton(
+              onPressed:
+                  _importing ? null : () => Navigator.of(context).pop(),
+              child: const Text('取消'),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: _importing ? null : _import,
+              child: Text(_importing ? '导入中…' : '导入'),
+            ),
+          ],
         ),
       ],
     );
