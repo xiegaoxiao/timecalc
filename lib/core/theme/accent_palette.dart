@@ -77,14 +77,17 @@ const AccentPalette greenAccent = AccentPalette(
   brandBright: Color(0xFF5C8A6E),
 );
 
-/// 专业藏蓝（id `blue`）：商务蓝种子；渐变亮端 `0xFF5C8AC2` 为受控提亮，
+/// 专业藏蓝（id `blue`）：商务蓝种子；渐变亮端 `0xFF5F87B5` 为受控提亮，
 /// 保证白字对比度（模板 A「同色深浅表达层次」）。
+///
+/// v1.17 统一主色：#3F6FA3 —— 主按钮/侧栏选中/图标/进度环/链接文字经
+/// M3 派生（seed）全应用统一，hero 渐变与倒计时卡文字（brand）同源。
 const AccentPalette blueAccent = AccentPalette(
   id: 'blue',
   label: '蓝色',
-  seed: Color(0xFF3A6EA5),
-  brandDeep: Color(0xFF3A6EA5),
-  brandBright: Color(0xFF5C8AC2),
+  seed: Color(0xFF3F6FA3),
+  brandDeep: Color(0xFF3F6FA3),
+  brandBright: Color(0xFF5F87B5),
 );
 
 /// 色系注册表：设置页选项、主题派生、app 换肤统一从这里取色系。

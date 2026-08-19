@@ -551,45 +551,52 @@ class _LoadOverviewCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: 16),
-                // 指标格 2×2：label + value（等宽数字，数值变化不抖动）。
+                const SizedBox(width: 20),
+                // 指标 3 列布局（v1.17 精修）：左侧「今日总计 / 已完成」、
+                // 右侧「今日可用 / 目标剩余」，环与两列信息块间距均衡；
+                // 目标剩余作最醒目数字（大字号 + 主色）。
                 Expanded(
-                  child: Column(
+                  child: Row(
                     children: [
-                      Row(
-                        children: [
-                          _MetricCell(
-                            icon: Icons.timer_outlined,
-                            label: '今日总计',
-                            value: hasTodayTask
-                                ? DurationFormat.minutes(load)
-                                : '-- 分',
-                          ),
-                          _MetricCell(
-                            icon: Icons.schedule_outlined,
-                            label: '可用时长',
-                            value: DurationFormat.minutes(available),
-                          ),
-                        ],
+                      Expanded(
+                        child: Column(
+                          children: [
+                            _MetricCell(
+                              icon: Icons.timer_outlined,
+                              label: '今日总计',
+                              value: hasTodayTask
+                                  ? DurationFormat.minutes(load)
+                                  : '-- 分',
+                            ),
+                            const SizedBox(height: 18),
+                            _MetricCell(
+                              icon: Icons.check_circle_outline,
+                              label: '已完成',
+                              value: hasTodayTask
+                                  ? DurationFormat.minutes(stats.doneMinutes)
+                                  : '-- 分',
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          _MetricCell(
-                            icon: Icons.check_circle_outline,
-                            label: '已完成',
-                            value: hasTodayTask
-                                ? DurationFormat.minutes(stats.doneMinutes)
-                                : '-- 分',
-                          ),
-                          _MetricCell(
-                            icon: Icons.flag_outlined,
-                            label: '目标剩余',
-                            value: hasAnyTask
-                                ? DurationFormat.minutes(remainingMinutes)
-                                : '-- 分',
-                          ),
-                        ],
+                      Expanded(
+                        child: Column(
+                          children: [
+                            _MetricCell(
+                              icon: Icons.schedule_outlined,
+                              label: '今日可用',
+                              value: DurationFormat.minutes(available),
+                            ),
+                            const SizedBox(height: 18),
+                            _MetricHighlight(
+                              icon: Icons.flag_outlined,
+                              label: '目标剩余',
+                              value: hasAnyTask
+                                  ? DurationFormat.minutes(remainingMinutes)
+                                  : '-- 分',
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -614,35 +621,79 @@ class _MetricCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (icon != null) ...[
-                Icon(icon, size: 12, color: scheme.outline),
-                const SizedBox(width: 4),
-              ],
-              Text(
-                label,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: scheme.outline),
-              ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 12, color: scheme.outline),
+              const SizedBox(width: 4),
             ],
-          ),
-          const SizedBox(height: 3),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-              fontFeatures: const [FontFeature.tabularFigures()],
+            Text(
+              label,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.outline),
             ),
+          ],
+        ),
+        const SizedBox(height: 3),
+        Text(
+          value,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            fontFeatures: const [FontFeature.tabularFigures()],
           ),
-        ],
-      ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 高亮指标格（「目标剩余」）：大字号 + 主色，作整卡最醒目的数字
+/// （v1.17 精修）；其余指标用 [_MetricCell] 常规档位。
+class _MetricHighlight extends StatelessWidget {
+  const _MetricHighlight({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 12, color: scheme.primary),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.outline),
+            ),
+          ],
+        ),
+        const SizedBox(height: 3),
+        Text(
+          value,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: scheme.primary,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1007,6 +1058,9 @@ class _UndoFabState extends ConsumerState<_UndoFab>
 }
 
 /// 今日无任务空态（PRD §8：提供与页面相关的首个操作，非纯说明页）。
+///
+/// v1.17 精修：空态放进淡色容器（圆角 + 浅底 + 细边框），让「今日任务」
+/// 成为有设计感的完整内容区域，页面底部不再像「没做完」的裸空白。
 class _TodayEmptyView extends StatelessWidget {
   const _TodayEmptyView({required this.onAddTask});
 
@@ -1015,8 +1069,18 @@ class _TodayEmptyView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 32),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 16),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(AppTokens.radiusXl),
+        border: Border.all(
+          color: Theme.of(context).brightness == Brightness.dark
+              ? scheme.outlineVariant.withValues(alpha: 0.4)
+              : AppTokens.neutralBorderLight,
+        ),
+      ),
       child: Column(
         children: [
           // 圆底图标语言与图表空态/今天页全页空态统一（v1.11 空态规范）。
@@ -1115,9 +1179,10 @@ class _CountdownCard extends ConsumerWidget {
       CountdownPhase.terminated => Icons.flag_outlined,
     };
     // 倒计时卡是「今日焦点」hero（v1.17 浅色化）：从品牌渐变白字改为
-    // 浅色强调底——brand 10% 叠白（蓝主题≈#EAF3FF，绿主题自动变浅绿），
-    // 深色模式 brand 30% 叠 surface。标题/文字用 brandDeep（深色模式用
-    // 品牌亮端，保证对比度），与应用的 accent 色系系统保持一致。
+    // 浅色强调底——brand 7% 叠白（蓝主题≈#EAF3FC 档位，比 #DCEBFA 更淡、
+    // 更像「页面顶部信息摘要」而非主视觉 Banner），深色模式 brand 26%
+    // 叠 surface。标题/文字用 brandDeep（深色模式用品牌亮端，保证对比
+    // 度），与应用的 accent 色系系统保持一致。
     final accent = Theme.of(context).extension<AccentPalette>()!;
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1170,10 +1235,10 @@ class _CountdownCard extends ConsumerWidget {
         ),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            // 浅色强调底：brand 10% 叠白（深色 30% 叠 surface），
+            // 浅色强调底：brand 7% 叠白（深色 26% 叠 surface），
             // 随当前色系（绿色/蓝色主题各自变化）。
             color: Color.alphaBlend(
-              accent.brandDeep.withValues(alpha: isDark ? 0.30 : 0.10),
+              accent.brandDeep.withValues(alpha: isDark ? 0.26 : 0.07),
               isDark ? scheme.surface : Colors.white,
             ),
           ),

@@ -131,11 +131,11 @@ abstract final class AppTheme {
           ),
         ),
       ),
-      // 侧栏 NavigationRail（宽窗桌面壳）：96px 宽度承载图标 + 中文标签
-      // 与品牌头；背景交给外壳面板（_DesktopShell 的 Container）统一，
+      // 侧栏 NavigationRail（宽窗桌面壳）：104px 宽度承载图标 + 中文标签，
+      // 比 96px 更舒展；背景交给外壳面板（_DesktopShell 的 Container）统一，
       // 这里置透明避免双层底色；选中指示器主色淡底圆角 + 选中标签加粗。
       navigationRailTheme: NavigationRailThemeData(
-        minWidth: 96,
+        minWidth: 104,
         backgroundColor: Colors.transparent,
         indicatorColor: colorScheme.primary.withValues(alpha: 0.12),
         indicatorShape: RoundedRectangleBorder(

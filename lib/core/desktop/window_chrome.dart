@@ -160,7 +160,8 @@ class _CustomTitleBarState extends State<CustomTitleBar> with WindowListener {
             const SizedBox(width: 8),
             const Text(
               'TimeCalc',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              // v1.17 精修：14px w500，比 15px w600 更收敛，不抢内容。
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
             ),
             // 拖动区：双击最大化，右键系统窗口菜单，左键拖拽移动窗口。
             Expanded(
@@ -187,7 +188,8 @@ class _CustomTitleBarState extends State<CustomTitleBar> with WindowListener {
             _WindowButton(
               icon: Icons.close_rounded,
               tooltip: '关闭',
-              hoverColor: const Color(0xFFE81123),
+              // v1.17 精修：hover 变强调色（主色）+ 白图标，与全局主色统一。
+              hoverColor: scheme.primary,
               hoverForeground: Colors.white,
               onTap: _close,
             ),
@@ -200,7 +202,8 @@ class _CustomTitleBarState extends State<CustomTitleBar> with WindowListener {
 }
 
 /// 标题栏窗口控制按钮：46×48 命中区（贴近系统按钮规格），hover 显示
-/// 底色，关闭钮 hover 用系统红。
+/// 标题栏窗口控制按钮：46×48 命中区（贴近系统按钮规格），hover 显示
+/// 底色，关闭钮 hover 变强调色。
 class _WindowButton extends StatefulWidget {
   const _WindowButton({
     required this.icon,
@@ -230,9 +233,14 @@ class _WindowButtonState extends State<_WindowButton> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // v1.17 精修：空闲图标色统一为中性灰 #667085（浅色模式），比 M3
+    // onSurfaceVariant 更收敛，不抢内容；深色模式仍用 onSurfaceVariant。
+    final idleForeground =
+        isDark ? scheme.onSurfaceVariant : const Color(0xFF667085);
     final foreground = _hovered
         ? (widget.hoverForeground ?? scheme.onSurfaceVariant)
-        : scheme.onSurfaceVariant;
+        : idleForeground;
     final background = _hovered
         ? (widget.hoverColor ?? scheme.surfaceContainerHighest)
         : Colors.transparent;

@@ -337,8 +337,8 @@ class _AppShellState extends ConsumerState<AppShell> {
 
 /// 宽窗口桌面壳：侧栏（NavigationRail）+ 内容区。
 ///
-/// 侧栏为 96px 导航面板（品牌标识由顶部自定义标题栏承担，侧栏不再重复
-/// Logo）。面板底色统一承载 Rail，右侧细分隔线。NavigationRail 类型
+/// 侧栏为 104px 导航面板（品牌标识由顶部自定义标题栏独家承担，侧栏不再
+/// 重复 Logo）；底色统一承载 Rail，右侧细分隔线。NavigationRail 类型
 /// 保留（test/shared/nav_helper.dart 依赖 find.byType 定位导航），选中态
 /// 样式由 navigationRailTheme 提供（app_theme.dart）。
 class _DesktopShell extends StatelessWidget {
@@ -361,7 +361,7 @@ class _DesktopShell extends StatelessWidget {
     return Scaffold(
       body: Row(
         children: [
-          // 侧栏面板：品牌头 + NavigationRail；底色与右侧分隔线统一，
+          // 侧栏面板：NavigationRail；底色与右侧分隔线统一，
           // 与自定义标题栏构成同一「产品外壳」语言。
           Container(
             decoration: BoxDecoration(
