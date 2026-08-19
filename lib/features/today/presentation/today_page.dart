@@ -1114,10 +1114,15 @@ class _CountdownCard extends ConsumerWidget {
       CountdownPhase.overdue => Icons.error_outline,
       CountdownPhase.terminated => Icons.flag_outlined,
     };
-    // 倒计时卡是「今日焦点」hero：品牌渐变背景 + 白字（对比度 ≥4.5，
-    // 白/深绿对已由 contrast_test 的 onPrimary/primary 断言覆盖）。
-    final onHero = Colors.white;
-    final onHeroSoft = Colors.white.withValues(alpha: 0.88);
+    // 倒计时卡是「今日焦点」hero（v1.17 浅色化）：从品牌渐变白字改为
+    // 浅色强调底——brand 10% 叠白（蓝主题≈#EAF3FF，绿主题自动变浅绿），
+    // 深色模式 brand 30% 叠 surface。标题/文字用 brandDeep（深色模式用
+    // 品牌亮端，保证对比度），与应用的 accent 色系系统保持一致。
+    final accent = Theme.of(context).extension<AccentPalette>()!;
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final onHero = isDark ? accent.brandBright : accent.brandDeep;
+    final onHeroSoft = onHero.withValues(alpha: 0.72);
 
     // 学习日剩余：按「计划偏好」的每周可用日排除休息日（与目标详情页
     // 「学习日」口径一致），让首页倒计时与负载计算共享同一规则。
@@ -1161,17 +1166,15 @@ class _CountdownCard extends ConsumerWidget {
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppTokens.radiusXl),
+          side: BorderSide(color: onHero.withValues(alpha: 0.12)),
         ),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              // 渐变取当前色系（绿色/蓝色主题各自变化，2026-08-16 解耦）。
-              colors: [
-                Theme.of(context).extension<AccentPalette>()!.brandDeep,
-                Theme.of(context).extension<AccentPalette>()!.brandBright,
-              ],
+            // 浅色强调底：brand 10% 叠白（深色 30% 叠 surface），
+            // 随当前色系（绿色/蓝色主题各自变化）。
+            color: Color.alphaBlend(
+              accent.brandDeep.withValues(alpha: isDark ? 0.30 : 0.10),
+              isDark ? scheme.surface : Colors.white,
             ),
           ),
           child: InkWell(
@@ -1217,10 +1220,10 @@ class _CountdownCard extends ConsumerWidget {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.16),
+                          color: onHero.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(999),
                           border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.22),
+                            color: onHero.withValues(alpha: 0.20),
                           ),
                         ),
                         child: Row(
@@ -1254,8 +1257,8 @@ class _CountdownCard extends ConsumerWidget {
                       value: progress,
                       minHeight: 5,
                       borderRadius: BorderRadius.circular(4),
-                      backgroundColor: Colors.white24,
-                      valueColor: const AlwaysStoppedAnimation(Colors.white),
+                      backgroundColor: onHero.withValues(alpha: 0.14),
+                      valueColor: AlwaysStoppedAnimation(onHero),
                     ),
                   ),
                   const SizedBox(height: 8),

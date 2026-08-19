@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/desktop/window_chrome.dart';
 import '../../core/theme/accent_palette.dart';
 import '../../core/theme/app_tokens.dart';
 
@@ -113,7 +114,12 @@ class AppDialog extends StatelessWidget {
                 clipBehavior: Clip.antiAlias,
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
-                    maxHeight: MediaQuery.sizeOf(context).height * 0.78,
+                    // 可用高度先减去自定义标题栏（48px），再取 78%：
+                    // 对话框在窗口高度下始终留出标题栏空间，小窗口/系统
+                    // 字号放大时内容可滚动而不溢出（无边框窗口回归）。
+                    maxHeight: (MediaQuery.sizeOf(context).height -
+                            kTitleBarHeight) *
+                        0.78,
                   ),
                   child: SingleChildScrollView(
                     padding: contentPadding ??

@@ -20,8 +20,9 @@ abstract final class AppTokens {
   static const Color neutralBgLight = Color(0xFFF5F5F7);
   /// 卡片表面（白）。
   static const Color neutralSurfaceLight = Color(0xFFFFFFFF);
-  /// 细边框（卡片/分割线，中性冷灰）。
-  static const Color neutralBorderLight = Color(0xFFE4E4E7);
+  /// 细边框（卡片/分割线，中性冷灰）。v1.17 整体变轻（#E4E4E7 →
+  /// #E9ECF1）：卡片「白卡浮于浅底」而非「灰框白卡」。
+  static const Color neutralBorderLight = Color(0xFFE9ECF1);
   /// 主文字（近黑，比 M3 onSurface 更明确）。
   static const Color neutralTextLight = Color(0xFF18181B);
   /// 次级文字（摘要/说明）。

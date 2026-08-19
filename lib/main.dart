@@ -23,6 +23,26 @@ Future<void> main() async {
   // 位置/尺寸/显示器归属；托盘与关闭行为随之建立。平台不可用时静默降级。
   await windowManager.ensureInitialized();
 
+  // 无边框窗口（自定义标题栏）：在 runApp/首帧前隐藏系统标题栏，避免
+  // 启动瞬间闪现原生 frame。TitleBarStyle.hidden 经 WM_NCCALCSIZE 隐藏
+  // caption，同时保留 WS_THICKFRAME 缩放边框与窗口阴影（窗口几何恢复仍
+  // 由 DesktopController.initialize 执行，见下）。测试/平台不可用时静默
+  // 降级（waitUntilReadyToShow 与 show/focus 均可能抛 MissingPlugin）。
+  try {
+    await windowManager.waitUntilReadyToShow(
+      const WindowOptions(
+        titleBarStyle: TitleBarStyle.hidden,
+        backgroundColor: Colors.transparent,
+      ),
+      () async {
+        await windowManager.show();
+        await windowManager.focus();
+      },
+    );
+  } catch (_) {
+    // 平台不可用：保持原生窗口，应用仍可用。
+  }
+
   // 诊断服务：全局错误处理器与「导出诊断信息」共用同一实例与日志。
   // 数据库打开前先安装处理器，开库失败时诊断导出仍可用（跳过数据段落）。
   final diagnostics = DiagnosticsService();

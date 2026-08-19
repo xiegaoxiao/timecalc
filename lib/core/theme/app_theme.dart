@@ -114,9 +114,12 @@ abstract final class AppTheme {
       ),
       // 卡片：圆角 12 + 中性细边框 + 轻阴影（token 化；进度页既有语言
       // 的全局化）。clipBehavior: Clip.none 让 fl_chart tooltip 可浮出
-      // 图表边界。
+      // 图表边界。v1.17 柔和化：边框转浅灰 #E9ECF1、阴影转纯黑 4% 低
+      // 透明度（旧 M3 默认 surfaceTint 阴影偏灰重），卡片从「灰边灰影」
+      // 变成「白卡浮于浅底」。
       cardTheme: CardThemeData(
         elevation: 1,
+        shadowColor: Colors.black.withValues(alpha: 0.04),
         clipBehavior: Clip.none,
         color: colorScheme.surface,
         shape: RoundedRectangleBorder(
@@ -126,6 +129,29 @@ abstract final class AppTheme {
                 ? colorScheme.outlineVariant.withValues(alpha: 0.4)
                 : AppTokens.neutralBorderLight,
           ),
+        ),
+      ),
+      // 侧栏 NavigationRail（宽窗桌面壳）：96px 宽度承载图标 + 中文标签
+      // 与品牌头；背景交给外壳面板（_DesktopShell 的 Container）统一，
+      // 这里置透明避免双层底色；选中指示器主色淡底圆角 + 选中标签加粗。
+      navigationRailTheme: NavigationRailThemeData(
+        minWidth: 96,
+        backgroundColor: Colors.transparent,
+        indicatorColor: colorScheme.primary.withValues(alpha: 0.12),
+        indicatorShape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+        ),
+        selectedIconTheme: IconThemeData(color: colorScheme.primary),
+        unselectedIconTheme: IconThemeData(color: colorScheme.onSurfaceVariant),
+        selectedLabelTextStyle: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: colorScheme.primary,
+        ),
+        unselectedLabelTextStyle: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          color: colorScheme.onSurfaceVariant,
         ),
       ),
       dividerTheme: DividerThemeData(

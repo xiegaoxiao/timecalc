@@ -23,6 +23,7 @@ import '../../features/tasks/presentation/goal_tasks_page.dart';
 import '../../features/tasks/presentation/subject_task_page.dart';
 import '../../features/today/presentation/today_page.dart';
 import '../providers/clock_provider.dart';
+import '../theme/app_tokens.dart';
 
 /// 主导航目的地（v1.12：今天 / 计划 / 目标 / 进度 / 设置）。
 enum AppDestination {
@@ -334,10 +335,12 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 }
 
-/// 宽窗口桌面壳：左侧 NavigationRail + 内容区。
+/// 宽窗口桌面壳：侧栏（NavigationRail）+ 内容区。
 ///
-/// 侧栏窄带（约 80px）+ 选中态指示器，与底部 NavigationBar 共用同一套
-/// destination 定义与选中逻辑；Rail 与内容区之间以细分隔线隔开。
+/// 侧栏为 96px 导航面板（品牌标识由顶部自定义标题栏承担，侧栏不再重复
+/// Logo）。面板底色统一承载 Rail，右侧细分隔线。NavigationRail 类型
+/// 保留（test/shared/nav_helper.dart 依赖 find.byType 定位导航），选中态
+/// 样式由 navigationRailTheme 提供（app_theme.dart）。
 class _DesktopShell extends StatelessWidget {
   const _DesktopShell({
     required this.navigationShell,
@@ -353,24 +356,39 @@ class _DesktopShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       body: Row(
         children: [
-          NavigationRail(
-            selectedIndex: navigationShell.currentIndex,
-            onDestinationSelected: onDestinationSelected,
-            labelType: NavigationRailLabelType.all,
-            groupAlignment: -0.9,
-            destinations: [
-              for (final destination in AppDestination.values)
-                NavigationRailDestination(
-                  icon: Icon(destination.icon),
-                  selectedIcon: Icon(destination.selectedIcon),
-                  label: Text(destination.label),
+          // 侧栏面板：品牌头 + NavigationRail；底色与右侧分隔线统一，
+          // 与自定义标题栏构成同一「产品外壳」语言。
+          Container(
+            decoration: BoxDecoration(
+              color: isDark ? scheme.surfaceContainerLow : scheme.surface,
+              border: Border(
+                right: BorderSide(
+                  color: isDark
+                      ? scheme.outlineVariant.withValues(alpha: 0.4)
+                      : AppTokens.neutralBorderLight,
                 ),
-            ],
+              ),
+            ),
+            child: NavigationRail(
+              selectedIndex: navigationShell.currentIndex,
+              onDestinationSelected: onDestinationSelected,
+              labelType: NavigationRailLabelType.all,
+              groupAlignment: -0.9,
+              destinations: [
+                for (final destination in AppDestination.values)
+                  NavigationRailDestination(
+                    icon: Icon(destination.icon),
+                    selectedIcon: Icon(destination.selectedIcon),
+                    label: Text(destination.label),
+                  ),
+              ],
+            ),
           ),
-          const VerticalDivider(width: 1, thickness: 1),
           Expanded(child: content),
         ],
       ),

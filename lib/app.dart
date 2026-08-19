@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/desktop/desktop_controller.dart';
+import 'core/desktop/window_chrome.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/accent_palette.dart';
 import 'core/theme/app_theme.dart';
@@ -49,6 +50,11 @@ class TimeCalcApp extends ConsumerWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+      // 无边框窗口外壳（自定义标题栏）：挂在 builder 上覆盖所有路由，
+      // 主页面与详情子页共用同一标题栏；对话框/SnackBar 在 Overlay 层
+      // 不受影响。非桌面平台（窄窗手机布局）也保留标题栏，统一观感。
+      builder: (context, child) =>
+          DesktopChrome(child: child ?? const SizedBox.shrink()),
       routerConfig: router,
     );
   }
