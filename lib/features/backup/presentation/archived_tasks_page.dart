@@ -182,7 +182,7 @@ class _ArchivedTasksPageState extends ConsumerState<ArchivedTasksPage> {
     // 批量删除归档任务会改变已完成任务集合（completedTasksProvider 等），
     // 必须全量刷新今日/日历/进度页（否则热力图、剩余工作量趋势与任务耗时
     // 图的已完成段停留陈旧，回归教训）。
-    invalidateAppData(ref);
+    invalidateAppData(ref.invalidate);
     ref.invalidate(archivedCountProvider);
     ref.invalidate(allArchivedTasksProvider);
     ref.invalidate(archivedTaskListProvider);
@@ -275,7 +275,7 @@ class _ArchivedTaskRow extends ConsumerWidget {
                   // 恢复归档任务回到当前计划（done 态参与完成统计）：全量
                   // 刷新今日/日历/进度页（completedTasksProvider 不失效则
                   // 热力图、剩余工作量趋势与任务耗时图的已完成段停留陈旧）。
-                  invalidateAppData(ref);
+                  invalidateAppData(ref.invalidate);
                   ref.invalidate(archivedCountProvider);
                   ref.invalidate(allArchivedTasksProvider);
                   ref.invalidate(archivedTaskListProvider(task.goalId));

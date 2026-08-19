@@ -161,7 +161,7 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
       // 跨页刷新（FR-3 验收）：导入会增删任务/新建科目/归档旧任务，影响
       // 今日页（任务列表与「目标剩余」概览）、进度页（燃尽/热力图/耗时图）、
       // 日历与目标详情，统一走 invalidateAppData 全量集合。
-      invalidateAppData(ref);
+      invalidateAppData(ref.invalidate);
       ref.invalidate(archivedCountProvider);
       ref.invalidate(archivedTaskListProvider(widget.goalId));
       ref.invalidate(allArchivedTasksProvider);

@@ -407,7 +407,7 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
 
   /// 数据变更后的统一刷新：计划页高频任务操作走局部失效（invalidatePlanData，
   /// 2026-08-15 性能优化：不重查目标、补上周/年视图；跨页统计仍一并刷新）。
-  void _invalidateAll() => invalidatePlanData(ref);
+  void _invalidateAll() => invalidatePlanData(ref.invalidate);
 
   /// FR-5.1：任务被拖到某一天（网格 DragTarget 命中）时改期。
   ///

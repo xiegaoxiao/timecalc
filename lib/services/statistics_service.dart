@@ -187,7 +187,12 @@ class StatisticsService {
     for (final task in todoTasks) {
       final minutes = task.estimatedMinutes;
       if (minutes == null) continue;
-      final weekIndex = _weekIndexOf(DateTime.parse(task.plannedDate), weekStarts);
+      // 容错解析：手工改库/旧版残留的非规范 plannedDate 不再让甘特图崩溃
+      // （DateTime.parse 对 "2026-8-6" 抛 FormatException，对 "2026-13-99"
+      // 静默溢出归一化），解析失败直接跳过该任务。
+      final planned = _tryParseLocalDate(task.plannedDate);
+      if (planned == null) continue;
+      final weekIndex = _weekIndexOf(planned, weekStarts);
       if (weekIndex == null) continue;
       rowFor(task.goalId).planned[weekIndex] += minutes;
     }
@@ -220,6 +225,21 @@ class StatisticsService {
     final index = dayUtc.difference(startUtc).inDays ~/ 7;
     if (index < 0 || index >= weekStarts.length) return null;
     return index;
+  }
+
+  /// 容错解析 `yyyy-MM-dd`（本地日历日期）。
+  ///
+  /// 脏数据（空串、字段数不足、非数字）返回 null，由调用方跳过；纯日历
+  /// 口径与 `date_text.parseLocalDate` 一致（`DateTime` 构造函数对超出范围
+  /// 的月/日做归一化，不抛异常）。
+  static DateTime? _tryParseLocalDate(String value) {
+    final parts = value.split('-');
+    if (parts.length != 3) return null;
+    final year = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    final day = int.tryParse(parts[2]);
+    if (year == null || month == null || day == null) return null;
+    return DateTime(year, month, day);
   }
 
   /// 甘特图时长分桶（LeetCode 绿系五档，按周完成分钟数）。

@@ -18,6 +18,21 @@ import '../domain/recurrence/recurrence_rule.dart';
 import '../domain/recurrence/recurrence_registry.dart';
 import '../domain/recurrence/rule_param.dart';
 
+/// 安全读取 int 参数：污染模板（值非 int，如手工改库的字符串/数字字符串）
+/// 时回退默认，避免 `as int?` 抛 TypeError。
+int _safeIntParam(Object? value, int fallback) => value is int ? value : fallback;
+
+/// 安全读取 int 列表：非 List 或含非 int 元素时丢弃非法元素，避免惰性
+/// `cast<int>()` 在 build 中访问元素时抛 TypeError（本体已崩溃过）。
+List<int> _safeIntList(Object? value) {
+  if (value is! List) return const [];
+  final out = <int>[];
+  for (final element in value) {
+    if (element is int) out.add(element);
+  }
+  return out;
+}
+
 /// 创建/编辑重复任务对话框（FR-4）。
 ///
 /// - 规则类型遍历 RecurrenceRuleRegistry（可扩展，新增类型自动出现）；
@@ -69,7 +84,7 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
   late RecurrenceRuleRegistry _registry;
   late String _ruleType;
   late Map<String, dynamic> _ruleJson;
-  DateTime _startDate = DateTime.now();
+  late DateTime _startDate;
   DateTime? _endDate;
   int? _subjectId;
   int? _estimatedMinutes;
@@ -344,7 +359,7 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
   /// 变更后刷新：模板与跨页全量缓存（今日页/日历/进度页，FR-3 验收）。
   void _refresh() {
     ref.invalidate(recurrenceTemplatesProvider(widget.goalId));
-    invalidateAppData(ref);
+    invalidateAppData(ref.invalidate);
   }
 
   @override
@@ -470,14 +485,14 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
           if (param.type == RuleParamType.intValue)
             _IntStepField(
               label: param.label,
-              value: (_ruleJson[param.key] as int?) ?? (param.defaultValue ?? 1),
+              value: _safeIntParam(_ruleJson[param.key], param.defaultValue ?? 1),
               min: param.min ?? 1,
               max: param.max ?? 100,
               onChanged: (v) => setState(() => _ruleJson[param.key] = v),
             ),
           if (param.type == RuleParamType.intList && param.key == 'weekdays')
             _WeekdaysPicker(
-              selected: ((_ruleJson['weekdays'] as List?) ?? []).cast<int>(),
+              selected: _safeIntList(_ruleJson['weekdays']),
               onChanged: (days) => setState(() => _ruleJson['weekdays'] = days),
             ),
           if (param.type == RuleParamType.intList && param.key == 'offsets')

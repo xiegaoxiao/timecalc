@@ -9,9 +9,11 @@ import '../../../core/database/database.dart';
 /// 清理（见 TaskRepository.delete / importPlan / GoalRepository.deleteWithCascade），
 /// 本类不负责跨实体删除。
 class ChecklistItemRepository {
-  ChecklistItemRepository(this._db);
+  ChecklistItemRepository(this._db, {DateTime Function()? clock})
+      : clock = clock ?? DateTime.now;
 
   final AppDatabase _db;
+  final DateTime Function() clock;
 
   /// 返回任务下的全部检查项，按 sortOrder、id 升序。
   Future<List<ChecklistItem>> byTask(int taskId) {
@@ -39,7 +41,7 @@ class ChecklistItemRepository {
     required int taskId,
     required String title,
   }) {
-    final now = DateTime.now().toUtc();
+    final now = clock().toUtc();
     return _db.transaction(() async {
       // 单条 MAX 聚合查询代替「加载任务下全部检查项再求最大」——
       // 检查项多时避免整表行拉进内存只为求一个计数。
@@ -73,7 +75,7 @@ class ChecklistItemRepository {
           .write(
             ChecklistItemsCompanion(
               title: Value(title),
-              updatedAt: Value(DateTime.now().toUtc()),
+              updatedAt: Value(clock().toUtc()),
             ),
           );
     });
@@ -86,7 +88,7 @@ class ChecklistItemRepository {
           .write(
             ChecklistItemsCompanion(
               done: Value(done),
-              updatedAt: Value(DateTime.now().toUtc()),
+              updatedAt: Value(clock().toUtc()),
             ),
           );
     });
@@ -118,7 +120,7 @@ class ChecklistItemRepository {
           .write(
             ChecklistItemsCompanion(
               sortOrder: Value(neighbor.sortOrder),
-              updatedAt: Value(DateTime.now().toUtc()),
+              updatedAt: Value(clock().toUtc()),
             ),
           );
       await (_db.update(_db.checklistItems)
@@ -126,7 +128,7 @@ class ChecklistItemRepository {
           .write(
             ChecklistItemsCompanion(
               sortOrder: Value(current.sortOrder),
-              updatedAt: Value(DateTime.now().toUtc()),
+              updatedAt: Value(clock().toUtc()),
             ),
           );
     });

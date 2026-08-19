@@ -8,9 +8,11 @@ import 'recurrence_repository.dart';
 
 /// 任务数据访问层（FR-3）。
 class TaskRepository {
-  TaskRepository(this._db);
+  TaskRepository(this._db, {DateTime Function()? clock})
+      : clock = clock ?? DateTime.now;
 
   final AppDatabase _db;
+  final DateTime Function() clock;
 
   /// 返回目标下的全部未归档任务，按计划日期、创建时间排序。
   Future<List<Task>> byGoal(int goalId) {
@@ -179,7 +181,7 @@ class TaskRepository {
     int? estimatedMinutes,
     int sortOrder = 0,
   }) {
-    final now = DateTime.now().toUtc();
+    final now = clock().toUtc();
     return _db.transaction(() async {
       final id = await _db.into(_db.tasks).insert(TasksCompanion.insert(
             goalId: goalId,
@@ -217,7 +219,7 @@ class TaskRepository {
     if (dateIntervalDays > 36500) {
       throw ArgumentError.value(dateIntervalDays, 'dateIntervalDays', '过大');
     }
-    final now = DateTime.now().toUtc();
+    final now = clock().toUtc();
     final start = parseLocalDate(startDate);
     final cleanTitles = titles.map((t) => t.trim()).where((t) => t.isNotEmpty).toList();
     if (cleanTitles.isEmpty) return Future.value(0);
@@ -259,7 +261,7 @@ class TaskRepository {
     bool replaceExisting = false,
   }) {
     return _db.transaction(() async {
-      final now = DateTime.now().toUtc();
+      final now = clock().toUtc();
       var deletedTasks = 0;
       var archivedTasks = 0;
       if (replaceExisting) {
@@ -360,7 +362,7 @@ class TaskRepository {
   /// 已在 importPlan 内按完成状态分流处理）。
   Future<int> archiveAllActive(int goalId) {
     return _db.transaction(() async {
-      final now = DateTime.now().toUtc();
+      final now = clock().toUtc();
       return (_db.update(_db.tasks)
             ..where((t) => t.goalId.equals(goalId) & t.archivedAt.isNull()))
           .write(
@@ -378,7 +380,7 @@ class TaskRepository {
       await (_db.update(_db.tasks)..where((t) => t.id.equals(id))).write(
         TasksCompanion(
           archivedAt: const Value(null),
-          updatedAt: Value(DateTime.now().toUtc()),
+          updatedAt: Value(clock().toUtc()),
         ),
       );
     });
@@ -390,8 +392,8 @@ class TaskRepository {
       await (_db.update(_db.tasks)..where((t) => t.id.equals(id))).write(
         TasksCompanion(
           status: Value(done ? TaskStatus.done : TaskStatus.todo),
-          completedAt: Value(done ? DateTime.now().toUtc() : null),
-          updatedAt: Value(DateTime.now().toUtc()),
+          completedAt: Value(done ? clock().toUtc() : null),
+          updatedAt: Value(clock().toUtc()),
         ),
       );
     });
@@ -405,7 +407,7 @@ class TaskRepository {
   Future<void> setDoneMany(List<int> ids, bool done) {
     if (ids.isEmpty) return Future.value();
     return _db.transaction(() async {
-      final now = DateTime.now().toUtc();
+      final now = clock().toUtc();
       for (final batch in _chunkIds(ids)) {
         await (_db.update(_db.tasks)..where((t) => t.id.isIn(batch))).write(
           TasksCompanion(
@@ -446,7 +448,7 @@ class TaskRepository {
           estimatedMinutes: estimatedMinutes ?? const Value.absent(),
           subjectId: subjectId ?? const Value.absent(),
           originalPlannedDate: original,
-          updatedAt: Value(DateTime.now().toUtc()),
+          updatedAt: Value(clock().toUtc()),
         ),
       );
     });
@@ -468,7 +470,7 @@ class TaskRepository {
         TasksCompanion(
           plannedDate: Value(newPlannedDate),
           originalPlannedDate: original,
-          updatedAt: Value(DateTime.now().toUtc()),
+          updatedAt: Value(clock().toUtc()),
         ),
       );
     });
@@ -499,7 +501,7 @@ class TaskRepository {
           'WHERE id IN ($placeholders) AND planned_date != ?',
           variables: [
             Variable.withString(newPlannedDate),
-            Variable.withDateTime(DateTime.now().toUtc()),
+            Variable.withDateTime(clock().toUtc()),
             ...batch.map(Variable.withInt),
             Variable.withString(newPlannedDate),
           ],
@@ -615,7 +617,7 @@ class TaskRepository {
             RecurrenceTemplatesCompanion(
               deletedInstanceDates:
                   Value(RecurrenceRepository.encodeTombstones(tombstones)),
-              updatedAt: Value(DateTime.now().toUtc()),
+              updatedAt: Value(clock().toUtc()),
             ),
           );
     }

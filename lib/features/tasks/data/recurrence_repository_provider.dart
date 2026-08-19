@@ -2,11 +2,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/database/database_provider.dart';
+import '../../../core/providers/clock_provider.dart';
 import '../data/recurrence_repository.dart';
 
 /// 重复任务数据访问 Provider。
 final recurrenceRepositoryProvider = Provider<RecurrenceRepository>((ref) {
-  return RecurrenceRepository(ref.watch(databaseProvider));
+  return RecurrenceRepository(
+    ref.watch(databaseProvider),
+    clock: ref.watch(clockProvider),
+  );
 });
 
 /// 目标下重复任务模板列表。

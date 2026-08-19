@@ -39,6 +39,7 @@ class AppDialog extends StatelessWidget {
     bool showCloseButton = false,
     VoidCallback? onClose,
     double maxWidth = 480,
+    EdgeInsetsGeometry? contentPadding,
     bool barrierDismissible = true,
   }) {
     return showGeneralDialog<T>(
@@ -65,6 +66,7 @@ class AppDialog extends StatelessWidget {
           showCloseButton: showCloseButton,
           onClose: onClose,
           maxWidth: maxWidth,
+          contentPadding: contentPadding,
         );
       },
     );

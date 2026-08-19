@@ -4,9 +4,11 @@ import '../../../core/database/database.dart';
 
 /// 科目数据访问层（FR-1.5：任务可选属于一个科目/分组）。
 class SubjectRepository {
-  SubjectRepository(this._db);
+  SubjectRepository(this._db, {DateTime Function()? clock})
+      : clock = clock ?? DateTime.now;
 
   final AppDatabase _db;
+  final DateTime Function() clock;
 
   /// 返回目标下的全部科目，按 sortOrder 升序。
   Future<List<Subject>> byGoal(int goalId) {
@@ -27,7 +29,7 @@ class SubjectRepository {
     required String color,
     int sortOrder = 0,
   }) {
-    final now = DateTime.now().toUtc();
+    final now = clock().toUtc();
     return _db.transaction(() async {
       final id = await _db.into(_db.subjects).insert(SubjectsCompanion.insert(
             goalId: goalId,
@@ -46,7 +48,7 @@ class SubjectRepository {
       await (_db.update(_db.subjects)..where((s) => s.id.equals(id))).write(
         SubjectsCompanion(
           name: Value(name),
-          updatedAt: Value(DateTime.now().toUtc()),
+          updatedAt: Value(clock().toUtc()),
         ),
       );
     });
@@ -58,7 +60,7 @@ class SubjectRepository {
       await (_db.update(_db.tasks)..where((t) => t.subjectId.equals(id))).write(
         TasksCompanion(
           subjectId: const Value(null),
-          updatedAt: Value(DateTime.now().toUtc()),
+          updatedAt: Value(clock().toUtc()),
         ),
       );
       // 重复任务模板同样解除科目归属：模板的 subject_id 为外键，
@@ -68,7 +70,7 @@ class SubjectRepository {
           .write(
             RecurrenceTemplatesCompanion(
               subjectId: const Value(null),
-              updatedAt: Value(DateTime.now().toUtc()),
+              updatedAt: Value(clock().toUtc()),
             ),
           );
       await (_db.delete(_db.subjects)..where((s) => s.id.equals(id))).go();

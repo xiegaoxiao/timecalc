@@ -13,7 +13,10 @@ import '../../../../core/database/database.dart';
 /// [BackupCodec] 不关心 ID 是否复用：合并模式插入前清空 id 字段让数据库
 /// 分配新 ID；覆盖模式保留原 ID 以还原完全一致的数据。
 class BackupCodec {
-  const BackupCodec();
+  BackupCodec({DateTime Function()? clock}) : clock = clock ?? DateTime.now;
+
+  /// 可注入时钟（测试可固定，精确断言恢复时间戳）。
+  final DateTime Function() clock;
 
   /// 目标行 → JSON。
   Map<String, Object?> goalToJson(Goal row) => {
@@ -109,18 +112,14 @@ class BackupCodec {
 
   /// JSON → GoalsCompanion（[keepId] 为 true 时保留原 id 供覆盖恢复）。
   GoalsCompanion goalFromJson(Map<String, Object?> json, {bool keepId = false}) {
-    final now = DateTime.now().toUtc();
+    final now = clock().toUtc();
     return GoalsCompanion.insert(
       id: keepId ? Value(json['id'] as int) : const Value.absent(),
       title: json['title'] as String,
       description: Value(json['description'] as String?),
       deadlineDate: json['deadlineDate'] as String,
       status: Value(json['status'] as String? ?? 'active'),
-      completedAt: Value(
-        json['completedAt'] == null
-            ? null
-            : DateTime.parse(json['completedAt'] as String).toUtc(),
-      ),
+      completedAt: Value(_parseOptionalUtc(json['completedAt'])),
       createdAt: _parseUtc(json['createdAt']) ?? now,
       updatedAt: _parseUtc(json['updatedAt']) ?? now,
     );
@@ -132,7 +131,7 @@ class BackupCodec {
     required int goalId,
     bool keepId = false,
   }) {
-    final now = DateTime.now().toUtc();
+    final now = clock().toUtc();
     return SubjectsCompanion.insert(
       id: keepId ? Value(json['id'] as int) : const Value.absent(),
       goalId: goalId,
@@ -152,7 +151,7 @@ class BackupCodec {
     int? recurrenceTemplateId,
     bool keepId = false,
   }) {
-    final now = DateTime.now().toUtc();
+    final now = clock().toUtc();
     return TasksCompanion.insert(
       id: keepId ? Value(json['id'] as int) : const Value.absent(),
       goalId: goalId,
@@ -162,20 +161,12 @@ class BackupCodec {
       plannedDate: json['plannedDate'] as String,
       estimatedMinutes: Value(json['estimatedMinutes'] as int?),
       status: Value(json['status'] as String? ?? 'todo'),
-      completedAt: Value(
-        json['completedAt'] == null
-            ? null
-            : DateTime.parse(json['completedAt'] as String).toUtc(),
-      ),
+      completedAt: Value(_parseOptionalUtc(json['completedAt'])),
       sortOrder: Value(json['sortOrder'] as int? ?? 0),
       createdAt: _parseUtc(json['createdAt']) ?? now,
       updatedAt: _parseUtc(json['updatedAt']) ?? now,
       originalPlannedDate: Value(json['originalPlannedDate'] as String?),
-      archivedAt: Value(
-        json['archivedAt'] == null
-            ? null
-            : DateTime.parse(json['archivedAt'] as String).toUtc(),
-      ),
+      archivedAt: Value(_parseOptionalUtc(json['archivedAt'])),
       recurrenceTemplateId: Value(recurrenceTemplateId),
     );
   }
@@ -187,7 +178,7 @@ class BackupCodec {
     int? subjectId,
     bool keepId = false,
   }) {
-    final now = DateTime.now().toUtc();
+    final now = clock().toUtc();
     return RecurrenceTemplatesCompanion.insert(
       id: keepId ? Value(json['id'] as int) : const Value.absent(),
       goalId: goalId,
@@ -221,7 +212,7 @@ class BackupCodec {
     String? themeMode,
     String? accentColor,
   }) {
-    final now = DateTime.now().toUtc();
+    final now = clock().toUtc();
     return SettingsCompanion.insert(
       id: const Value(1),
       dailyAvailableMinutes:
@@ -259,7 +250,7 @@ class BackupCodec {
     required int goalId,
     bool keepId = false,
   }) {
-    final now = DateTime.now().toUtc();
+    final now = clock().toUtc();
     return MilestonesCompanion.insert(
       id: keepId ? Value(json['id'] as int) : const Value.absent(),
       goalId: goalId,
@@ -280,7 +271,7 @@ class BackupCodec {
     required int taskId,
     bool keepId = false,
   }) {
-    final now = DateTime.now().toUtc();
+    final now = clock().toUtc();
     return ChecklistItemsCompanion.insert(
       id: keepId ? Value(json['id'] as int) : const Value.absent(),
       taskId: taskId,
@@ -293,8 +284,26 @@ class BackupCodec {
   }
 
   static DateTime? _parseUtc(Object? value) {
-    if (value == null) return null;
-    final parsed = DateTime.tryParse(value as String);
+    if (value is! String) return null;
+    final parsed = DateTime.tryParse(value);
     return parsed?.toUtc();
+  }
+
+  /// 解析「可空时间戳」字段（completedAt/archivedAt）：null 通过；非字符串
+  /// 或非法日期抛 [FormatException]（由 BackupService 统一转 BackupException
+  /// 用户可读文案），避免 `as String` 抛 TypeError（Error，UI 的 on Exception
+  /// 捕不到）与 `DateTime.parse` 抛原始技术文案。区别于 [_parseUtc]（宽容
+  /// 返回 null）：completedAt/archivedAt 的 null 有业务语义（未完成/未归档），
+  /// 损坏值不能静默降级为 null。
+  static DateTime? _parseOptionalUtc(Object? value) {
+    if (value == null) return null;
+    if (value is! String) {
+      throw const FormatException('时间戳必须是字符串');
+    }
+    final parsed = DateTime.tryParse(value);
+    if (parsed == null) {
+      throw FormatException('时间戳格式不正确：$value');
+    }
+    return parsed.toUtc();
   }
 }

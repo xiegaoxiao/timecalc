@@ -198,7 +198,7 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
       }
       // 跨页刷新（FR-3 验收）：批量新增影响今日页（列表与「目标剩余」）、
       // 进度页（剩余工作量/耗时图）、日历与逾期横幅，走全量集合。
-      invalidateAppData(ref);
+      invalidateAppData(ref.invalidate);
       if (mounted) Navigator.of(context).pop();
     } finally {
       if (mounted) setState(() => _saving = false);

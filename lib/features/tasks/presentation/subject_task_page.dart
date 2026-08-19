@@ -110,7 +110,7 @@ class _SubjectTaskPageState extends ConsumerState<SubjectTaskPage> {
                       // 今日页、日历与进度页（completedTasksProvider/
                       // allTodoTasksProvider 若不失效，进度页热力图与剩余
                       // 工作量停留陈旧，回归教训）。
-                      onChanged: () => invalidateAppData(ref),
+                      onChanged: () => invalidateAppData(ref.invalidate),
                     ),
                 ],
               );

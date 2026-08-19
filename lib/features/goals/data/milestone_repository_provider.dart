@@ -8,7 +8,10 @@ import 'milestone_repository.dart';
 
 /// 里程碑数据访问 Provider（SOP §2：数据事实保存在 Drift，Riverpod 只提供依赖）。
 final milestoneRepositoryProvider = Provider<MilestoneRepository>((ref) {
-  return MilestoneRepository(ref.watch(databaseProvider));
+  return MilestoneRepository(
+    ref.watch(databaseProvider),
+    clock: ref.watch(clockProvider),
+  );
 });
 
 /// 目标下的里程碑列表（family：按 goalId）。

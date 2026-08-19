@@ -159,7 +159,7 @@ class _GoalTasksPageState extends ConsumerState<GoalTasksPage> {
           // 全量跨页刷新（FR-3 验收）：完成/编辑/删除任务影响今日页、
           // 日历与进度页（completedTasksProvider/allTodoTasksProvider
           // 若不失效，进度页热力图与剩余工作量停留陈旧，回归教训）。
-          onChanged: () => invalidateAppData(ref),
+          onChanged: () => invalidateAppData(ref.invalidate),
         ),
       const SliverToBoxAdapter(child: SizedBox(height: 8)),
     ];

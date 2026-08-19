@@ -7,6 +7,10 @@ import '../../features/settings/data/settings_repository_provider.dart';
 import '../../features/tasks/data/recurrence_repository_provider.dart';
 import '../../features/tasks/data/task_repository_provider.dart';
 
+/// 失效回调：只暴露「让某个 provider 失效」的最小能力，与具体 ref 类型解耦。
+/// [Ref.invalidate] 与 [WidgetRef.invalidate] 的 tear-off 均为同一签名，因此
+/// Notifier/provider 的 [Ref] 与页面的 [WidgetRef] 都能传入 `ref.invalidate`。
+///
 /// 跨页数据刷新统一入口（P3 收敛）。
 ///
 /// 历史做法是各页面/对话框复制粘贴一段连续 `ref.invalidate(...)`，容易
@@ -20,14 +24,20 @@ import '../../features/tasks/data/task_repository_provider.dart';
 ///   用轻量子集会留下陈旧缓存（导入/批量新增曾因此不刷新，回归教训）。
 ///
 /// family 级 provider 在无参时 invalidate 整族，覆盖所有日期/月份/目标实例。
-void invalidateAppData(WidgetRef ref) {
-  ref.invalidate(taskListProvider);
-  ref.invalidate(tasksByDateProvider);
-  ref.invalidate(tasksByMonthProvider);
-  ref.invalidate(unfinishedBeforeProvider);
-  ref.invalidate(goalListProvider);
-  ref.invalidate(completedTasksProvider);
-  ref.invalidate(allTodoTasksProvider);
+///
+/// 入参为 `ref.invalidate`（tear-off）：provider/Notifier 的 ref 与页面 ref
+/// 均可复用本清单，避免各入口复制粘贴同一份失效集合（task_completion_controller
+/// 曾有过第 4 份逐字副本）。
+void invalidateAppData(void Function(ProviderOrFamily provider) invalidate) {
+  invalidate(taskListProvider);
+  invalidate(tasksByDateProvider);
+  invalidate(tasksByMonthProvider);
+  invalidate(tasksByWeekProvider);
+  invalidate(tasksByYearProvider);
+  invalidate(unfinishedBeforeProvider);
+  invalidate(goalListProvider);
+  invalidate(completedTasksProvider);
+  invalidate(allTodoTasksProvider);
 }
 
 /// 计划页任务变更的局部刷新（2026-08-15 性能优化）。
@@ -43,15 +53,15 @@ void invalidateAppData(WidgetRef ref) {
 ///
 /// 使用场景：计划页（日历视图）内的高频任务操作（勾选/取消勾选/改期）。
 /// 其余页面仍走 [invalidateAppData] 全量集合。
-void invalidatePlanData(WidgetRef ref) {
-  ref.invalidate(tasksByDateProvider);
-  ref.invalidate(tasksByMonthProvider);
-  ref.invalidate(tasksByWeekProvider);
-  ref.invalidate(tasksByYearProvider);
-  ref.invalidate(taskListProvider);
-  ref.invalidate(unfinishedBeforeProvider);
-  ref.invalidate(completedTasksProvider);
-  ref.invalidate(allTodoTasksProvider);
+void invalidatePlanData(void Function(ProviderOrFamily provider) invalidate) {
+  invalidate(tasksByDateProvider);
+  invalidate(tasksByMonthProvider);
+  invalidate(tasksByWeekProvider);
+  invalidate(tasksByYearProvider);
+  invalidate(taskListProvider);
+  invalidate(unfinishedBeforeProvider);
+  invalidate(completedTasksProvider);
+  invalidate(allTodoTasksProvider);
 }
 
 /// 全量数据刷新（影响面最广的操作专用：覆盖恢复 / 重置数据）。
@@ -59,15 +69,15 @@ void invalidatePlanData(WidgetRef ref) {
 /// 在 [invalidateAppData] 基础上补齐其余页面/入口的缓存：目标详情、
 /// 科目、归档任务、重复模板、里程碑与设置。覆盖恢复原本在 backup_page
 /// 内私有实现，提取后供重置数据页复用，避免两份逐字副本漂移。
-void invalidateAllAppData(WidgetRef ref) {
-  invalidateAppData(ref);
-  ref.invalidate(goalDetailProvider); // family 无参失效整族（详情页缓存）
-  ref.invalidate(subjectListProvider); // family 整族（科目页/表单缓存）
-  ref.invalidate(archivedCountProvider);
-  ref.invalidate(archivedTaskListProvider);
-  ref.invalidate(allArchivedTasksProvider);
-  ref.invalidate(recurrenceTemplatesProvider); // family 整族（重复任务入口）
-  ref.invalidate(recurrenceTemplateProvider); // family 整族（任务条目标注）
-  ref.invalidate(milestoneListProvider); // family 整族（里程碑列表/首页卡片）
-  ref.invalidate(settingsProvider);
+void invalidateAllAppData(void Function(ProviderOrFamily provider) invalidate) {
+  invalidateAppData(invalidate);
+  invalidate(goalDetailProvider); // family 无参失效整族（详情页缓存）
+  invalidate(subjectListProvider); // family 整族（科目页/表单缓存）
+  invalidate(archivedCountProvider);
+  invalidate(archivedTaskListProvider);
+  invalidate(allArchivedTasksProvider);
+  invalidate(recurrenceTemplatesProvider); // family 整族（重复任务入口）
+  invalidate(recurrenceTemplateProvider); // family 整族（任务条目标注）
+  invalidate(milestoneListProvider); // family 整族（里程碑列表/首页卡片）
+  invalidate(settingsProvider);
 }

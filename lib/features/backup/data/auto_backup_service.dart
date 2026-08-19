@@ -106,7 +106,19 @@ class AutoBackupService implements AutoBackupRunner {
       '${tempDir.path}${Platform.pathSeparator}${autoBackupFileName(nowUtc.toLocal())}',
     );
     try {
-      await backupService.exportBackup(tempFile);
+      try {
+        await backupService.exportBackup(tempFile);
+      } catch (error) {
+        // 导出失败（磁盘满/IO 异常）不逃出 run()：按失败返回并入 errors，
+        // 避免被调度器 catch(_) 静默吞掉、用户零反馈（此前仅 finally 清理
+        // 临时文件，异常直接冒泡）。
+        return AutoBackupResult(
+          skipped: false,
+          succeeded: false,
+          uploadedTargets: 0,
+          errors: ['导出失败：$error'],
+        );
+      }
       final bytes = await tempFile.readAsBytes();
 
       var uploaded = 0;

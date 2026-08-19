@@ -8,9 +8,11 @@ import '../../../core/database/tables.dart';
 /// 单行表（id 固定为 1）。默认行由 [get] 惰性 seed（insertOrIgnore），
 /// 保证迁移库与全新安装行为一致；日常读取默认行已存在，不触发写库。
 class SettingsRepository {
-  SettingsRepository(this._db);
+  SettingsRepository(this._db, {DateTime Function()? clock})
+      : clock = clock ?? DateTime.now;
 
   final AppDatabase _db;
+  final DateTime Function() clock;
 
   static const int _singletonId = 1;
 
@@ -22,7 +24,7 @@ class SettingsRepository {
     final existing = await _byId();
     if (existing != null) return existing;
 
-    final now = DateTime.now().toUtc();
+    final now = clock().toUtc();
     await _db.into(_db.settings).insert(
       SettingsCompanion.insert(
         id: Value(_singletonId),
@@ -104,7 +106,7 @@ class SettingsRepository {
       // 更新前确保默认行存在（极端场景：从未调用过 get 直接更新）。
       await get();
       await (_db.update(_db.settings)..where((s) => s.id.equals(_singletonId)))
-          .write(companion.copyWith(updatedAt: Value(DateTime.now().toUtc())));
+          .write(companion.copyWith(updatedAt: Value(clock().toUtc())));
     });
   }
 

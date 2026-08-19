@@ -25,9 +25,11 @@ enum RecurrenceApplyTo {
 /// - 仅预生成未来 30 天实例，窗口临近时由 [generateDue] 滚动生成（FR-4.3）；
 /// - 规则解释委托 RecurrenceService（可扩展引擎）。
 class RecurrenceRepository {
-  RecurrenceRepository(this._db);
+  RecurrenceRepository(this._db, {DateTime Function()? clock})
+      : clock = clock ?? DateTime.now;
 
   final AppDatabase _db;
+  final DateTime Function() clock;
 
   static final _registry = RecurrenceRuleRegistry();
 
@@ -84,8 +86,8 @@ class RecurrenceRepository {
     _validatedJson(rule);
     final service = RecurrenceService();
     return _db.transaction(() async {
-      final now = DateTime.now().toUtc();
-      final todayStr = _format(today ?? DateTime.now());
+      final now = clock().toUtc();
+      final todayStr = _format(today ?? clock());
       final generatedThrough = _minDate(_plusDays(todayStr, 30), endDate);
       final templateId = await _db.into(_db.recurrenceTemplates).insert(
             RecurrenceTemplatesCompanion.insert(
@@ -149,7 +151,7 @@ class RecurrenceRepository {
   Future<int> generateDue({int? goalId, DateTime? today}) {
     final service = RecurrenceService();
     return _db.transaction(() async {
-      final todayStr = _format(today ?? DateTime.now());
+      final todayStr = _format(today ?? clock());
       var generated = 0;
       final templates = await _activeTemplates(goalId);
 
@@ -238,7 +240,7 @@ class RecurrenceRepository {
             .write(
               RecurrenceTemplatesCompanion(
                 generatedThroughDate: Value(target),
-                updatedAt: Value(DateTime.now().toUtc()),
+                updatedAt: Value(clock().toUtc()),
               ),
             );
       }
@@ -254,7 +256,7 @@ class RecurrenceRepository {
           .write(
             RecurrenceTemplatesCompanion(
               active: const Value(false),
-              updatedAt: Value(DateTime.now().toUtc()),
+              updatedAt: Value(clock().toUtc()),
             ),
           );
     });
@@ -283,7 +285,7 @@ class RecurrenceRepository {
     return _db.transaction(() async {
       final template = await byId(templateId);
       if (template == null) return;
-      final todayStr = _format(today ?? DateTime.now());
+      final todayStr = _format(today ?? clock());
       // 起始日期可随编辑更新；重生成时使用新的起始日。
       final effectiveStartDate = startDate ?? template.startDate;
 
@@ -325,7 +327,7 @@ class RecurrenceRepository {
                   startDate == null ? const Value.absent() : Value(startDate),
               generatedThroughDate: Value(generatedThrough),
               active: const Value(true),
-              updatedAt: Value(DateTime.now().toUtc()),
+              updatedAt: Value(clock().toUtc()),
             ),
           );
 
@@ -371,7 +373,7 @@ class RecurrenceRepository {
           .write(
             TasksCompanion(
               recurrenceTemplateId: const Value(null),
-              updatedAt: Value(DateTime.now().toUtc()),
+              updatedAt: Value(clock().toUtc()),
             ),
           );
       await (_db.delete(_db.recurrenceTemplates)
@@ -412,7 +414,7 @@ class RecurrenceRepository {
     required int templateId,
     required String date,
   }) {
-    final now = DateTime.now().toUtc();
+    final now = clock().toUtc();
     return _db.into(_db.tasks).insert(
       TasksCompanion.insert(
         goalId: goalId,

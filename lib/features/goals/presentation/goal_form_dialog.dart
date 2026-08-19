@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
+import '../../../core/providers/clock_provider.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../shared/widgets/app_dialog.dart';
@@ -65,7 +66,7 @@ class _GoalFormDialogState extends ConsumerState<GoalFormDialog> {
   }
 
   Future<void> _pickDeadline() async {
-    final now = DateTime.now();
+    final now = ref.read(clockProvider)();
     final field = _deadlineFieldKey.currentState;
     final picked = await showDatePicker(
       context: context,
@@ -154,6 +155,9 @@ class _GoalFormDialogState extends ConsumerState<GoalFormDialog> {
             hint: '例如：考研',
             autofocus: true,
             maxLength: 200,
+            // 关闭内置右下角计数器（会与长输入文字/光标重叠），
+            // 沿用此前刻意规避内置计数器的决策，仅保留 maxLength 限长。
+            counterText: '',
             textInputAction: TextInputAction.next,
             validator: (value) {
               if (value == null || value.trim().isEmpty) {

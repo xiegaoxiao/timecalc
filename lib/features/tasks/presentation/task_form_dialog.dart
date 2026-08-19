@@ -213,7 +213,7 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
       if (!ok) return;
       // 跨页刷新（FR-3 验收）：创建/编辑影响今日页（列表与「目标剩余」）、
       // 进度页（剩余工作量/燃尽/耗时图）、日历与逾期横幅，走全量集合。
-      invalidateAppData(ref);
+      invalidateAppData(ref.invalidate);
       if (mounted) Navigator.of(context).pop(true);
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -235,6 +235,9 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
             hint: '例如：完成第一章复习',
             autofocus: true,
             maxLength: 200,
+            // 关闭内置右下角计数器（会与长输入文字/光标重叠），
+            // 沿用此前刻意规避内置计数器的决策，仅保留 maxLength 限长。
+            counterText: '',
             textInputAction: TextInputAction.next,
             validator: (value) {
               if (value == null || value.trim().isEmpty) {

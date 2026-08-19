@@ -196,7 +196,7 @@ class _TodayPageState extends ConsumerState<TodayPage> {
 
     // 数据变更后的统一刷新（FR-3 验收：今日列表、日历、目标详情在同一
     // 操作周期内同步更新）。公共集合见 invalidateAppData（P3 收敛）。
-    void onChanged() => invalidateAppData(ref);
+    void onChanged() => invalidateAppData(ref.invalidate);
 
     // 空态：无进行中目标、今日无任务、且无逾期未完成任务时展示。
     // 有逾期任务时保留 FR-3.7 横幅与任务区，避免横幅被空态遮蔽（回归）。

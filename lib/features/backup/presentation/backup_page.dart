@@ -359,7 +359,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
         mode: choice.mode,
       );
       // 恢复生效后刷新各页缓存（跨页统一刷新）。
-      invalidateAllAppData(ref);
+      invalidateAllAppData(ref.invalidate);
       final message = switch (choice.mode) {
         RestoreMode.merge => '已合并备份数据',
         RestoreMode.overwrite =>

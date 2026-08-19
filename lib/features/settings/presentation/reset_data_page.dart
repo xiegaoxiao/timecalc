@@ -158,7 +158,7 @@ class _ResetDataPageState extends ConsumerState<ResetDataPage> {
       final safety = await backup.resetData(includeSettings: includeSettings);
       if (!mounted) return;
       // 重置生效后刷新各页缓存（覆盖恢复同款全量刷新，跨页统一）。
-      invalidateAllAppData(ref);
+      invalidateAllAppData(ref.invalidate);
       messenger.hideCurrentSnackBar();
       messenger.showSnackBar(
         SnackBar(

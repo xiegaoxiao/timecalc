@@ -60,11 +60,14 @@ class BackupService {
 
   final AppDatabase _db;
 
-  static const _codec = BackupCodec();
+  static final _codec = BackupCodec();
 
   static const _manifestPath = 'manifest.json';
   static const _dataDir = 'data/';
   static const _defaultFileName = 'timecalc-backup';
+
+  /// 备份文件（压缩后）大小上限：超过则拒绝读取（zip bomb 防御，NFR-2）。
+  static const int _maxBackupBytes = 100 * 1024 * 1024; // 100 MB
 
   /// 导出全部业务数据为带版本号的备份文件（FR-9.1）。
   ///
@@ -186,6 +189,11 @@ class BackupService {
       }
     } on BackupException {
       rethrow;
+    } on FormatException catch (error) {
+      // codec 的 DateTime.parse 对损坏时间戳抛 FormatException（Exception 而
+      // 非 Error），上面的 on Error 兜不住——单独转 BackupException，避免
+      // 恢复失败抛「Invalid date format…」这类原始技术文案。
+      throw BackupException('备份数据内容不正确（$error）');
     } on Error catch (error) {
       // 数据段字段类型损坏（如 title 非字符串）时 codec 强转会抛
       // TypeError（Error 而非 Exception），UI 的 `on Exception` 捕不到，
@@ -512,6 +520,9 @@ class BackupService {
       throw const BackupException('备份文件不存在');
     }
     final bytes = await file.readAsBytes();
+    if (bytes.length > _maxBackupBytes) {
+      throw const BackupException('备份文件过大，已拒绝读取');
+    }
 
     final Archive archive;
     try {

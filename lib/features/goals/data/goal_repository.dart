@@ -7,9 +7,11 @@ import '../../../core/database/database.dart';
 /// 数据事实保存在 Drift；规则校验（如倒计时）位于 service，
 /// 本类只负责读写与事务边界。
 class GoalRepository {
-  GoalRepository(this._db);
+  GoalRepository(this._db, {DateTime Function()? clock})
+      : clock = clock ?? DateTime.now;
 
   final AppDatabase _db;
+  final DateTime Function() clock;
 
   /// 返回全部目标，按创建时间倒序（新目标在前）；时间相同时按 id 倒序保证稳定。
   ///
@@ -36,7 +38,7 @@ class GoalRepository {
     required String deadlineDate,
     String? description,
   }) {
-    final now = DateTime.now().toUtc();
+    final now = clock().toUtc();
     return _db.transaction(() async {
       final id = await _db.into(_db.goals).insert(GoalsCompanion.insert(
             title: title,
@@ -59,7 +61,7 @@ class GoalRepository {
     String? description,
     List<String> subjectNames = const [],
   }) {
-    final now = DateTime.now().toUtc();
+    final now = clock().toUtc();
     return _db.transaction(() async {
       final goalId = await _db.into(_db.goals).insert(GoalsCompanion.insert(
             title: title,
@@ -98,7 +100,7 @@ class GoalRepository {
     DateTime? completedAt,
   }) {
     return _db.transaction(() async {
-      final now = DateTime.now().toUtc();
+      final now = clock().toUtc();
       await (_db.update(_db.goals)..where((t) => t.id.equals(id))).write(
         GoalsCompanion(
           title: title == null ? const Value.absent() : Value(title),

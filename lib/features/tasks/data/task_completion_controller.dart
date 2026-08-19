@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../goals/data/goal_repository_provider.dart';
+import '../../../core/providers/app_refresh.dart';
 import 'task_repository_provider.dart';
 
 /// 任务完成「5 秒撤回」批次控制器（Telegram 删除式交互，仅今天页启用）。
@@ -94,19 +94,11 @@ class TaskCompletionController extends Notifier<Set<int>> {
     _finalizeTimer = null;
   }
 
-  /// 定稿后的跨页数据刷新：与今天页此前用的 [invalidateAppData] 同口径
-  /// （任务/日历/未完成横幅/目标列表/完成热力图/剩余工作量），保证今天页
-  /// 勾选完成后目标列表的完成统计（goalCompletionProvider 依赖 goalListProvider）
-  /// 与进度页图表同步更新。
-  void _refresh() {
-    ref.invalidate(taskListProvider);
-    ref.invalidate(tasksByDateProvider);
-    ref.invalidate(tasksByMonthProvider);
-    ref.invalidate(unfinishedBeforeProvider);
-    ref.invalidate(goalListProvider);
-    ref.invalidate(completedTasksProvider);
-    ref.invalidate(allTodoTasksProvider);
-  }
+  /// 定稿后的跨页数据刷新：复用 [invalidateAppData] 公共清单（任务/日历/
+  /// 周/年/未完成横幅/目标列表/完成热力图/剩余工作量），保证今天页勾选完成后
+  /// 目标列表完成统计与进度页图表、计划页周/年视图同步更新，且不与公共入口
+  /// 逐字复制（避免清单漂移）。
+  void _refresh() => invalidateAppData(ref.invalidate);
 }
 
 /// 待完成批次（taskId 集合）Provider。

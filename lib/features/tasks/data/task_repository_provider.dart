@@ -9,7 +9,10 @@ import '../data/task_repository.dart';
 
 /// 任务数据访问 Provider。
 final taskRepositoryProvider = Provider<TaskRepository>((ref) {
-  return TaskRepository(ref.watch(databaseProvider));
+  return TaskRepository(
+    ref.watch(databaseProvider),
+    clock: ref.watch(clockProvider),
+  );
 });
 
 /// 目标下任务列表异步状态。

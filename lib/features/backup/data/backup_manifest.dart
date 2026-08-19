@@ -105,15 +105,27 @@ class BackupManifest {
   }
 
   factory BackupManifest.fromJson(Map<String, Object?> json) {
-    final counts = (json['counts'] as Map?)?.cast<String, Object?>() ?? const {};
-    final exported = DateTime.tryParse(json['exportedAtUtc'] as String? ?? '');
+    // 类型判定替代 `as` 强转：备份是外部输入，字段类型损坏（如 counts 为
+    // 数组、exportedAtUtc/type 为数字）时 `as Map?/as String?` 会抛 TypeError
+    // （Error 而非 Exception），逃出 UI 的 `on Exception` 兜底 → 恢复预览静默失败。
+    final rawCounts = json['counts'];
+    final counts = rawCounts is Map<String, Object?>
+        ? rawCounts
+        : const <String, Object?>{};
+    final rawExportedAtUtc = json['exportedAtUtc'];
+    final exported = DateTime.tryParse(
+      rawExportedAtUtc is String ? rawExportedAtUtc : '',
+    );
+    final rawFormat = json['format'];
+    final rawType = json['type'];
+    final rawAppVersion = json['appVersion'];
     return BackupManifest(
-      format: json['format'] as String? ?? '',
+      format: rawFormat is String ? rawFormat : '',
       version: (json['version'] as num?)?.toInt() ?? 0,
-      type: BackupType.fromValue(json['type'] as String?),
+      type: BackupType.fromValue(rawType is String ? rawType : null),
       exportedAtUtc: exported ?? DateTime.fromMillisecondsSinceEpoch(0),
       appSchemaVersion: (json['appSchemaVersion'] as num?)?.toInt() ?? 0,
-      appVersion: json['appVersion'] as String? ?? '',
+      appVersion: rawAppVersion is String ? rawAppVersion : '',
       goalCount: (counts['goals'] as num?)?.toInt() ?? 0,
       subjectCount: (counts['subjects'] as num?)?.toInt() ?? 0,
       taskCount: (counts['tasks'] as num?)?.toInt() ?? 0,

@@ -179,7 +179,7 @@ class _PlanImportDialogState extends ConsumerState<PlanImportDialog> {
       final repo = ref.read(planImportRepositoryProvider);
       final stats = await repo.importPlan(plan);
       // 新建目标/里程碑/科目/模板，全量失效各页缓存。
-      invalidateAllAppData(ref);
+      invalidateAllAppData(ref.invalidate);
       if (!mounted) return;
       // 跳过统计：历史任务/整周已过去的例行项不写入，如实提示用户。
       final skipped = <String>[

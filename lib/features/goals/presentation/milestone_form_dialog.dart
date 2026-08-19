@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
+import '../../../core/providers/clock_provider.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../shared/widgets/app_dialog.dart';
@@ -79,7 +80,7 @@ class _MilestoneFormDialogState extends ConsumerState<MilestoneFormDialog> {
   }
 
   Future<void> _pickDate() async {
-    final now = DateTime.now();
+    final now = ref.read(clockProvider)();
     final field = _dateFieldKey.currentState;
     final picked = await showDatePicker(
       context: context,

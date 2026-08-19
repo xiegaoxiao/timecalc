@@ -9,9 +9,11 @@ import '../../../core/database/tables.dart';
 /// （FR-2.2，UI 层校验）；首页仅展示距离最近的一个未完成里程碑
 /// （FR-2.3，[nextUpcoming]）。
 class MilestoneRepository {
-  MilestoneRepository(this._db);
+  MilestoneRepository(this._db, {DateTime Function()? clock})
+      : clock = clock ?? DateTime.now;
 
   final AppDatabase _db;
+  final DateTime Function() clock;
 
   /// 返回目标下的全部里程碑，按 sortOrder 升序（同 sortOrder 时按 id 稳定，
   /// L17：避免同序值顺序不稳定）。
@@ -36,7 +38,7 @@ class MilestoneRepository {
     required String date,
     int sortOrder = 0,
   }) {
-    final now = DateTime.now().toUtc();
+    final now = clock().toUtc();
     return _db.transaction(() async {
       final id = await _db.into(_db.milestones).insert(MilestonesCompanion.insert(
             goalId: goalId,
@@ -65,7 +67,7 @@ class MilestoneRepository {
           status: done == null
               ? const Value.absent()
               : Value(done ? MilestoneStatus.done : MilestoneStatus.todo),
-          updatedAt: Value(DateTime.now().toUtc()),
+          updatedAt: Value(clock().toUtc()),
         ),
       );
     });

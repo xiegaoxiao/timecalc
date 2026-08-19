@@ -601,7 +601,9 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
           action: () => repo.update(
             id: goal.id,
             status: 'completed',
-            completedAt: DateTime.now().toUtc(),
+            // 走 clockProvider（可注入/固定时钟），避免 UI 层裸 DateTime.now()
+            // 绕过注入时钟，导致完成时间无法在测试中精确断言。
+            completedAt: ref.read(clockProvider)().toUtc(),
           ),
         );
         if (!ok) return;
@@ -676,7 +678,7 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
   /// 详情、归档任务列表与重复模板族（级联删除会连带删模板，避免残留陈旧
   /// 缓存）。保证跨页数据一致（FR-3 验收）。
   void _refreshGoalRelated(WidgetRef ref) {
-    invalidateAppData(ref);
+    invalidateAppData(ref.invalidate);
     ref.invalidate(goalDetailProvider);
     ref.invalidate(archivedTaskListProvider);
     // 目标级联删除会连带删除其重复模板（recurrence_repository.deleteWithCascade），
