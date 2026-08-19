@@ -91,7 +91,6 @@ void main() {
     // 手动区入口存在。
     expect(find.text('导出备份'), findsOneWidget);
     expect(find.text('从备份恢复'), findsOneWidget);
-    expect(find.text('从备份位置恢复'), findsOneWidget);
   });
 
   testWidgets('选择目录后显示路径并点击即写库', (tester) async {

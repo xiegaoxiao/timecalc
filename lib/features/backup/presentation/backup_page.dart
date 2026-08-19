@@ -14,7 +14,6 @@ import '../data/backup_folder_picker.dart';
 import '../data/backup_manifest.dart';
 import '../data/backup_service.dart';
 import '../data/backup_service_provider.dart';
-import '../data/backup_target.dart';
 import 'restore_confirm_dialog.dart';
 
 /// 备份与恢复页（FR-9.1 / FR-9.2 / FR-9.3 / FR-9.4，M8 扩展，M11 合并自动备份）。
@@ -22,8 +21,8 @@ import 'restore_confirm_dialog.dart';
 /// 由设置页「备份与恢复」菜单项 push 进入。统一管理数据相关操作：
 /// - 自动备份区（M11 并入）：总开关（点击即写库 + 立即触发一次检查反馈）、
 ///   本地目录（唯一目的地）、立即备份、最近备份时间；
-/// - 手动备份/恢复区：导出备份、从备份恢复、从备份位置恢复（本地
-///   历史文件）。
+/// - 手动备份/恢复区：导出备份、从备份恢复（直接选 .timecalc 文件，本地
+///   自动备份生成的文件同样可用文件选择器选中恢复）。
 ///
 /// 已归档任务在独立「已归档任务」页管理（见 archived_tasks_page.dart）。
 class BackupPage extends ConsumerStatefulWidget {
@@ -52,6 +51,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          const SizedBox(height: 16),
           Text(
             '导出/恢复全部业务数据。覆盖恢复前会自动创建当前数据的安全副本（FR-9.3）。'
             '替换导入时归档保留的已完成旧任务请在「已归档任务」页查看。',
@@ -78,41 +78,6 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                 label: const Text('从备份恢复'),
               ),
             ],
-          ),
-          const SizedBox(height: 16),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.cloud_download_outlined,
-                          size: 20, color: Theme.of(context).colorScheme.primary),
-                      const SizedBox(width: 8),
-                      Text('从备份位置恢复',
-                          style: Theme.of(context).textTheme.titleMedium),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '列出「本地目录」中的备份文件，'
-                    '选中后走同样的合并/覆盖确认流程。',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: FilledButton.tonalIcon(
-                      onPressed: () => _restoreFromLocation(context, backup),
-                      icon: const Icon(Icons.folder_open_outlined, size: 18),
-                      label: const Text('选择备份位置的文件…'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ),
         ],
       ),
@@ -369,74 +334,6 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     await _confirmAndRestore(context, backup, messenger, file);
   }
 
-  /// 从本地目录列出备份文件，选中后走恢复确认流程（M8）。
-  Future<void> _restoreFromLocation(
-    BuildContext context,
-    BackupService backup,
-  ) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final settings = await ref.read(settingsRepositoryProvider).get();
-    final targets = await ref
-        .read(autoBackupServiceProvider)
-        .buildEnabledTargets(settings);
-
-    if (targets.isEmpty) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('未配置备份位置，请配置本地目录')),
-      );
-      return;
-    }
-    // 列出各目的地的备份文件（最新在前）。
-    final entries = <_BackupEntry>[];
-    for (final target in targets) {
-      try {
-        final files = await target.list();
-        files.sort((a, b) => (b.modifiedAt ?? _epoch)
-            .compareTo(a.modifiedAt ?? _epoch));
-        entries.addAll(files.map((f) => _BackupEntry(target, f)));
-      } on Exception catch (e) {
-        messenger.showSnackBar(
-          SnackBar(content: Text('读取 ${target.label} 失败：$e')),
-        );
-      }
-    }
-    if (entries.isEmpty) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('备份位置没有可恢复的 .timecalc 文件')),
-      );
-      return;
-    }
-    if (!context.mounted) return;
-
-    final picked = await showDialog<_BackupEntry>(
-      context: context,
-      builder: (_) => _BackupFileListDialog(entries: entries),
-    );
-    if (picked == null || !context.mounted) return;
-
-    // 下载到临时文件后复用统一的恢复确认流程。
-    // 文件名净化（M14，防御性）：远端文件名可携带路径分隔符/`..`（如
-    // `..\..\evil`），直接拼接会写出临时目录之外。只取末段并拒绝 `..`。
-    final rawName = picked.file.fileName;
-    final safeName = rawName.split(RegExp(r'[\\/]')).last;
-    if (safeName.isEmpty || safeName == '..' || safeName.contains('..')) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('备份文件名不合法，已取消恢复')),
-      );
-      return;
-    }
-    try {
-      final dir = await Directory.systemTemp.createTemp('timecalc-restore');
-      final file = File('${dir.path}${Platform.pathSeparator}$safeName');
-      final bytes = await picked.target.download(picked.file);
-      await file.writeAsBytes(bytes);
-      if (!context.mounted) return;
-      await _confirmAndRestore(context, backup, messenger, file);
-    } on Exception catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('下载备份失败：$e')));
-    }
-  }
-
   /// 统一恢复确认流程：读清单 → 确认合并/覆盖 → 执行 → 全量刷新缓存。
   Future<void> _confirmAndRestore(
     BuildContext context,
@@ -478,72 +375,5 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     final last = settings.lastAutoBackupAt;
     if (last == null) return '尚未执行过自动备份';
     return '上次成功：${DateFormat('yyyy-MM-dd HH:mm').format(last.toLocal())}';
-  }
-
-  static final DateTime _epoch = DateTime.fromMillisecondsSinceEpoch(0);
-}
-
-/// 备份条目：目的地 + 文件。
-class _BackupEntry {
-  const _BackupEntry(this.target, this.file);
-
-  final BackupTarget target;
-  final RemoteBackupFile file;
-}
-
-/// 备份文件选择对话框：按目的地分组列出（来源标签 + 文件名 + 时间 + 大小）。
-class _BackupFileListDialog extends StatelessWidget {
-  const _BackupFileListDialog({required this.entries});
-
-  final List<_BackupEntry> entries;
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('选择要恢复的备份'),
-      content: SizedBox(
-        width: 460,
-        height: 420,
-        child: ListView.builder(
-          itemCount: entries.length,
-          itemBuilder: (context, index) {
-            final entry = entries[index];
-            final modified = entry.file.modifiedAt?.toLocal();
-            return ListTile(
-              dense: true,
-              leading: const Icon(Icons.description_outlined),
-              title: Text(
-                entry.file.fileName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              subtitle: Text(
-                [
-                  entry.target.label,
-                  if (modified != null)
-                    DateFormat('yyyy-MM-dd HH:mm').format(modified),
-                  _formatSize(entry.file.size),
-                ].join(' · '),
-              ),
-              onTap: () => Navigator.of(context).pop(entry),
-            );
-          },
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
-        ),
-      ],
-    );
-  }
-
-  static String _formatSize(int bytes) {
-    if (bytes <= 0) return '';
-    if (bytes < 1024) return '$bytes B';
-    final kb = bytes / 1024;
-    if (kb < 1024) return '${kb.toStringAsFixed(1)} KB';
-    return '${(kb / 1024).toStringAsFixed(1)} MB';
   }
 }
