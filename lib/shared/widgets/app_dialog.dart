@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/desktop/window_chrome.dart';
+import '../../core/providers/motion_provider.dart';
 import '../../core/theme/accent_palette.dart';
 import '../../core/theme/app_tokens.dart';
 
@@ -50,13 +52,24 @@ class AppDialog extends StatelessWidget {
       barrierColor: Colors.black54,
       transitionDuration: AppTokens.motionNormal,
       transitionBuilder: (context, animation, secondaryAnimation, child) {
-        return FadeTransition(
-          opacity: CurvedAnimation(
-            parent: animation,
-            curve: AppTokens.motionCurve,
-          ),
-          child: child,
+        // 入场动效（2026-08-20 动效改造）：淡入 + 0.96→1.0 轻微放大，
+        // 比纯淡入更有「卡片浮现」感；开启「减少动画」时退化为纯淡入。
+        final motion = ProviderScope.containerOf(
+          context,
+          listen: false,
+        ).read(motionControllerProvider);
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: AppTokens.motionCurve,
         );
+        Widget result = FadeTransition(opacity: curved, child: child);
+        if (motion.enabled) {
+          result = ScaleTransition(
+            scale: Tween<double>(begin: 0.96, end: 1.0).animate(curved),
+            child: result,
+          );
+        }
+        return result;
       },
       pageBuilder: (context, animation, secondaryAnimation) {
         return AppDialog(

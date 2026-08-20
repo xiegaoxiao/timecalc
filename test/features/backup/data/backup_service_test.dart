@@ -395,10 +395,13 @@ void main() {
       final tamperedFile = tempFile('unknown-type.timecalc');
       await tamperedFile.writeAsBytes(ZipEncoder().encodeBytes(tampered));
 
-      // 清单解析出的 type 为 null（未知），validate 拒绝。
-      final manifest = await backup.readBackupManifest(tamperedFile);
-      expect(manifest.type, isNull);
-      expect(manifest.validate(), isNotNull);
+      // 清单解析出的 type 为 null（未知）；readBackupManifest 在解析阶段
+      // 即校验并抛 BackupException（与 restoreBackup 同一校验，避免「预览
+      // 正常、恢复才报错」的割裂），不再返回待校验的 manifest。
+      await expectLater(
+        backup.readBackupManifest(tamperedFile),
+        throwsA(isA<BackupException>()),
+      );
 
       await expectLater(
         backup.restoreBackup(tamperedFile, mode: RestoreMode.merge),

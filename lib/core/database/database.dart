@@ -55,6 +55,9 @@ Future<void> dropColumnIfExists(
 /// （ai_providers 表 + settings 的 5 个 ai_* 列 + 6 个 webdav/sync 列），
 /// 随后让 drift 把 user_version 写回当前版本。原数据
 /// （目标/任务/科目/模板/设置）全部保留，且各操作幂等（表/列不存在时跳过）。
+///
+/// 注意：只清理「当前代码不认识」的结构。当前版本（v15）认识
+/// reduce_motion 列，故不在此删除（降级到 v15 时该列保留）。
 Future<void> downgradeCleanup(Migrator m) async {
   final db = m.database;
   // v13 -> v14 新增的 AI 供应商表（可能不存在，IF NOT EXISTS 语义由
@@ -84,7 +87,7 @@ Future<void> downgradeCleanup(Migrator m) async {
   }
 }
 
-/// TimeCalc 本地数据库（schema v14）。
+/// TimeCalc 本地数据库（schema v15）。
 ///
 /// v1：目标/科目/任务三张表。
 /// v2：Tasks 增加 original_planned_date；新增 Settings 计划偏好表（M2）。
@@ -110,6 +113,9 @@ Future<void> downgradeCleanup(Migrator m) async {
 ///     删列用幂等 dropColumnIfExists（列不存在跳过），迁移可重复/可恢复。
 /// v14：Settings 增加 accent_color（2026-08-16 主题色系：green/blue，
 ///     设备级外观配置，不进入业务备份；带默认值旧行免回填）。
+/// v15：Settings 增加 reduce_motion（2026-08-20 动效改造：开启后全局
+///     过渡/入场动效时长归零，仅保留必要操作反馈；设备级外观配置，
+///     不进入业务备份；带默认值旧行免回填）。
 /// 后续 schema 变更必须提供 migration 与 migration 测试（SOP S3、NFR-2）。
 @DriftDatabase(
   tables: [
@@ -129,7 +135,7 @@ class AppDatabase extends _$AppDatabase {
   factory AppDatabase.open() => AppDatabase(driftDatabase(name: 'timecalc'));
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -325,6 +331,16 @@ class AppDatabase extends _$AppDatabase {
             m,
             schema.settings,
             schema.settings.accentColor,
+          );
+        },
+        from14To15: (m, schema) async {
+          // v14 -> v15：Settings 增加减少动画开关 reduce_motion（2026-08-20
+          // 动效改造）。带默认值旧行免回填；加列用幂等 helper 防半迁移
+          // 重复（与 v11->v12 themeMode 同模式）。
+          await addColumnIfMissing(
+            m,
+            schema.settings,
+            schema.settings.reduceMotion,
           );
         },
       )(migrator, from, to);

@@ -9,6 +9,7 @@ import 'package:timecalc/core/database/database_provider.dart';
 import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/goals/data/milestone_repository.dart';
+import 'package:timecalc/shared/widgets/completion_checkbox.dart';
 
 import '../../../shared/nav_helper.dart';
 
@@ -111,7 +112,7 @@ void main() {
     expect(find.textContaining('共 9 个里程碑 · 0 个已完成'), findsOneWidget);
 
     // 勾选完成 → 状态更新并刷新总览。
-    await tester.tap(find.byType(Checkbox).first);
+    await tester.tap(find.byType(CompletionCheckbox).first);
     await tester.pumpAndSettle();
     expect(find.textContaining('共 9 个里程碑 · 1 个已完成'), findsOneWidget);
     expect(find.text('里程碑 1'), findsOneWidget); // 划线行仍在

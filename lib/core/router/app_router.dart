@@ -23,6 +23,7 @@ import '../../features/tasks/presentation/goal_tasks_page.dart';
 import '../../features/tasks/presentation/subject_task_page.dart';
 import '../../features/today/presentation/today_page.dart';
 import '../providers/clock_provider.dart';
+import '../providers/motion_provider.dart';
 import '../theme/app_tokens.dart';
 
 /// 主导航目的地（v1.12：今天 / 计划 / 目标 / 进度 / 设置）。
@@ -380,7 +381,11 @@ class _DesktopShell extends StatelessWidget {
                 ...List.generate(AppDestination.values.length, (index) {
                   final dest = AppDestination.values[index];
                   final isSelected = index == navigationShell.currentIndex;
-                  return _buildNavItem(context, dest, isSelected, index);
+                  return _NavItem(
+                    destination: dest,
+                    isSelected: isSelected,
+                    onTap: () => onDestinationSelected(index),
+                  );
                 }),
                 const Spacer(),
               ],
@@ -391,52 +396,118 @@ class _DesktopShell extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _buildNavItem(
-    BuildContext context,
-    AppDestination dest,
-    bool isSelected,
-    int index,
-  ) {
+/// 侧栏单个导航项（2026-08-20 动效改造）。
+///
+/// 交互反馈（克制微交互）：hover 淡入主色底 + 点击光标；选中态左侧 3px
+/// 竖条指示器高度生长、图标 outlined↔filled 平滑切换、标签文字加粗换色。
+/// 动画时长随「减少动画」开关归零（[motionControllerProvider]），
+/// 反馈仍即时呈现。
+class _NavItem extends ConsumerStatefulWidget {
+  const _NavItem({
+    required this.destination,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final AppDestination destination;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  ConsumerState<_NavItem> createState() => _NavItemState();
+}
+
+class _NavItemState extends ConsumerState<_NavItem> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final motion = ref.watch(motionControllerProvider);
+    final dest = widget.destination;
+    final isSelected = widget.isSelected;
     final icon = isSelected ? dest.selectedIcon : dest.icon;
     final color = isSelected ? scheme.primary : scheme.onSurfaceVariant;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-          onTap: () => onDestinationSelected(index),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                if (isSelected)
-                  Container(
+    // hover/选中背景：浅色用主色淡底，深色用 surfaceContainerHighest，
+    // 选中项 hover 仍保持主色淡底（层级一致）。
+    final hoverColor = isSelected
+        ? scheme.primary.withValues(alpha: 0.10)
+        : (Theme.of(context).brightness == Brightness.dark
+            ? scheme.surfaceContainerHighest
+            : scheme.primary.withValues(alpha: 0.06));
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+            onTap: widget.onTap,
+            child: AnimatedContainer(
+              duration: motion.duration(AppTokens.motionFast),
+              curve: motion.curve,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+              decoration: BoxDecoration(
+                color: _hovered ? hoverColor : Colors.transparent,
+                borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+              ),
+              child: Row(
+                children: [
+                  // 选中竖条指示器：高度生长 + 淡入（未选中 0 高度不占位跳动）。
+                  AnimatedContainer(
+                    duration: motion.duration(AppTokens.motionFast),
+                    curve: motion.curve,
                     width: 3,
-                    height: 20,
+                    height: isSelected ? 20 : 0,
                     margin: const EdgeInsets.only(right: 12),
                     decoration: BoxDecoration(
                       color: scheme.primary,
                       borderRadius: BorderRadius.circular(2),
                     ),
-                  )
-                else
-                  const SizedBox(width: 15),
-                Icon(icon, size: 20, color: color),
-                const SizedBox(width: 12),
-                Text(
-                  dest.label,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight:
-                        isSelected ? FontWeight.w600 : FontWeight.w500,
-                    color: color,
                   ),
-                ),
-              ],
+                  // 图标 outlined↔filled 切换：AnimatedSwitcher 淡入淡出，
+                  // 外包 RepaintBoundary 隔离重绘（局部小 widget，不触整页合成）。
+                  RepaintBoundary(
+                    child: AnimatedSwitcher(
+                      duration: motion.duration(
+                        const Duration(milliseconds: 150),
+                      ),
+                      switchInCurve: motion.curve,
+                      switchOutCurve: motion.curve,
+                      transitionBuilder: (child, animation) =>
+                          FadeTransition(opacity: animation, child: child),
+                      child: Icon(
+                        icon,
+                        key: ValueKey(icon),
+                        size: 20,
+                        color: color,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  AnimatedDefaultTextStyle(
+                    duration: motion.duration(AppTokens.motionFast),
+                    curve: motion.curve,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight:
+                          isSelected ? FontWeight.w600 : FontWeight.w500,
+                      color: color,
+                    ),
+                    child: Text(dest.label),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

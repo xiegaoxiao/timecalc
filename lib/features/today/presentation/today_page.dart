@@ -7,6 +7,7 @@ import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../core/providers/app_refresh.dart';
+import '../../../core/providers/motion_provider.dart';
 import '../../../core/theme/accent_palette.dart';
 import '../../../core/theme/app_semantic_colors.dart';
 import '../../../core/theme/app_tokens.dart';
@@ -18,6 +19,7 @@ import '../../../services/load_service.dart';
 import '../../../services/statistics_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/celebration_overlay.dart';
+import '../../../shared/widgets/hoverable_card.dart';
 import '../../../shared/widgets/page_skeletons.dart';
 import '../../../shared/widgets/progressive_rows.dart';
 import '../../../shared/widgets/section_header.dart';
@@ -190,13 +192,18 @@ class _TodayPageState extends ConsumerState<TodayPage> {
 
     // 今日任务全部完成庆祝（v1.11）：从非全完成跃迁到全完成（且确有任务）
     // 时在 Overlay 层播一次彩带；首帧即全完成不触发，非全完成后复位标记。
+    // 开启「减少动画」时不播彩带（静默完成），但仍复位标记避免开关切换后
+    // 补播骚扰。
+    final reduceMotion = ref.watch(motionControllerProvider).skipEntrance;
     final doneCount = todayTasks.where((t) => t.status == 'done').length;
     final allDone = todayTasks.isNotEmpty && doneCount == todayTasks.length;
     if (allDone && !_celebratedDone) {
       _celebratedDone = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _celebratedDone) showCelebration(context);
-      });
+      if (!reduceMotion) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _celebratedDone) showCelebration(context);
+        });
+      }
     } else if (!allDone && _celebratedDone) {
       _celebratedDone = false;
     }
@@ -226,13 +233,16 @@ class _TodayPageState extends ConsumerState<TodayPage> {
               // 今日概览常驻：有活跃目标即显示（空态用 `--` 无数据语义），
               // 把「今日计划量与完成度」前置到首页。
               if (activeGoals.isNotEmpty) ...[
-                _LoadOverviewCard(
-                  load: load,
-                  available: availableMinutes,
-                  over: over,
-                  stats: todayStats,
-                  remainingMinutes: _stats.remainingMinutes(activeTodoTasks),
-                  hasAnyTask: hasAnyTask,
+                _StaggeredEntry(
+                  index: 1,
+                  child: _LoadOverviewCard(
+                    load: load,
+                    available: availableMinutes,
+                    over: over,
+                    stats: todayStats,
+                    remainingMinutes: _stats.remainingMinutes(activeTodoTasks),
+                    hasAnyTask: hasAnyTask,
+                  ),
                 ),
                 const SizedBox(height: 8),
               ],
@@ -242,9 +252,11 @@ class _TodayPageState extends ConsumerState<TodayPage> {
                   onRetry: onRetryUnfinished,
                 ),
               if (unfinished.isNotEmpty && !_bannerDismissed) ...[
-                _UnfinishedBanner(
-                  count: unfinished.length,
-                  onDeferNext: () async {
+                _StaggeredEntry(
+                  index: 2,
+                  child: _UnfinishedBanner(
+                    count: unfinished.length,
+                    onDeferNext: () async {
                     final next = _defer.nextAvailableDate(
                       today: today,
                       availableWeekdays: weekdays,
@@ -284,6 +296,7 @@ class _TodayPageState extends ConsumerState<TodayPage> {
                     if (ok) onChanged();
                   },
                   onKeepOriginal: () => setState(() => _bannerDismissed = true),
+                  ),
                 ),
                 const SizedBox(height: 8),
               ],
@@ -387,8 +400,10 @@ class _TodayPageState extends ConsumerState<TodayPage> {
                         goalTitle: goalsById[todayTasks[i].goalId]?.title,
                         subjects: subjectsByGoal[todayTasks[i].goalId],
                         onChanged: onChanged,
-                        // 今日任务：勾选仅划线、不消失，即时完成即可，无需撤回
-                        //（default enableCompleteUndo=false 不进入 5 秒批次）。
+                        // 今日任务勾选进入 5 秒撤回批次：勾选仅划线、不消失，
+                        // 5 秒内可经右下角 FAB 整批撤回，到期才定稿写库
+                        //（FR-5.2；3afc8ac 重构时曾误删此标记，回归）。
+                        enableCompleteUndo: true,
                       ),
                     ],
                   ),
@@ -424,7 +439,7 @@ class _TodayPageState extends ConsumerState<TodayPage> {
 /// 副标题展示可用时长，超出时追加「超出 X 分」文案与警告图标
 /// （状态不只依赖颜色表达）。FR-7.1 展示今日完成数/总数、今日已完成
 /// 预估时长与目标剩余工作量。
-class _LoadOverviewCard extends StatelessWidget {
+class _LoadOverviewCard extends ConsumerWidget {
   const _LoadOverviewCard({
     required this.load,
     required this.available,
@@ -444,9 +459,10 @@ class _LoadOverviewCard extends StatelessWidget {
   final bool hasAnyTask;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final semantics = AppSemanticColors.of(context);
     final scheme = Theme.of(context).colorScheme;
+    final motion = ref.watch(motionControllerProvider);
     // 无数据语义：今日无任务时「总计/完成」用 `--`，避免 0/0 误导；
     // 应用完全无任务时「目标剩余」也用 `--`（区分「没计划」与「已排完」）。
     final hasTodayTask = stats.totalCount > 0;
@@ -511,13 +527,14 @@ class _LoadOverviewCard extends StatelessWidget {
                 // v1.17 平衡修整：圆弧用对称缓动（easeInOutCubic）——旧
                 // easeOut 前快后慢，扫弧「冲刺后拖尾」观感失衡；中心 N/M
                 // 与圆弧同源计数，勾选后数字随圆弧一起滑到新比例，不脱节。
+                // 开启「减少动画」时直接跳到目标比例（时长归零）。
                 SizedBox(
                   width: 74,
                   height: 74,
                   child: TweenAnimationBuilder<double>(
                     tween: Tween(end: progress),
-                    duration: _kMetricAnimDuration,
-                    curve: Curves.easeInOutCubic,
+                    duration: motion.duration(_kMetricAnimDuration),
+                    curve: motion.curve,
                     builder: (context, value, _) {
                       final animatedDone = (value * stats.totalCount).round();
                       return Stack(
@@ -717,24 +734,71 @@ class _MetricHighlight extends StatelessWidget {
   }
 }
 
+/// 今日页区块首屏错峰入场（2026-08-20 动效改造）。
+///
+/// 轻量版入场：淡入 + 8px 上滑，时长 [AppTokens.motionSlow]，按区块索引
+/// 错峰 40ms（index 传 0/1/2…），首页区块依次浮现而非同时弹出。动画只在
+/// 首帧触发一次（TweenAnimationBuilder 单次播放），数据刷新不重播；
+/// 开启「减少动画」时直接显示（时长归零）。仅限首屏静态区块——懒加载
+/// 任务行会随滚动动态创建，不得包裹（会随滚动重复播放）。
+class _StaggeredEntry extends StatelessWidget {
+  const _StaggeredEntry({required this.index, required this.child});
+
+  /// 区块顺序：0 = 倒计时卡，1 = 负载卡，2 = 横幅/任务区块头…
+  final int index;
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final motion = ProviderScope.containerOf(context, listen: false)
+        .read(motionControllerProvider);
+    if (motion.skipEntrance) return child;
+    final delay = Duration(milliseconds: 40 * index);
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: AppTokens.motionSlow,
+      curve: AppTokens.motionCurve,
+      // 错峰：动画总时长内按 index 推迟起始帧。
+      onEnd: () {},
+      builder: (context, value, child) {
+        // 用延迟窗口计算有效进度：delay 前为 0（未出现），随后从 0 动画到 1。
+        final elapsed = (AppTokens.motionSlow.inMilliseconds * value) -
+            delay.inMilliseconds;
+        final t = (elapsed / AppTokens.motionSlow.inMilliseconds).clamp(0.0, 1.0);
+        return Opacity(
+          opacity: Curves.easeOut.transform(t),
+          child: Transform.translate(
+            offset: Offset(0, 8 * (1 - Curves.easeOut.transform(t))),
+            child: child,
+          ),
+        );
+      },
+      child: child,
+    );
+  }
+}
+
 /// 分钟数动画值：null 显示 `-- 分`（无数据）；有值用 TweenAnimationBuilder
 /// 计数，数值变化时从旧值滑到新值，与进度环同时长同缓动（v1.17）。
-class _AnimatedMinutesValue extends StatelessWidget {
+/// 开启「减少动画」时直接显示目标值（时长归零）。
+class _AnimatedMinutesValue extends ConsumerWidget {
   const _AnimatedMinutesValue({required this.minutes, required this.style});
 
   final int? minutes;
   final TextStyle? style;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final minutes = this.minutes;
     if (minutes == null) {
       return Text('-- 分', style: style);
     }
+    final motion = ref.watch(motionControllerProvider);
     return TweenAnimationBuilder<double>(
       tween: Tween(end: minutes.toDouble()),
-      duration: _kMetricAnimDuration,
-      curve: Curves.easeInOutCubic,
+      duration: motion.duration(_kMetricAnimDuration),
+      curve: motion.curve,
       builder: (context, value, _) =>
           Text(DurationFormat.minutes(value.round()), style: style),
     );
@@ -1210,6 +1274,7 @@ class _CountdownCard extends ConsumerWidget {
     final today = ref.watch(clockProvider)();
     final nextMilestone = ref.watch(nextUpcomingMilestoneProvider(goal.id));
     final settings = ref.watch(settingsProvider).valueOrNull;
+    final motion = ref.watch(motionControllerProvider);
     final (phase, days) = _countdown.evaluate(
       deadlineDate: goal.deadlineDate,
       today: today,
@@ -1257,41 +1322,45 @@ class _CountdownCard extends ConsumerWidget {
 
     return Animate(
       key: ValueKey('countdown-${goal.id}'),
-      effects: [
-        FadeEffect(
-          duration: AppTokens.motionSlow,
-          curve: AppTokens.motionCurve,
-        ),
-        SlideEffect(
-          begin: const Offset(0, -0.04),
-          end: Offset.zero,
-          duration: AppTokens.motionSlow,
-          curve: AppTokens.motionCurve,
-        ),
-      ],
-      child: Card(
-        margin: const EdgeInsets.only(bottom: 12),
-        clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(
+      // 开启「减少动画」时跳过入场效果（effects 为空即静止）。
+      effects: motion.skipEntrance
+          ? const []
+          : [
+              FadeEffect(
+                duration: AppTokens.motionSlow,
+                curve: AppTokens.motionCurve,
+              ),
+              SlideEffect(
+                begin: const Offset(0, -0.04),
+                end: Offset.zero,
+                duration: AppTokens.motionSlow,
+                curve: AppTokens.motionCurve,
+              ),
+            ],
+      // 倒计时卡可点：hover 边框加深 + 阴影增强 + 微上浮（桌面交互反馈）。
+      // 渐变底由 decoration 提供，与 HoverableCard 的水波纹叠加。
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: HoverableCard(
+          onTap: () => context.push('/goals/${goal.id}'),
           borderRadius: BorderRadius.circular(AppTokens.radiusXl),
-          side: BorderSide(color: onHero.withValues(alpha: 0.12)),
-        ),
-        child: DecoratedBox(
           decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppTokens.radiusXl),
             // 浅色强调底：brand 7% 叠白（深色 26% 叠 surface），
             // 随当前色系（绿色/蓝色主题各自变化）。
             color: Color.alphaBlend(
               accent.brandDeep.withValues(alpha: isDark ? 0.26 : 0.07),
               isDark ? scheme.surface : Colors.white,
             ),
+            border: Border.all(color: onHero.withValues(alpha: 0.12)),
           ),
-          child: InkWell(
-            onTap: () => context.push('/goals/${goal.id}'),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 14, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+          hoverBorderColor: onHero.withValues(alpha: 0.38),
+          hoverShadowOpacity: 0.08,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 14, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                   // 标题行：目标名 + 右侧紧凑倒计时徽标。
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1403,7 +1472,6 @@ class _CountdownCard extends ConsumerWidget {
             ),
           ),
         ),
-      ),
     );
   }
 }

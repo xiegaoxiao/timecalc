@@ -11,6 +11,7 @@ import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/goals/data/subject_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 import 'package:timecalc/features/tasks/presentation/task_tile.dart';
+import 'package:timecalc/shared/widgets/completion_checkbox.dart';
 
 import '../../../shared/nav_helper.dart';
 
@@ -69,22 +70,25 @@ void main() {
     // 时长值与任务行时长 chip 可能同文案，用 findsWidgets。
     expect(find.text('今日总计'), findsOneWidget);
     expect(find.text('1 小时 30 分'), findsWidgets);
-    expect(find.text('可用时长'), findsOneWidget);
+    expect(find.text('今日可用'), findsOneWidget);
     expect(find.text('2 小时'), findsWidgets);
 
     // 勾选：立即反馈为勾选态，但进入 5 秒撤回批次——负载不变、数据库仍 todo。
-    await tester.tap(find.byType(Checkbox));
+    await tester.tap(find.byType(CompletionCheckbox));
+    // 不能用 pumpAndSettle：撤回 FAB 的 5 秒倒计时圆环持续动画，永不 settle。
+    // 用定步长 pump 推进 microtask（confirmCompleteTask 查库）+ 动画帧。
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
-    expect(find.textContaining('已勾选 1 项任务'), findsOneWidget);
+    expect(tester.widget<CompletionCheckbox>(find.byType(CompletionCheckbox)).value, isTrue);
+    expect(find.byTooltip('撤回 1 项勾选'), findsOneWidget);
     expect(find.text('1 小时 30 分'), findsWidgets);
     expect((await tasks.byId(created.id))?.status, 'todo');
 
     // 5 秒定稿：负载归零、状态 done、列表保留（划线）。
     await tester.pump(const Duration(seconds: 5));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('今日总计'), findsOneWidget);
     expect(find.text('0 分'), findsWidgets); // 今日总计/目标剩余均归零
@@ -220,7 +224,7 @@ void main() {
     expect(find.text('昨日及更早有 1 个未完成任务'), findsOneWidget);
 
     // 区块内 TaskTile 的完成复选框（今日概览常驻后区块在首屏外，先滚动）。
-    final checkbox = find.byType(Checkbox);
+    final checkbox = find.byType(CompletionCheckbox);
     await tester.ensureVisible(checkbox);
     await tester.pumpAndSettle();
     await tester.tap(checkbox);
@@ -305,6 +309,12 @@ void main() {
   });
 
   testWidgets('今日任务跨目标展示并标注目标名（FR-1.5）', (tester) async {
+    // 今日页含倒计时卡 + 负载卡，默认 600px 视口下任务列表被推出视口外
+    //（ProgressiveRows 懒加载不构建），加大视口让任务首屏可见。
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
     final goalA = await goals.create(title: '考研', deadlineDate: '2026-12-31');
     final goalB = await goals.create(title: '论文', deadlineDate: '2026-09-30');
     await tasks.create(
@@ -541,24 +551,27 @@ void main() {
 
     await pumpApp(tester);
 
-    await tester.tap(find.byType(Checkbox));
+    await tester.tap(find.byType(CompletionCheckbox));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
-    expect(find.text('撤回'), findsOneWidget);
+    expect(tester.widget<CompletionCheckbox>(find.byType(CompletionCheckbox)).value, isTrue);
+    // 右下角撤回 FAB（v1.11 起替代 SnackBar）。
+    expect(find.byTooltip('撤回 1 项勾选'), findsOneWidget);
 
-    // 点「撤回」：任务恢复未勾选、数据库仍 todo、SnackBar 收起、负载不变。
-    await tester.tap(find.text('撤回'));
-    await tester.pumpAndSettle();
+    // 点撤回：任务恢复未勾选、数据库仍 todo、FAB 收起、负载不变。
+    // 撤回后 FAB 的倒计时 _controller 仍在播放，不能用 pumpAndSettle。
+    await tester.tap(find.byTooltip('撤回 1 项勾选'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
-    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isFalse);
-    expect(find.text('撤回'), findsNothing);
+    expect(tester.widget<CompletionCheckbox>(find.byType(CompletionCheckbox)).value, isFalse);
+    expect(find.byTooltip('撤回 1 项勾选'), findsNothing);
     expect((await tasks.byId(created.id))?.status, 'todo');
     expect(find.text('1 小时 30 分'), findsWidgets);
   });
 
-  testWidgets('撤回 SnackBar 显示倒计时：每秒递减，到时定稿完成', (tester) async {
+  testWidgets('撤回 FAB 倒计时圆环：5 秒窗口内收缩，到时定稿完成', (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
     final created = await tasks.create(
       goalId: goal.id,
@@ -569,25 +582,43 @@ void main() {
 
     await pumpApp(tester);
 
-    await tester.tap(find.byType(Checkbox));
+    await tester.tap(find.byType(CompletionCheckbox));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    // 初始显示 5 秒倒计时。
-    expect(find.textContaining('5 秒后自动完成'), findsOneWidget);
+    // 初始：FAB 显示，倒计时圆环满环（value 接近 1 = 刚开始收缩）。
+    expect(find.byTooltip('撤回 1 项勾选'), findsOneWidget);
+    // 圆环是 FAB 的 Stack 首层（Tooltip 只包中央按钮），经 Tooltip 的
+    // 祖先链定位：ancestor(of: tooltip) 里唯一 56×56 SizedBox 即 FAB 外壳。
+    final fabBox = find.ancestor(
+      of: find.byTooltip('撤回 1 项勾选'),
+      matching: find.byWidgetPredicate(
+        (w) => w is SizedBox && w.width == 56 && w.height == 56,
+      ),
+    );
+    CircularProgressIndicator ringOf() => tester.widget<CircularProgressIndicator>(
+      find.descendant(
+        of: fabBox,
+        matching: find.byType(CircularProgressIndicator),
+      ),
+    );
+    expect(ringOf().value, greaterThan(0.8)); // 刚勾选不久，环几乎满
 
-    // 每秒递减：4 → 1。
-    await tester.pump(const Duration(seconds: 1));
-    expect(find.textContaining('4 秒后自动完成'), findsOneWidget);
+    // 时间推移：圆环收缩（value 减小）。
     await tester.pump(const Duration(seconds: 3));
-    expect(find.textContaining('1 秒后自动完成'), findsOneWidget);
+    expect(ringOf().value, lessThan(0.8));
 
-    // 第 5 秒定稿：任务完成、SnackBar 收起。
-    await tester.pump(const Duration(seconds: 1));
-    await tester.pumpAndSettle();
+    // 第 5 秒定稿：任务完成、FAB 消失。
+    await tester.pump(const Duration(seconds: 3));
+    // finalize 里 setDoneMany 是真实 DB 写库，runAsync 推进；随后定步长
+    // pump 处理刷新（FAB 已消失，无持续动画，但仍避免 pumpAndSettle 卡计时）。
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+    });
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect((await tasks.byId(created.id))?.status, 'done');
-    expect(find.textContaining('秒后自动完成'), findsNothing);
+    expect(find.byTooltip('撤回 1 项勾选'), findsNothing);
   });
 
   testWidgets('定稿瞬间不闪回未勾选：数据落地前保持勾选显示（2026-08-16 动画优化）', (tester) async {
@@ -601,7 +632,7 @@ void main() {
 
     await pumpApp(tester);
 
-    await tester.tap(find.byType(Checkbox));
+    await tester.tap(find.byType(CompletionCheckbox));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -611,12 +642,12 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
     await tester.pump(); // 渲染定稿中间态（写库/刷新 future 尚未完成）
 
-    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
+    expect(tester.widget<CompletionCheckbox>(find.byType(CompletionCheckbox)).value, isTrue);
 
     await tester.pumpAndSettle();
 
     // 数据落地后：真实 status 驱动，仍为勾选（划线态）。
-    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
+    expect(tester.widget<CompletionCheckbox>(find.byType(CompletionCheckbox)).value, isTrue);
     expect((await tasks.byId(created.id))?.status, 'done');
   });
 
@@ -631,22 +662,26 @@ void main() {
 
     await pumpApp(tester);
 
-    await tester.tap(find.byType(Checkbox).at(0));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byType(Checkbox).at(1));
-    await tester.pumpAndSettle();
+    await tester.tap(find.byType(CompletionCheckbox).at(0));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.byType(CompletionCheckbox).at(1));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
-    // 同一 5 秒窗口内的多次勾选并入同一批次，撤回 SnackBar 显示总数。
-    expect(find.textContaining('已勾选 2 项任务'), findsOneWidget);
-    expect(tester.widget<Checkbox>(find.byType(Checkbox).at(0)).value, isTrue);
-    expect(tester.widget<Checkbox>(find.byType(Checkbox).at(1)).value, isTrue);
+    // 同一 5 秒窗口内的多次勾选并入同一批次，右下角撤回 FAB 显示总数。
+    expect(find.byTooltip('撤回 2 项勾选'), findsOneWidget);
+    expect(tester.widget<CompletionCheckbox>(find.byType(CompletionCheckbox).at(0)).value, isTrue);
+    expect(tester.widget<CompletionCheckbox>(find.byType(CompletionCheckbox).at(1)).value, isTrue);
 
     // 整批撤回：两任务全部恢复未勾选，数据库仍 todo。
-    await tester.tap(find.text('撤回'));
-    await tester.pumpAndSettle();
+    // 撤回后 FAB 倒计时 _controller 仍在播放，不能用 pumpAndSettle。
+    await tester.tap(find.byTooltip('撤回 2 项勾选'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
-    expect(tester.widget<Checkbox>(find.byType(Checkbox).at(0)).value, isFalse);
-    expect(tester.widget<Checkbox>(find.byType(Checkbox).at(1)).value, isFalse);
+    expect(tester.widget<CompletionCheckbox>(find.byType(CompletionCheckbox).at(0)).value, isFalse);
+    expect(tester.widget<CompletionCheckbox>(find.byType(CompletionCheckbox).at(1)).value, isFalse);
     final list = await tasks.byDate('2026-08-05');
     expect(list.every((t) => t.status == 'todo'), isTrue);
   });
@@ -662,14 +697,14 @@ void main() {
 
     await pumpApp(tester);
 
-    await tester.tap(find.byType(Checkbox).at(0));
+    await tester.tap(find.byType(CompletionCheckbox).at(0));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
-    await tester.tap(find.byType(Checkbox).at(1));
+    await tester.tap(find.byType(CompletionCheckbox).at(1));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.textContaining('已勾选 2 项任务'), findsOneWidget);
+    expect(find.byTooltip('撤回 2 项勾选'), findsOneWidget);
 
     // 无撤回：5 秒后整批定稿为完成（今日列表保留，划线态）。
     await tester.pump(const Duration(seconds: 5));
@@ -693,22 +728,23 @@ void main() {
     await pumpApp(tester);
     expect(find.text('过期任务'), findsOneWidget);
 
-    final checkbox = find.byType(Checkbox);
+    final checkbox = find.byType(CompletionCheckbox);
     await tester.ensureVisible(checkbox);
-    await tester.pumpAndSettle();
+    await tester.pump();
     await tester.tap(checkbox);
     await tester.pump();
-    await tester.pumpAndSettle(); // 撤回 SnackBar 完全滑入后再点按钮
+    await tester.pump(const Duration(milliseconds: 300)); // FAB 滑入（倒计时动画中不能用 pumpAndSettle）
 
-    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
+    expect(tester.widget<CompletionCheckbox>(find.byType(CompletionCheckbox)).value, isTrue);
 
-    await tester.tap(find.text('撤回'));
-    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('撤回 1 项勾选'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
     // 撤回后：过期任务仍在区块与红条中，且恢复未勾选、数据库 todo。
     expect(find.text('过期任务'), findsOneWidget);
     expect(find.text('昨日及更早有 1 个未完成任务'), findsOneWidget);
-    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isFalse);
+    expect(tester.widget<CompletionCheckbox>(find.byType(CompletionCheckbox)).value, isFalse);
     expect((await tasks.byId(old.id))?.status, 'todo');
   });
 }

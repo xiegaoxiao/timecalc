@@ -10,6 +10,8 @@ import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 
+import 'package:timecalc/shared/widgets/completion_checkbox.dart';
+
 import '../../../shared/nav_helper.dart';
 
 /// 日历视图 Widget 测试（FR-3.4 / checklists §11 M2）。
@@ -133,9 +135,9 @@ void main() {
     expect(find.text('2026-08-06 星期四'), findsOneWidget);
 
     // 在选日面板完成任务，聚合同步更新。
-    await tester.ensureVisible(find.byType(Checkbox));
+    await tester.ensureVisible(find.byType(CompletionCheckbox));
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(Checkbox));
+    await tester.tap(find.byType(CompletionCheckbox));
     await tester.pumpAndSettle();
     expect(find.text('0m'), findsWidgets);
   });
@@ -208,9 +210,9 @@ void main() {
     expect(find.text('30m'), findsOneWidget);
 
     // 在日历选日面板完成任务。
-    await tester.ensureVisible(find.byType(Checkbox));
+    await tester.ensureVisible(find.byType(CompletionCheckbox));
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(Checkbox));
+    await tester.tap(find.byType(CompletionCheckbox));
     await tester.pumpAndSettle();
     expect(find.text('2h30m'), findsNothing);
 
@@ -235,7 +237,7 @@ void main() {
     expect(find.text('超出 30 分'), findsOneWidget);
 
     // 在今天页勾选完成（进入 5 秒撤回批次），5 秒定稿后负载归零。
-    await tester.tap(find.byType(Checkbox));
+    await tester.tap(find.byType(CompletionCheckbox));
     await tester.pumpAndSettle();
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();

@@ -165,4 +165,44 @@ void main() {
     expect((await SettingsRepository(db).get()).accentColor, 'green');
     expect(appAccent(tester).id, 'green');
   });
+
+  testWidgets('初始态：减少动画开关默认关闭', (tester) async {
+    await pumpPage(tester);
+
+    final tile = tester.widget<SwitchListTile>(
+      find.widgetWithText(SwitchListTile, '减少动画'),
+    );
+    expect(tile.value, isFalse);
+  });
+
+  testWidgets('打开「减少动画」开关：写库 + SnackBar', (tester) async {
+    await pumpPage(tester);
+
+    await tester.tap(find.widgetWithText(SwitchListTile, '减少动画'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('已减少动画'), findsOneWidget);
+    final saved = await SettingsRepository(db).get();
+    expect(saved.reduceMotion, isTrue);
+  });
+
+  testWidgets('减少动画持久化：预置开启进入页面选中、关闭恢复', (tester) async {
+    await SettingsRepository(db).updateReduceMotion(true);
+    await pumpPage(tester);
+
+    var tile = tester.widget<SwitchListTile>(
+      find.widgetWithText(SwitchListTile, '减少动画'),
+    );
+    expect(tile.value, isTrue);
+
+    await tester.tap(find.widgetWithText(SwitchListTile, '减少动画'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('已恢复动画'), findsOneWidget);
+    expect((await SettingsRepository(db).get()).reduceMotion, isFalse);
+    tile = tester.widget<SwitchListTile>(
+      find.widgetWithText(SwitchListTile, '减少动画'),
+    );
+    expect(tile.value, isFalse);
+  });
 }

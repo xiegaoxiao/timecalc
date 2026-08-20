@@ -3309,6 +3309,21 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
     requiredDuringInsert: false,
     defaultValue: const Constant('green'),
   );
+  static const VerificationMeta _reduceMotionMeta = const VerificationMeta(
+    'reduceMotion',
+  );
+  @override
+  late final GeneratedColumn<bool> reduceMotion = GeneratedColumn<bool>(
+    'reduce_motion',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("reduce_motion" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -3342,6 +3357,7 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
     lastAutoBackupAt,
     themeMode,
     accentColor,
+    reduceMotion,
     createdAt,
     updatedAt,
   ];
@@ -3429,6 +3445,15 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
         ),
       );
     }
+    if (data.containsKey('reduce_motion')) {
+      context.handle(
+        _reduceMotionMeta,
+        reduceMotion.isAcceptableOrUnknown(
+          data['reduce_motion']!,
+          _reduceMotionMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -3489,6 +3514,10 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
       accentColor: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}accent_color'],
+      )!,
+      reduceMotion: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}reduce_motion'],
       )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
@@ -3553,6 +3582,12 @@ class Setting extends DataClass implements Insertable<Setting> {
   /// （同 theme_mode），不进入业务数据备份（FR-9.5），覆盖恢复时保留
   /// 本设备选择。
   final String accentColor;
+
+  /// 减少动画开关（2026-08-20 动效改造，schema v15 引入）。
+  ///
+  /// 开启后全局过渡/入场动效时长归零（直接显示），仅保留必要操作反馈。
+  /// 设备级外观配置（同 theme_mode），不进入业务数据备份（FR-9.5）。
+  final bool reduceMotion;
   final DateTime createdAt;
   final DateTime updatedAt;
   const Setting({
@@ -3565,6 +3600,7 @@ class Setting extends DataClass implements Insertable<Setting> {
     this.lastAutoBackupAt,
     required this.themeMode,
     required this.accentColor,
+    required this.reduceMotion,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -3584,6 +3620,7 @@ class Setting extends DataClass implements Insertable<Setting> {
     }
     map['theme_mode'] = Variable<String>(themeMode);
     map['accent_color'] = Variable<String>(accentColor);
+    map['reduce_motion'] = Variable<bool>(reduceMotion);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -3604,6 +3641,7 @@ class Setting extends DataClass implements Insertable<Setting> {
           : Value(lastAutoBackupAt),
       themeMode: Value(themeMode),
       accentColor: Value(accentColor),
+      reduceMotion: Value(reduceMotion),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -3630,6 +3668,7 @@ class Setting extends DataClass implements Insertable<Setting> {
       ),
       themeMode: serializer.fromJson<String>(json['themeMode']),
       accentColor: serializer.fromJson<String>(json['accentColor']),
+      reduceMotion: serializer.fromJson<bool>(json['reduceMotion']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -3647,6 +3686,7 @@ class Setting extends DataClass implements Insertable<Setting> {
       'lastAutoBackupAt': serializer.toJson<DateTime?>(lastAutoBackupAt),
       'themeMode': serializer.toJson<String>(themeMode),
       'accentColor': serializer.toJson<String>(accentColor),
+      'reduceMotion': serializer.toJson<bool>(reduceMotion),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -3662,6 +3702,7 @@ class Setting extends DataClass implements Insertable<Setting> {
     Value<DateTime?> lastAutoBackupAt = const Value.absent(),
     String? themeMode,
     String? accentColor,
+    bool? reduceMotion,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => Setting(
@@ -3678,6 +3719,7 @@ class Setting extends DataClass implements Insertable<Setting> {
         : this.lastAutoBackupAt,
     themeMode: themeMode ?? this.themeMode,
     accentColor: accentColor ?? this.accentColor,
+    reduceMotion: reduceMotion ?? this.reduceMotion,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -3706,6 +3748,9 @@ class Setting extends DataClass implements Insertable<Setting> {
       accentColor: data.accentColor.present
           ? data.accentColor.value
           : this.accentColor,
+      reduceMotion: data.reduceMotion.present
+          ? data.reduceMotion.value
+          : this.reduceMotion,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -3723,6 +3768,7 @@ class Setting extends DataClass implements Insertable<Setting> {
           ..write('lastAutoBackupAt: $lastAutoBackupAt, ')
           ..write('themeMode: $themeMode, ')
           ..write('accentColor: $accentColor, ')
+          ..write('reduceMotion: $reduceMotion, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -3740,6 +3786,7 @@ class Setting extends DataClass implements Insertable<Setting> {
     lastAutoBackupAt,
     themeMode,
     accentColor,
+    reduceMotion,
     createdAt,
     updatedAt,
   );
@@ -3756,6 +3803,7 @@ class Setting extends DataClass implements Insertable<Setting> {
           other.lastAutoBackupAt == this.lastAutoBackupAt &&
           other.themeMode == this.themeMode &&
           other.accentColor == this.accentColor &&
+          other.reduceMotion == this.reduceMotion &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -3770,6 +3818,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
   final Value<DateTime?> lastAutoBackupAt;
   final Value<String> themeMode;
   final Value<String> accentColor;
+  final Value<bool> reduceMotion;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   const SettingsCompanion({
@@ -3782,6 +3831,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     this.lastAutoBackupAt = const Value.absent(),
     this.themeMode = const Value.absent(),
     this.accentColor = const Value.absent(),
+    this.reduceMotion = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
@@ -3795,6 +3845,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     this.lastAutoBackupAt = const Value.absent(),
     this.themeMode = const Value.absent(),
     this.accentColor = const Value.absent(),
+    this.reduceMotion = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
   }) : createdAt = Value(createdAt),
@@ -3809,6 +3860,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     Expression<DateTime>? lastAutoBackupAt,
     Expression<String>? themeMode,
     Expression<String>? accentColor,
+    Expression<bool>? reduceMotion,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
   }) {
@@ -3823,6 +3875,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
       if (lastAutoBackupAt != null) 'last_auto_backup_at': lastAutoBackupAt,
       if (themeMode != null) 'theme_mode': themeMode,
       if (accentColor != null) 'accent_color': accentColor,
+      if (reduceMotion != null) 'reduce_motion': reduceMotion,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
@@ -3838,6 +3891,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     Value<DateTime?>? lastAutoBackupAt,
     Value<String>? themeMode,
     Value<String>? accentColor,
+    Value<bool>? reduceMotion,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
   }) {
@@ -3852,6 +3906,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
       lastAutoBackupAt: lastAutoBackupAt ?? this.lastAutoBackupAt,
       themeMode: themeMode ?? this.themeMode,
       accentColor: accentColor ?? this.accentColor,
+      reduceMotion: reduceMotion ?? this.reduceMotion,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -3889,6 +3944,9 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     if (accentColor.present) {
       map['accent_color'] = Variable<String>(accentColor.value);
     }
+    if (reduceMotion.present) {
+      map['reduce_motion'] = Variable<bool>(reduceMotion.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -3910,6 +3968,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
           ..write('lastAutoBackupAt: $lastAutoBackupAt, ')
           ..write('themeMode: $themeMode, ')
           ..write('accentColor: $accentColor, ')
+          ..write('reduceMotion: $reduceMotion, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -7480,6 +7539,7 @@ typedef $$SettingsTableCreateCompanionBuilder =
       Value<DateTime?> lastAutoBackupAt,
       Value<String> themeMode,
       Value<String> accentColor,
+      Value<bool> reduceMotion,
       required DateTime createdAt,
       required DateTime updatedAt,
     });
@@ -7494,6 +7554,7 @@ typedef $$SettingsTableUpdateCompanionBuilder =
       Value<DateTime?> lastAutoBackupAt,
       Value<String> themeMode,
       Value<String> accentColor,
+      Value<bool> reduceMotion,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
     });
@@ -7549,6 +7610,11 @@ class $$SettingsTableFilterComposer
 
   ColumnFilters<String> get accentColor => $composableBuilder(
     column: $table.accentColor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get reduceMotion => $composableBuilder(
+    column: $table.reduceMotion,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7617,6 +7683,11 @@ class $$SettingsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get reduceMotion => $composableBuilder(
+    column: $table.reduceMotion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -7678,6 +7749,11 @@ class $$SettingsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<bool> get reduceMotion => $composableBuilder(
+    column: $table.reduceMotion,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -7722,6 +7798,7 @@ class $$SettingsTableTableManager
                 Value<DateTime?> lastAutoBackupAt = const Value.absent(),
                 Value<String> themeMode = const Value.absent(),
                 Value<String> accentColor = const Value.absent(),
+                Value<bool> reduceMotion = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => SettingsCompanion(
@@ -7734,6 +7811,7 @@ class $$SettingsTableTableManager
                 lastAutoBackupAt: lastAutoBackupAt,
                 themeMode: themeMode,
                 accentColor: accentColor,
+                reduceMotion: reduceMotion,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),
@@ -7748,6 +7826,7 @@ class $$SettingsTableTableManager
                 Value<DateTime?> lastAutoBackupAt = const Value.absent(),
                 Value<String> themeMode = const Value.absent(),
                 Value<String> accentColor = const Value.absent(),
+                Value<bool> reduceMotion = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
               }) => SettingsCompanion.insert(
@@ -7760,6 +7839,7 @@ class $$SettingsTableTableManager
                 lastAutoBackupAt: lastAutoBackupAt,
                 themeMode: themeMode,
                 accentColor: accentColor,
+                reduceMotion: reduceMotion,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),

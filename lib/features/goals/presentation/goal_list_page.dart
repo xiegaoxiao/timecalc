@@ -9,6 +9,7 @@ import '../../../core/database/tables.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../core/providers/app_refresh.dart';
+import '../../../core/providers/motion_provider.dart';
 import '../../../core/theme/accent_palette.dart';
 import '../../../core/theme/app_semantic_colors.dart';
 import '../../../core/theme/app_tokens.dart';
@@ -17,6 +18,7 @@ import '../../../core/utils/date_text.dart';
 import '../../../services/countdown_service.dart';
 import '../../../services/duration_format.dart';
 import '../../../shared/widgets/app_error_view.dart';
+import '../../../shared/widgets/hoverable_card.dart';
 
 import '../../../shared/widgets/section_header.dart';
 import '../../plan_import/presentation/plan_import_dialog.dart';
@@ -324,6 +326,7 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
   @override
   Widget build(BuildContext context) {
     final today = ref.watch(clockProvider)();
+    final motion = ref.watch(motionControllerProvider);
     final (phase, days) = _countdown.evaluate(
       deadlineDate: goal.deadlineDate,
       today: today,
@@ -352,15 +355,12 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
     final totalMinutes = completion?.totalMinutes ?? 0;
     final remainingMinutes = totalMinutes - doneMinutes;
 
-    return Card(
+    return HoverableCard(
       // 网格间距由 GridView delegate 控制，卡片自身不带 margin。
-      margin: EdgeInsets.zero,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        // push 压入导航栈，详情页 AppBar 自动出现返回箭头。
-        onTap: () => _openDetail(context, ref),
-        child: Stack(
-          children: [
+      // hover 反馈：边框加深 + 阴影增强 + 微上浮（随「减少动画」开关归零）。
+      onTap: () => _openDetail(context, ref),
+      child: Stack(
+        children: [
             // 左侧目标专属色带：4px 贯穿整卡，一眼区分不同目标。
             Positioned(
               left: 0,
@@ -448,8 +448,10 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
                             Positioned.fill(
                               child: TweenAnimationBuilder<double>(
                                 tween: Tween(end: progress),
-                                duration: const Duration(milliseconds: 320),
-                                curve: Curves.easeOutCubic,
+                                duration: motion.duration(
+                                  const Duration(milliseconds: 320),
+                                ),
+                                curve: motion.curve,
                                 builder: (context, value, _) =>
                                     CircularProgressIndicator(
                                   value: value,
@@ -589,7 +591,6 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
             ),
           ],
         ),
-      ),
     );
   }
 

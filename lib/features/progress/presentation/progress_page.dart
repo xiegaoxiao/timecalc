@@ -9,11 +9,13 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/tables.dart';
 import '../../../core/providers/clock_provider.dart';
+import '../../../core/providers/motion_provider.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../services/duration_format.dart';
 import '../../../services/statistics_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/chart_empty_state.dart';
+import '../../../shared/widgets/hoverable_card.dart';
 import '../../../shared/widgets/page_skeletons.dart';
 import '../../../shared/widgets/section_header.dart';
 import '../../goals/data/goal_repository_provider.dart';
@@ -433,8 +435,9 @@ class _PlanPreferenceEntryCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final settingsAsync = ref.watch(settingsProvider);
-    return Card(
-      clipBehavior: Clip.antiAlias,
+    return HoverableCard(
+      // 计划偏好入口卡可点：hover 边框加深 + 阴影增强 + 微上浮。
+      onTap: () => context.push('/plan-preference'),
       child: settingsAsync.when(
         loading: () =>
             const ListTile(title: Text('计划偏好'), subtitle: Text('加载中…')),
@@ -449,56 +452,53 @@ class _PlanPreferenceEntryCard extends ConsumerWidget {
           final weekdayText = weekdays.length == 7
               ? '每周 7 天'
               : '每周 ${weekdays.map(_weekdayShort).join('、')}';
-          return InkWell(
-            onTap: () => context.push('/plan-preference'),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              child: Row(
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: scheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(
-                      Icons.tune,
-                      size: 18,
-                      color: scheme.primary,
-                    ),
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: scheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '计划偏好',
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '每日可用 ${DurationFormat.minutes(settings.dailyAvailableMinutes)} · $weekdayText',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: scheme.onSurfaceVariant,
-                              ),
-                        ),
-                      ],
-                    ),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.tune,
+                    size: 18,
+                    color: scheme.primary,
                   ),
-                  Icon(
-                    Icons.chevron_right,
-                    size: 20,
-                    color: scheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '计划偏好',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '每日可用 ${DurationFormat.minutes(settings.dailyAvailableMinutes)} · $weekdayText',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                Icon(
+                  Icons.chevron_right,
+                  size: 20,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ],
             ),
           );
         },
@@ -557,6 +557,7 @@ class _TodayOverviewCard extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     final hasTodayTask = stats.totalCount > 0;
     final progress = hasTodayTask ? stats.doneCount / stats.totalCount : 0.0;
+    final motion = ref.watch(motionControllerProvider);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -579,8 +580,10 @@ class _TodayOverviewCard extends ConsumerWidget {
                       Positioned.fill(
                         child: TweenAnimationBuilder<double>(
                           tween: Tween(end: progress),
-                          duration: const Duration(milliseconds: 320),
-                          curve: Curves.easeOutCubic,
+                          duration: motion.duration(
+                            const Duration(milliseconds: 320),
+                          ),
+                          curve: motion.curve,
                           builder: (context, value, _) =>
                               CircularProgressIndicator(
                                 value: hasTodayTask ? value : 0,

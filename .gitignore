@@ -62,6 +62,7 @@ logs/
 # Local tooling state
 .zcode/
 .reasonix/
+.mimosa/
 
 # 视觉测试调试产物（截图输出与测试图，不入库）
 .visr-shots/

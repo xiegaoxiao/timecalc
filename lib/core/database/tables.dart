@@ -239,6 +239,13 @@ class Settings extends Table {
   TextColumn get accentColor =>
       text().withDefault(const Constant('green'))();
 
+  /// 减少动画开关（2026-08-20 动效改造，schema v15 引入）。
+  ///
+  /// 开启后全局过渡/入场动效时长归零（直接显示），仅保留必要操作反馈。
+  /// 设备级外观配置（同 theme_mode），不进入业务数据备份（FR-9.5）。
+  BoolColumn get reduceMotion =>
+      boolean().withDefault(const Constant(false))();
+
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
 

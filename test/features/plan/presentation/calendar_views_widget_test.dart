@@ -11,6 +11,8 @@ import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 
+import 'package:timecalc/shared/widgets/completion_checkbox.dart';
+
 import '../../../shared/nav_helper.dart';
 
 /// 计划页三视图（周/月/年）Widget 测试。
@@ -248,7 +250,7 @@ void main() {
     expect(find.text('0/1'), findsOneWidget);
 
     // 勾选完成。
-    await tester.tap(find.byType(Checkbox).first);
+    await tester.tap(find.byType(CompletionCheckbox).first);
     await tester.pumpAndSettle();
 
     // 勾选后：8/5 周格聚合即时更新为 1/1。

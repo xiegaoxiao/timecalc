@@ -10,6 +10,7 @@ import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/goals/presentation/goal_list_page.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
+import 'package:timecalc/shared/widgets/hoverable_card.dart';
 
 import '../../../shared/nav_helper.dart';
 
@@ -51,11 +52,12 @@ void main() {
     await db.close();
   });
 
-  /// 目标页中唯一的目标卡片（懒加载行列表内的 Card；以 GoalListBody 为界，
-  /// 避免 IndexedStack 常驻的其他页（今日页等）含 Card 干扰定位）。
+  /// 目标页中的目标卡片（懒加载行列表内的 HoverableCard；以 GoalListBody
+  /// 为界，避免 IndexedStack 常驻的其他页（今日页等）含卡片干扰定位。
+  /// 2026-08-20 目标卡由 Card 换为 HoverableCard（hover 反馈）。
   Finder goalCardFinder() => find.descendant(
     of: find.byType(GoalListBody),
-    matching: find.byType(Card),
+    matching: find.byType(HoverableCard),
   );
 
   testWidgets('目标页区块头：我的目标标题 + 新建目标入口（Dashboard 语言）', (tester) async {
@@ -125,8 +127,15 @@ void main() {
     expect(find.textContaining('→ 2026.12.20'), findsOneWidget);
     expect(find.text('剩余 137 天'), findsOneWidget);
 
-    // 「查看详情 →」主操作。
-    expect(find.text('查看详情 →'), findsOneWidget);
+    // 「查看详情」主操作（v1.17 起 TextButton.icon：icon 为文字、label 为箭头，
+    // 不再拼成单文本「查看详情 →」）。
+    expect(
+      find.descendant(
+        of: goalCardFinder(),
+        matching: find.text('查看详情'),
+      ),
+      findsOneWidget,
+    );
 
     // 顶部统计胶囊：进行中 1 / 已完成 0 / 全部 1。
     expect(find.text('进行中'), findsOneWidget);
@@ -189,6 +198,6 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('考研数学 2027 全程规划（含强化与冲刺阶段）'), findsOneWidget);
     // 卡片仍通栏渲染且内容可见（「查看详情」未被挤出视口外不可见）。
-    expect(find.text('查看详情 →'), findsOneWidget);
+    expect(find.text('查看详情'), findsOneWidget);
   });
 }

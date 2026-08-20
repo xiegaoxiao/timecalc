@@ -10,6 +10,7 @@ import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/tasks/data/checklist_item_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
+import 'package:timecalc/shared/widgets/completion_checkbox.dart';
 
 /// 任务检查项 Widget 测试（FR-4.1，schema v8）。
 ///
@@ -127,7 +128,7 @@ void main() {
     await pumpApp(tester);
 
     // 勾选任务完成 → 弹出二次确认。
-    await tester.tap(find.byType(Checkbox).first);
+    await tester.tap(find.byType(CompletionCheckbox).first);
     await tester.pumpAndSettle();
     expect(find.text('完成任务？'), findsOneWidget);
     expect(find.textContaining('还有 1 个检查项未完成'), findsOneWidget);
@@ -138,7 +139,7 @@ void main() {
     expect((await tasks.byId(taskId))?.status, 'todo');
 
     // 再次勾选 → 确认完成 → 进入 5 秒撤回批次，定稿后任务完成，检查项保留。
-    await tester.tap(find.byType(Checkbox).first);
+    await tester.tap(find.byType(CompletionCheckbox).first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('确定完成'));
     await tester.pumpAndSettle();
@@ -152,7 +153,7 @@ void main() {
     final taskId = await seedTask();
     await pumpApp(tester);
 
-    await tester.tap(find.byType(Checkbox).first);
+    await tester.tap(find.byType(CompletionCheckbox).first);
     await tester.pumpAndSettle();
 
     expect(find.text('完成任务？'), findsNothing);

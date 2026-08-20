@@ -9,6 +9,7 @@ import 'package:timecalc/core/database/database_provider.dart';
 import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/goals/data/milestone_repository.dart';
+import 'package:timecalc/shared/widgets/completion_checkbox.dart';
 
 import '../../../shared/nav_helper.dart';
 
@@ -146,19 +147,19 @@ void main() {
     await openGoalDetail(tester);
 
     // 初始未完成。
-    final checkbox = find.byType(Checkbox);
-    expect(tester.widget<Checkbox>(checkbox).value, isFalse);
+    final checkbox = find.byType(CompletionCheckbox);
+    expect(tester.widget<CompletionCheckbox>(checkbox).value, isFalse);
 
     // 点击勾选 → 完成。
     await tester.tap(checkbox);
     await tester.pumpAndSettle();
-    expect(tester.widget<Checkbox>(checkbox).value, isTrue);
+    expect(tester.widget<CompletionCheckbox>(checkbox).value, isTrue);
     expect(find.text('2026-09-30 · 已完成'), findsOneWidget);
 
     // 再点取消完成。
     await tester.tap(checkbox);
     await tester.pumpAndSettle();
-    expect(tester.widget<Checkbox>(checkbox).value, isFalse);
+    expect(tester.widget<CompletionCheckbox>(checkbox).value, isFalse);
   });
 
   testWidgets('删除里程碑有二次确认（FR-2.1）', (tester) async {

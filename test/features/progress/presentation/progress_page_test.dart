@@ -141,7 +141,7 @@ void main() {
     await goals.update(
       id: ended.id,
       status: 'completed',
-      completedAt: DateTime.utc(2026, 8, 1),
+      completedAt: Value(DateTime.utc(2026, 8, 1)),
     );
     await tasks.create(
       goalId: ended.id,
@@ -315,15 +315,15 @@ void main() {
     final overviewCard = find.widgetWithText(Card, '今日概览');
     expect(overviewCard, findsOneWidget);
     final overviewBox = tester.getRect(overviewCard);
-    // 卡片随窗口拉伸：宽窗走 NavigationRail 侧栏（约 80px），内容区宽度
-    // ≈ 1600-80=1520，再扣 5% 边距（≤48px）后卡片仍应铺满内容区
-    // （>1600*0.85，比旧式整宽断言更贴近真实布局）。
-    expect(overviewBox.width, greaterThan(1600 * 0.85));
+    // 卡片随窗口拉伸：宽窗走自定义侧栏（200px），内容区宽度
+    // ≈ 1600-200=1400，再扣内容 padding 与卡片 margin（约 90px）后卡片仍
+    // 应铺满内容区（>1300，比旧式整宽断言更贴近真实布局）。
+    expect(overviewBox.width, greaterThan(1300));
 
     // 热力图卡片同样铺满，且色块随宽度放大（工具提示存在即已渲染）。
     final heatCard = find.widgetWithText(Card, '完成热力图');
     final heatBox = tester.getRect(heatCard);
-    expect(heatBox.width, greaterThan(1600 * 0.85));
+    expect(heatBox.width, greaterThan(1300));
 
     // 任务耗时图无 RenderFlex overflow（宽屏等分拉伸）。
     expect(tester.takeException(), isNull);
@@ -381,7 +381,7 @@ void main() {
     expect(find.byType(BackButton), findsOneWidget);
   });
 
-  testWidgets('燃尽趋势展示剩余预估时长、匀速参考线与图例（FR-7.3）', (tester) async {
+  testWidgets('燃尽趋势展示剩余预估时长与图例（FR-7.3）', (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-08-19');
     // 当前未完成 120 分钟。
     await tasks.create(
@@ -402,9 +402,10 @@ void main() {
     await openProgress(tester);
 
     expect(find.text('剩余工作量趋势'), findsOneWidget);
-    // 白话结论句：过去 30 天消化 60 分钟（1 小时）、还剩 120 分钟（2 小时）。
+    // 白话结论句（v1.18 前向燃尽改版）：从今天到截止日，计划燃尽 120 分钟
+    // （2 小时）——当前剩余 120，截止 08-19。
     expect(
-      find.textContaining('过去 30 天消化了 1 小时，还剩 2 小时'),
+      find.textContaining('计划燃尽 2 小时'),
       findsOneWidget,
     );
 
@@ -417,12 +418,9 @@ void main() {
     );
 
     // 图例（只在燃尽 Card 内断言，避免与热力图图例/底部导航歧义）。
+    // v1.18 前向燃尽改版：图例仅剩「剩余工作量」实线（理想参考线融入趋势）。
     expect(
       find.descendant(of: burnCard, matching: find.text('剩余工作量')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: burnCard, matching: find.text('匀速参考线')),
       findsOneWidget,
     );
 
@@ -458,7 +456,7 @@ void main() {
     );
   });
 
-  testWidgets('燃尽图 X 轴最右端标注「今天」，结论句含窗口消化时长', (tester) async {
+  testWidgets('燃尽图 X 轴最右端标注「今天」，结论句含计划燃尽时长', (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-08-19');
     await tasks.create(
       goalId: goal.id,
@@ -477,13 +475,9 @@ void main() {
     await openProgress(tester);
 
     final burnCard = find.widgetWithText(Card, '剩余工作量趋势');
-    // 结论句四种状态中的「有消化 + 有剩余」分支。
+    // 结论句（前向燃尽）：从今天到截止日，计划燃尽 2 小时。
     expect(
-      find.textContaining('过去 30 天消化了 1 小时'),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining('还剩 2 小时'),
+      find.textContaining('计划燃尽 2 小时'),
       findsOneWidget,
     );
     // X 轴最右端标注「今天」。
@@ -674,9 +668,9 @@ void main() {
       ),
       findsWidgets,
     );
-    // 结论句同步更新（白话文案走「还没完成 + 还剩」分支）。
+    // 结论句同步更新（前向燃尽：计划燃尽 3 小时 30 分）。
     expect(
-      find.textContaining('还剩 3 小时 30 分'),
+      find.textContaining('计划燃尽 3 小时 30 分'),
       findsOneWidget,
     );
   });
@@ -729,9 +723,9 @@ void main() {
       ),
       findsWidgets,
     );
-    // 结论句同步更新（还没完成 + 还剩分支）。
+    // 结论句同步更新（前向燃尽：计划燃尽 2 小时 30 分）。
     expect(
-      find.textContaining('还剩 2 小时 30 分'),
+      find.textContaining('计划燃尽 2 小时 30 分'),
       findsOneWidget,
     );
   });

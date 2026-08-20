@@ -173,4 +173,26 @@ void main() {
     expect(settings.accentColor, 'blue');
     expect(settings.dailyAvailableMinutes, 90);
   });
+
+  test('默认减少动画关闭（2026-08-20 动效改造，schema v15）', () async {
+    final settings = await repo.get();
+    expect(settings.reduceMotion, isFalse);
+  });
+
+  test('更新减少动画开关并持久化', () async {
+    await repo.updateReduceMotion(true);
+    expect((await repo.get()).reduceMotion, isTrue);
+    await repo.updateReduceMotion(false);
+    expect((await repo.get()).reduceMotion, isFalse);
+  });
+
+  test('减少动画开关与主题配置互不覆盖', () async {
+    await repo.updateThemeMode('dark');
+    await repo.updateAccentColor('blue');
+    await repo.updateReduceMotion(true);
+    final settings = await repo.get();
+    expect(settings.themeMode, 'dark');
+    expect(settings.accentColor, 'blue');
+    expect(settings.reduceMotion, isTrue);
+  });
 }

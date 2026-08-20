@@ -8,14 +8,17 @@ import '../../../shared/widgets/app_error_view.dart';
 import '../data/settings_repository_provider.dart';
 
 /// 外观设置页（M10）：明暗主题三选一（跟随系统 / 浅色 / 深色）+ 主题色系
-/// 二选一（绿色 / 蓝色，2026-08-16 色系解耦）。
+/// 二选一（绿色 / 蓝色，2026-08-16 色系解耦）+ 减少动画开关
+/// （2026-08-20 动效改造）。
 ///
 /// 由设置页「外观」菜单项 push 进入。明暗存储于 schema v12
 /// `Settings.theme_mode`（取值与 [ThemeMode.name] 一致）；色系存储于
-/// schema v14 `Settings.accent_color`（取值见 [AccentPalette.id]）。
+/// schema v14 `Settings.accent_color`（取值见 [AccentPalette.id]）；
+/// 减少动画存储于 schema v15 `Settings.reduce_motion`。
 ///
 /// **点击即切换**：分段点击立即写库并换肤（`settingsProvider` 失效 →
-/// [TimeCalcApp] 整树换肤），无需单独保存；写库失败还原选择并提示。
+/// [TimeCalcApp] 整树换肤 / 全局动效重建），无需单独保存；写库失败还原
+/// 选择并提示。
 class AppearancePage extends ConsumerStatefulWidget {
   const AppearancePage({super.key});
 
@@ -29,6 +32,7 @@ class AppearancePage extends ConsumerStatefulWidget {
 class _AppearancePageState extends ConsumerState<AppearancePage> {
   late ThemeMode _mode;
   late AccentPalette _accent;
+  late bool _reduceMotion;
   bool _initialized = false;
 
   /// 点击明暗分段即切换：立即更新选中态（预览卡 + 整树换肤），后台写库持久化。
@@ -102,6 +106,42 @@ class _AppearancePageState extends ConsumerState<AppearancePage> {
     }
   }
 
+  /// 切换「减少动画」开关（2026-08-20 动效改造）。
+  ///
+  /// 与主题/色系同模式：点击即写库并刷新全局动效（[reduceMotionProvider]
+  /// 随 [settingsProvider] 失效重建），无需单独保存；写库失败还原并提示。
+  Future<void> _toggleReduceMotion(bool enabled) async {
+    setState(() => _reduceMotion = enabled); // 即时反馈
+
+    final ok = await runDbAction(
+      context,
+      action: () async {
+        await ref
+            .read(settingsRepositoryProvider)
+            .updateReduceMotion(enabled);
+      },
+    );
+    if (!ok) {
+      if (mounted) {
+        final saved =
+            ref.read(settingsProvider).valueOrNull?.reduceMotion ?? false;
+        setState(() => _reduceMotion = saved);
+      }
+      return;
+    }
+    ref.invalidate(settingsProvider);
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(enabled ? '已减少动画' : '已恢复动画'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final settingsAsync = ref.watch(settingsProvider);
@@ -130,6 +170,7 @@ class _AppearancePageState extends ConsumerState<AppearancePage> {
         orElse: () => ThemeMode.system,
       );
       _accent = accentPaletteById(settings.accentColor);
+      _reduceMotion = settings.reduceMotion;
       _initialized = true;
     }
     return Scaffold(
@@ -185,6 +226,20 @@ class _AppearancePageState extends ConsumerState<AppearancePage> {
             ],
             selected: {_accent},
             onSelectionChanged: (selection) => _selectAccent(selection.first),
+          ),
+          const SizedBox(height: 24),
+          // —— 动效（2026-08-20 动效改造）——
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: SwitchListTile(
+              value: _reduceMotion,
+              onChanged: _toggleReduceMotion,
+              secondary: const Icon(Icons.animation_outlined),
+              title: const Text('减少动画'),
+              subtitle: const Text(
+                '开启后减少页面入场、切换等过渡动效，交互仍保持即时响应。',
+              ),
+            ),
           ),
           const SizedBox(height: 24),
           _ThemePreview(mode: _mode, accent: _accent),

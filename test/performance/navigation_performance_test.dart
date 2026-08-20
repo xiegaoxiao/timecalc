@@ -71,9 +71,11 @@ void main() {
     String label,
     Finder target,
   ) async {
-    final rail = find.byType(NavigationRail);
-    final navTarget = rail.evaluate().isNotEmpty
-        ? find.descendant(of: rail, matching: find.text(label))
+    // 桌面分支（宽窗）为自定义侧栏 desktop-sidebar；窄窗回退 NavigationBar。
+    // 与共享 nav_helper.tapNavDestination 的定位逻辑保持一致。
+    final sidebar = find.byKey(const ValueKey('desktop-sidebar'));
+    final navTarget = sidebar.evaluate().isNotEmpty
+        ? find.descendant(of: sidebar, matching: find.text(label))
         : find.descendant(
             of: find.byType(NavigationBar),
             matching: find.text(label),

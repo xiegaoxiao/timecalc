@@ -12,6 +12,7 @@ import 'package:timecalc/features/tasks/data/recurrence_repository.dart';
 import 'package:timecalc/features/tasks/presentation/task_list_section.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 import 'package:timecalc/features/tasks/domain/recurrence/recurrence_rule.dart';
+import 'package:timecalc/shared/widgets/completion_checkbox.dart';
 
 import '../../../shared/nav_helper.dart';
 
@@ -238,7 +239,7 @@ void main() {
       expect(find.textContaining('个任务'), findsOneWidget);
       expect(find.byTooltip('重复任务'), findsOneWidget);
       // 折叠状态不渲染任何子任务行（无复选框）。
-      expect(find.byType(Checkbox), findsNothing);
+      expect(find.byType(CompletionCheckbox), findsNothing);
     });
 
     testWidgets('单实例模板不折叠：以普通任务行展示（FR-4 折叠边界）', (tester) async {
@@ -257,7 +258,7 @@ void main() {
       await openGoalDetail(tester);
 
       // 普通任务行：有复选框与日期，无父卡片区间文案。
-      expect(find.byType(Checkbox), findsOneWidget);
+      expect(find.byType(CompletionCheckbox), findsOneWidget);
       expect(find.textContaining('个任务'), findsNothing);
     });
 
@@ -268,20 +269,20 @@ void main() {
       await openGoalDetail(tester);
 
       // 默认折叠，无子任务。
-      expect(find.byType(Checkbox), findsNothing);
+      expect(find.byType(CompletionCheckbox), findsNothing);
       expect(find.byTooltip('展开重复任务'), findsOneWidget);
 
       // 点击展开图标 → 子任务出现（含复选框与日期）。
       await tester.tap(find.byTooltip('展开重复任务'));
       await tester.pumpAndSettle();
       expect(find.byTooltip('收起重复任务'), findsOneWidget);
-      expect(find.byType(Checkbox), findsWidgets);
+      expect(find.byType(CompletionCheckbox), findsWidgets);
       expect(find.textContaining('2026-08-05'), findsWidgets);
 
       // 再次点击收起 → 子任务消失。
       await tester.tap(find.byTooltip('收起重复任务'));
       await tester.pumpAndSettle();
-      expect(find.byType(Checkbox), findsNothing);
+      expect(find.byType(CompletionCheckbox), findsNothing);
     });
 
     testWidgets('点击父卡片主体同样可展开/收起（整卡可点）', (tester) async {
@@ -289,17 +290,17 @@ void main() {
 
       await pumpApp(tester);
       await openGoalDetail(tester);
-      expect(find.byType(Checkbox), findsNothing);
+      expect(find.byType(CompletionCheckbox), findsNothing);
 
       // 折叠态父卡片标题唯一（展开前只有一个「背单词」）。
       await tester.tap(find.text('背单词'));
       await tester.pumpAndSettle();
-      expect(find.byType(Checkbox), findsWidgets);
+      expect(find.byType(CompletionCheckbox), findsWidgets);
 
       // 展开后子任务标题同名，用 .first 命中父卡片标题再收起。
       await tester.tap(find.text('背单词').first);
       await tester.pumpAndSettle();
-      expect(find.byType(Checkbox), findsNothing);
+      expect(find.byType(CompletionCheckbox), findsNothing);
     });
 
     testWidgets('展开后勾选子任务复选框：写入完成状态并刷新', (tester) async {
@@ -311,8 +312,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // 勾选第一个实例（最早日期 2026-08-05）。
-      final firstCheckbox = find.byType(Checkbox).first;
-      expect(tester.widget<Checkbox>(firstCheckbox).value, isFalse);
+      final firstCheckbox = find.byType(CompletionCheckbox).first;
+      expect(tester.widget<CompletionCheckbox>(firstCheckbox).value, isFalse);
       await tester.tap(firstCheckbox);
       await tester.pumpAndSettle();
 
@@ -322,7 +323,7 @@ void main() {
       expect(instances.first.status, 'done');
       // UI 复选框响应为已完成。
       expect(
-        tester.widget<Checkbox>(find.byType(Checkbox).first).value,
+        tester.widget<CompletionCheckbox>(find.byType(CompletionCheckbox).first).value,
         isTrue,
       );
     });
@@ -410,7 +411,7 @@ void main() {
       // 不可能构建全部 $total 个实例（详情页定位已是「预览 + 查看全部」）。
       final previewCheckboxes = find.descendant(
         of: find.byType(TaskListSection),
-        matching: find.byType(Checkbox),
+        matching: find.byType(CompletionCheckbox),
       );
       expect(
         previewCheckboxes.evaluate().length,
@@ -444,7 +445,7 @@ void main() {
       // 详情页在路由栈下层 offstage，不参与 find。）
       final sectionCheckboxes = find.descendant(
         of: find.byType(TaskListSection),
-        matching: find.byType(Checkbox),
+        matching: find.byType(CompletionCheckbox),
       );
       expect(
         sectionCheckboxes.evaluate().length,

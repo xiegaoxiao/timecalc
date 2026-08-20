@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:drift/native.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -13,6 +12,7 @@ import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository_provider.dart';
+import 'package:timecalc/shared/widgets/completion_checkbox.dart';
 
 import '../../shared/nav_helper.dart';
 
@@ -70,7 +70,7 @@ void main() {
     // 「计划」页选日面板的勾选为即时写入路径：点完成 → setDone 抛异常 →
     // 弹数据库错误对话框。（今天页已改走 5 秒撤回批次，不在此路径上。）
     await tapNavDestination(tester, '计划');
-    final checkbox = find.byType(Checkbox);
+    final checkbox = find.byType(CompletionCheckbox);
     await tester.ensureVisible(checkbox);
     await tester.pumpAndSettle();
     await tester.tap(checkbox);

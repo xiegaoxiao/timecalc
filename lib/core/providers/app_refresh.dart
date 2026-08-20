@@ -30,6 +30,7 @@ import '../../features/tasks/data/task_repository_provider.dart';
 /// 曾有过第 4 份逐字副本）。
 void invalidateAppData(void Function(ProviderOrFamily provider) invalidate) {
   invalidate(taskListProvider);
+  invalidate(subjectTaskListProvider); // family 整族（科目任务页列表）
   invalidate(tasksByDateProvider);
   invalidate(tasksByMonthProvider);
   invalidate(tasksByWeekProvider);

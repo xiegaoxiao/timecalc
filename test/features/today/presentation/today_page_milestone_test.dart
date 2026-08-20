@@ -1,5 +1,4 @@
 import 'package:drift/native.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -9,6 +8,7 @@ import 'package:timecalc/core/database/database_provider.dart';
 import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/goals/data/milestone_repository.dart';
+import 'package:timecalc/shared/widgets/completion_checkbox.dart';
 
 /// 今天页最近里程碑 Widget 测试（FR-2.3）。
 ///
@@ -61,7 +61,7 @@ void main() {
     await pumpApp(tester);
 
     expect(find.text('考研'), findsOneWidget);
-    expect(find.textContaining('下一里程碑：最近节点 · 2026-09-15'), findsOneWidget);
+    expect(find.textContaining('最近节点 · 2026-09-15'), findsOneWidget);
     expect(find.textContaining('较晚节点'), findsNothing);
   });
 
@@ -71,7 +71,7 @@ void main() {
     await pumpApp(tester);
 
     expect(find.text('考研'), findsOneWidget);
-    expect(find.textContaining('下一里程碑'), findsNothing);
+    expect(find.textContaining('· 2026-'), findsNothing);
   });
 
   testWidgets('里程碑全部完成后首页不再展示（FR-2.3）', (tester) async {
@@ -86,7 +86,7 @@ void main() {
     await pumpApp(tester);
 
     expect(find.text('考研'), findsOneWidget);
-    expect(find.textContaining('下一里程碑'), findsNothing);
+    expect(find.textContaining('· 2026-'), findsNothing);
   });
 
   testWidgets('勾选完成最近里程碑后，首页卡片刷新为下一个未完成里程碑（回归）', (tester) async {
@@ -104,14 +104,14 @@ void main() {
     );
 
     await pumpApp(tester);
-    expect(find.textContaining('下一里程碑：最近节点 · 2026-09-15'), findsOneWidget);
+    expect(find.textContaining('最近节点 · 2026-09-15'), findsOneWidget);
 
     // 进入目标详情页，勾选完成最近的里程碑。
     await tester.tap(find.text('考研'));
     await tester.pumpAndSettle();
     final checkbox = find.byWidgetPredicate(
       (w) =>
-          w is Checkbox &&
+          w is CompletionCheckbox &&
           w.semanticLabel == '标记里程碑「最近节点」为已完成',
     );
     expect(checkbox, findsOneWidget);
@@ -123,7 +123,7 @@ void main() {
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('下一里程碑：较晚节点 · 2026-11-01'), findsOneWidget);
-    expect(find.textContaining('下一里程碑：最近节点'), findsNothing);
+    expect(find.textContaining('较晚节点 · 2026-11-01'), findsOneWidget);
+    expect(find.textContaining('最近节点'), findsNothing);
   });
 }

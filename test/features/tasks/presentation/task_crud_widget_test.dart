@@ -11,6 +11,8 @@ import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/goals/data/subject_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
+import 'package:timecalc/shared/widgets/app_form_field.dart';
+import 'package:timecalc/shared/widgets/completion_checkbox.dart';
 
 import '../../../shared/nav_helper.dart';
 
@@ -153,16 +155,16 @@ void main() {
     await pumpApp(tester);
     await openGoalDetail(tester);
 
-    // 初始未完成。
-    final checkbox = find.byType(Checkbox);
-    expect(tester.widget<Checkbox>(checkbox).value, isFalse);
+    // 初始未完成（任务行用 CompletionCheckbox 自定义圆形勾选）。
+    final checkbox = find.byType(CompletionCheckbox);
+    expect(tester.widget<CompletionCheckbox>(checkbox).value, isFalse);
 
     // 点击完成。
     await tester.tap(checkbox);
     await tester.pumpAndSettle();
 
     // 状态同步为完成（删除线样式存在）。
-    final updated = tester.widget<Checkbox>(find.byType(Checkbox));
+    final updated = tester.widget<CompletionCheckbox>(find.byType(CompletionCheckbox));
     expect(updated.value, isTrue);
 
     // 数据库中状态同步。
@@ -186,13 +188,13 @@ void main() {
     await pumpApp(tester, now: now);
 
     // 先访问进度页：completedTasksProvider/allTodoTasksProvider 被缓存
-    // （尚未完成，燃尽结论句「还剩 2 小时」）。
+    // （尚未完成，燃尽结论句「计划燃尽 2 小时」）。
     await goTab(tester, '进度');
     final burnCardBefore = find.widgetWithText(Card, '剩余工作量趋势');
     expect(
       find.descendant(
         of: burnCardBefore,
-        matching: find.text('过去 30 天还没有完成任务，还剩 2 小时'),
+        matching: find.textContaining('计划燃尽 2 小时'),
       ),
       findsOneWidget,
     );
@@ -201,23 +203,23 @@ void main() {
     await goTab(tester, '目标');
     await tester.tap(find.text('考研数学'));
     await tester.pumpAndSettle();
-    final checkbox = find.byType(Checkbox);
+    final checkbox = find.byType(CompletionCheckbox);
     expect(checkbox, findsOneWidget);
     await tester.tap(checkbox);
     await tester.pumpAndSettle();
     // 目标详情页自身已刷新为完成态。
-    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
+    expect(tester.widget<CompletionCheckbox>(find.byType(CompletionCheckbox)).value, isTrue);
 
-    // 返回并切到进度页：燃尽图结论句立即变为「已消化 2 小时」。
+    // 返回并切到进度页：燃尽图结论句立即变为「当前没有剩余工作量」。
     // 修复前 completedTasksProvider/allTodoTasksProvider 缓存未失效，
-    // 仍显示「还没有完成任务，还剩 2 小时」。
+    // 仍显示「计划燃尽 2 小时」。
     await goBack(tester);
     await goTab(tester, '进度');
     final burnCardAfter = find.widgetWithText(Card, '剩余工作量趋势');
     expect(
       find.descendant(
         of: burnCardAfter,
-        matching: find.text('过去 30 天消化了 2 小时，带时长的任务已全部完成'),
+        matching: find.textContaining('当前没有剩余工作量'),
       ),
       findsOneWidget,
     );
@@ -536,9 +538,15 @@ void main() {
     await tester.tap(find.text('添加任务'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField).first, '第二章习题');
+    await tester.pumpAndSettle();
+    // 弹窗内容限高后可滚动，底部「创建」可能落在视口外：先滚动到可见。
+    await tester.ensureVisible(find.text('创建').last);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('创建').last);
     await tester.pumpAndSettle();
 
+    // 弹窗应已关闭（创建成功）；若仍开着说明按钮未生效。
+    expect(find.byType(TextFormField), findsNothing);
     expect(find.text('第二章习题'), findsOneWidget);
     final created = (await tasks.byGoal(goalId))
         .firstWhere((t) => t.title == '第二章习题');
@@ -735,17 +743,24 @@ void main() {
     expect(find.text('当前共 15 分'), findsOneWidget);
   });
 
-  testWidgets('任务弹窗：标题字数计数显示在输入框外下方', (tester) async {
+  testWidgets('任务弹窗：标题限长 200 字，超长输入被截断（maxLength）', (tester) async {
     await pumpApp(tester);
     await openGoalDetail(tester);
 
     await tester.tap(find.text('添加任务'));
     await tester.pumpAndSettle();
 
-    // 初始 0/200；输入后实时更新。
-    expect(find.text('0/200'), findsOneWidget);
-    await tester.enterText(find.byType(TextFormField).first, '完成第一章');
+    // 任务标题 AppFormField 设 maxLength: 200 且 counterText 为空
+    // （刻意关闭内置计数器避免与长输入文字重叠，仅保留限长）。
+    final field = tester.widget<AppFormField>(find.byType(AppFormField).first);
+    expect(field.maxLength, 200);
+    expect(field.counterText, '');
+
+    // 输入超过 200 字：TextField 的 maxLength 自动截断到 200。
+    final title = '第' * 220;
+    await tester.enterText(find.byType(TextFormField).first, title);
     await tester.pumpAndSettle();
-    expect(find.text('5/200'), findsOneWidget);
+    final input = tester.widget<TextFormField>(find.byType(TextFormField).first);
+    expect(input.controller!.text.length, 200);
   });
 }

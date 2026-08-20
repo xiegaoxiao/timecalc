@@ -104,6 +104,16 @@ class SettingsRepository {
     ));
   }
 
+  /// 更新减少动画开关（2026-08-20 动效改造，schema v15）。
+  ///
+  /// 开启后全局过渡/入场动效时长归零（直接显示），仅保留必要操作反馈。
+  /// 设备级外观配置（同 theme_mode），不进入业务数据备份（FR-9.5）。
+  Future<void> updateReduceMotion(bool enabled) {
+    return _update(SettingsCompanion(
+      reduceMotion: Value(enabled),
+    ));
+  }
+
   Future<void> _update(SettingsCompanion companion) {
     return _db.transaction(() async {
       // 更新前确保默认行存在（极端场景：从未调用过 get 直接更新）。
