@@ -54,7 +54,7 @@ void main() {
     await db.close();
   });
 
-  testWidgets('今日任务展示，勾选进入 5 秒撤回，定稿后负载归零（FR-3.2/FR-5.2）', (tester) async {
+  testWidgets('今日任务展示，勾选即时完成，负载归零（FR-3.2）', (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
     final created = await tasks.create(
       goalId: goal.id,
@@ -73,26 +73,20 @@ void main() {
     expect(find.text('今日可用'), findsOneWidget);
     expect(find.text('2 小时'), findsWidgets);
 
-    // 勾选：立即反馈为勾选态，但进入 5 秒撤回批次——负载不变、数据库仍 todo。
+    // 勾选：立即反馈为勾选态并写库完成（3afc8ac 起设计——今日任务即时完成，
+    // 不进入 5 秒撤回批次，FAB 不出现）。
     await tester.tap(find.byType(CompletionCheckbox));
-    // 不能用 pumpAndSettle：撤回 FAB 的 5 秒倒计时圆环持续动画，永不 settle。
-    // 用定步长 pump 推进 microtask（confirmCompleteTask 查库）+ 动画帧。
+    // confirmCompleteTask（检查项查询）与 setDone 都是真实 DB IO，runAsync 推进。
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(tester.widget<CompletionCheckbox>(find.byType(CompletionCheckbox)).value, isTrue);
-    expect(find.byTooltip('撤回 1 项勾选'), findsOneWidget);
-    expect(find.text('1 小时 30 分'), findsWidgets);
-    expect((await tasks.byId(created.id))?.status, 'todo');
-
-    // 5 秒定稿：负载归零、状态 done、列表保留（划线）。
-    await tester.pump(const Duration(seconds: 5));
-    await tester.pump(const Duration(milliseconds: 300));
-
-    expect(find.text('今日总计'), findsOneWidget);
+    expect(find.byTooltip('撤回 1 项勾选'), findsNothing); // 无批次，FAB 不出现
+    expect((await tasks.byId(created.id))?.status, 'done'); // 已写库完成
     expect(find.text('0 分'), findsWidgets); // 今日总计/目标剩余均归零
-    expect((await tasks.byId(created.id))?.status, 'done');
     expect(find.text('背单词'), findsOneWidget);
   });
 
@@ -540,18 +534,23 @@ void main() {
     expect(picker.firstDate, DateTime(2026, 8, 5)); // 今天（注入时钟）
   });
 
-  testWidgets('勾选后 5 秒内可整批撤回：任务恢复未勾选、数据库保持 todo', (tester) async {
+  testWidgets('过期任务勾选后 5 秒内可整批撤回：任务恢复未勾选、数据库保持 todo', (tester) async {
+    // 主任务即时完成（无批次）；5 秒撤回批次仅服务过期任务区。此用例验证
+    // 批次撤回机制，故用昨日任务（进过期任务区）。
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
     final created = await tasks.create(
       goalId: goal.id,
-      title: '背单词',
-      plannedDate: '2026-08-05',
+      title: '昨日任务',
+      plannedDate: '2026-08-04',
       estimatedMinutes: 90,
     );
 
     await pumpApp(tester);
 
-    await tester.tap(find.byType(CompletionCheckbox));
+    final checkbox = find.byType(CompletionCheckbox);
+    await tester.ensureVisible(checkbox);
+    await tester.pump();
+    await tester.tap(checkbox);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -572,17 +571,21 @@ void main() {
   });
 
   testWidgets('撤回 FAB 倒计时圆环：5 秒窗口内收缩，到时定稿完成', (tester) async {
+    // 批次机制仅服务过期任务区（主任务即时完成）。
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
     final created = await tasks.create(
       goalId: goal.id,
-      title: '背单词',
-      plannedDate: '2026-08-05',
+      title: '昨日任务',
+      plannedDate: '2026-08-04',
       estimatedMinutes: 90,
     );
 
     await pumpApp(tester);
 
-    await tester.tap(find.byType(CompletionCheckbox));
+    final checkbox = find.byType(CompletionCheckbox);
+    await tester.ensureVisible(checkbox);
+    await tester.pump();
+    await tester.tap(checkbox);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -619,36 +622,8 @@ void main() {
 
     expect((await tasks.byId(created.id))?.status, 'done');
     expect(find.byTooltip('撤回 1 项勾选'), findsNothing);
-  });
-
-  testWidgets('定稿瞬间不闪回未勾选：数据落地前保持勾选显示（2026-08-16 动画优化）', (tester) async {
-    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
-    final created = await tasks.create(
-      goalId: goal.id,
-      title: '背单词',
-      plannedDate: '2026-08-05',
-      estimatedMinutes: 30,
-    );
-
-    await pumpApp(tester);
-
-    await tester.tap(find.byType(CompletionCheckbox));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-
-    // 5 秒到期：定稿流程启动（批次清空、写库、刷新、等新数据落地）。
-    // 此刻旧缓存数据仍是 todo——finalizing 显示态应保持勾选，
-    // 而不是闪回未勾选、数据到达后再重新划线（一轮定稿播两遍动画）。
-    await tester.pump(const Duration(seconds: 5));
-    await tester.pump(); // 渲染定稿中间态（写库/刷新 future 尚未完成）
-
-    expect(tester.widget<CompletionCheckbox>(find.byType(CompletionCheckbox)).value, isTrue);
-
-    await tester.pumpAndSettle();
-
-    // 数据落地后：真实 status 驱动，仍为勾选（划线态）。
-    expect(tester.widget<CompletionCheckbox>(find.byType(CompletionCheckbox)).value, isTrue);
-    expect((await tasks.byId(created.id))?.status, 'done');
+    // 收尾：等 FAB 倒计时 _controller 彻底播完，避免测试结束时有 pending timer。
+    await tester.pump(const Duration(seconds: 1));
   });
 
   testWidgets('5 秒内勾选多个任务：可整批撤回，全部恢复未勾选', (tester) async {
@@ -657,8 +632,9 @@ void main() {
     addTearDown(tester.view.reset);
 
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
-    await tasks.create(goalId: goal.id, title: '任务A', plannedDate: '2026-08-05', estimatedMinutes: 30);
-    await tasks.create(goalId: goal.id, title: '任务B', plannedDate: '2026-08-05', estimatedMinutes: 30);
+    // 批次机制仅服务过期任务区（主任务即时完成），用昨日任务进入该区。
+    await tasks.create(goalId: goal.id, title: '任务A', plannedDate: '2026-08-04', estimatedMinutes: 30);
+    await tasks.create(goalId: goal.id, title: '任务B', plannedDate: '2026-08-04', estimatedMinutes: 30);
 
     await pumpApp(tester);
 
@@ -682,7 +658,7 @@ void main() {
 
     expect(tester.widget<CompletionCheckbox>(find.byType(CompletionCheckbox).at(0)).value, isFalse);
     expect(tester.widget<CompletionCheckbox>(find.byType(CompletionCheckbox).at(1)).value, isFalse);
-    final list = await tasks.byDate('2026-08-05');
+    final list = await tasks.byDate('2026-08-04');
     expect(list.every((t) => t.status == 'todo'), isTrue);
   });
 
@@ -692,8 +668,8 @@ void main() {
     addTearDown(tester.view.reset);
 
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
-    final a = await tasks.create(goalId: goal.id, title: '任务A', plannedDate: '2026-08-05', estimatedMinutes: 30);
-    final b = await tasks.create(goalId: goal.id, title: '任务B', plannedDate: '2026-08-05', estimatedMinutes: 30);
+    final a = await tasks.create(goalId: goal.id, title: '任务A', plannedDate: '2026-08-04', estimatedMinutes: 30);
+    final b = await tasks.create(goalId: goal.id, title: '任务B', plannedDate: '2026-08-04', estimatedMinutes: 30);
 
     await pumpApp(tester);
 
@@ -706,14 +682,20 @@ void main() {
 
     expect(find.byTooltip('撤回 2 项勾选'), findsOneWidget);
 
-    // 无撤回：5 秒后整批定稿为完成（今日列表保留，划线态）。
+    // 无撤回：5 秒后整批定稿为完成。过期任务定稿后区块消失（设计），
+    // 以 DB 状态与 FAB 消失为验证点。
     await tester.pump(const Duration(seconds: 5));
-    await tester.pumpAndSettle();
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+    });
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect((await tasks.byId(a.id))?.status, 'done');
     expect((await tasks.byId(b.id))?.status, 'done');
-    expect(find.text('任务A'), findsOneWidget);
-    expect(find.text('任务B'), findsOneWidget);
+    expect(find.byTooltip('撤回 2 项勾选'), findsNothing);
+    expect(find.text('过期任务'), findsNothing); // 区块随定稿消失
+    // 收尾：等 FAB 倒计时 _controller 彻底播完，避免 pending timer。
+    await tester.pump(const Duration(seconds: 1));
   });
 
   testWidgets('过期任务勾选后撤回：区块与红条保留，任务恢复未勾选', (tester) async {

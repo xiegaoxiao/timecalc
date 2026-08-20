@@ -400,10 +400,10 @@ class _TodayPageState extends ConsumerState<TodayPage> {
                         goalTitle: goalsById[todayTasks[i].goalId]?.title,
                         subjects: subjectsByGoal[todayTasks[i].goalId],
                         onChanged: onChanged,
-                        // 今日任务勾选进入 5 秒撤回批次：勾选仅划线、不消失，
-                        // 5 秒内可经右下角 FAB 整批撤回，到期才定稿写库
-                        //（FR-5.2；3afc8ac 重构时曾误删此标记，回归）。
-                        enableCompleteUndo: true,
+                        // 今日任务勾选即时完成（3afc8ac 起设计）：勾选仅划线、
+                        // 不消失，写库后由 onChanged 统一刷新；不进入 5 秒撤回
+                        // 批次（default enableCompleteUndo=false）。5 秒撤回
+                        // FAB 仅服务过期任务区（下方 overdue 区传 true）。
                       ),
                     ],
                   ),
@@ -744,7 +744,8 @@ class _MetricHighlight extends StatelessWidget {
 class _StaggeredEntry extends StatelessWidget {
   const _StaggeredEntry({required this.index, required this.child});
 
-  /// 区块顺序：0 = 倒计时卡，1 = 负载卡，2 = 横幅/任务区块头…
+  /// 区块顺序：1 = 负载卡，2 = 横幅/任务区块头…（倒计时卡由
+  /// [ProgressiveRows] 视口驱动懒构建，不参与首屏错峰入场，故无 index 0）。
   final int index;
 
   final Widget child;

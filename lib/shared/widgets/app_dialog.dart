@@ -45,19 +45,20 @@ class AppDialog extends StatelessWidget {
     EdgeInsetsGeometry? contentPadding,
     bool barrierDismissible = true,
   }) {
+    // 入场时长随「减少动画」开关归零（开启时瞬时呈现，交互仍即时）。
+    final motion = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(motionControllerProvider);
     return showGeneralDialog<T>(
       context: context,
       barrierDismissible: barrierDismissible,
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
       barrierColor: Colors.black54,
-      transitionDuration: AppTokens.motionNormal,
+      transitionDuration: motion.duration(AppTokens.motionNormal),
       transitionBuilder: (context, animation, secondaryAnimation, child) {
         // 入场动效（2026-08-20 动效改造）：淡入 + 0.96→1.0 轻微放大，
         // 比纯淡入更有「卡片浮现」感；开启「减少动画」时退化为纯淡入。
-        final motion = ProviderScope.containerOf(
-          context,
-          listen: false,
-        ).read(motionControllerProvider);
         final curved = CurvedAnimation(
           parent: animation,
           curve: AppTokens.motionCurve,
@@ -90,6 +91,10 @@ class AppDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final accent = Theme.of(context).extension<AccentPalette>();
+    final motion = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(motionControllerProvider);
 
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -101,8 +106,8 @@ class AppDialog extends StatelessWidget {
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: maxWidth),
         child: AnimatedSize(
-          duration: AppTokens.motionNormal,
-          curve: AppTokens.motionCurve,
+          duration: motion.duration(AppTokens.motionNormal),
+          curve: motion.curve,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,

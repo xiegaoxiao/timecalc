@@ -437,7 +437,10 @@ class _PlanPreferenceEntryCard extends ConsumerWidget {
     final settingsAsync = ref.watch(settingsProvider);
     return HoverableCard(
       // 计划偏好入口卡可点：hover 边框加深 + 阴影增强 + 微上浮。
-      onTap: () => context.push('/plan-preference'),
+      // 设置加载失败时退化为普通容器（错误态点击无意义）。
+      onTap: settingsAsync.hasValue
+          ? () => context.push('/plan-preference')
+          : null,
       child: settingsAsync.when(
         loading: () =>
             const ListTile(title: Text('计划偏好'), subtitle: Text('加载中…')),
