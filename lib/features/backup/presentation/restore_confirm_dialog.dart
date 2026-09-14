@@ -51,6 +51,10 @@ class RestoreConfirmDialog extends StatelessWidget {
           _InfoRow(label: '目标数', value: '${manifest.goalCount}'),
           _InfoRow(label: '任务数', value: '${manifest.taskCount}'),
           _InfoRow(label: '里程碑', value: '${manifest.milestoneCount}'),
+          // 课程数（FR-10，v17 起）：旧版本备份没有该字段，恒为 0，
+          // 此时不显示以免误导（「0 门课程」会让人以为备份里的课表丢了）。
+          if (manifest.courseCount > 0 || manifest.appSchemaVersion >= 17)
+            _InfoRow(label: '课程数', value: '${manifest.courseCount}'),
           const Divider(height: 24),
           const Text('请选择恢复方式：'),
           const SizedBox(height: 8),

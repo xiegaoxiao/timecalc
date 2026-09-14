@@ -3103,6 +3103,688 @@ i1.GeneratedColumn<int> _column_45(String aliasedName) =>
       $customConstraints: 'NOT NULL DEFAULT 0 CHECK (reduce_motion IN (0, 1))',
       defaultValue: const i1.CustomExpression('0'),
     );
+
+final class Schema16 extends i0.VersionedSchema {
+  Schema16({required super.database}) : super(version: 16);
+  @override
+  late final List<i1.DatabaseSchemaEntity> entities = [
+    goals,
+    subjects,
+    milestones,
+    recurrenceTemplates,
+    tasks,
+    settings,
+    checklistItems,
+    subjectsGoalIdx,
+    milestonesGoalIdx,
+    tasksGoalArchivedIdx,
+    tasksPlannedDateIdx,
+    tasksStatusArchivedIdx,
+    tasksStatusCompletedIdx,
+    recurrenceTemplatesGoalIdx,
+    checklistItemsTaskIdx,
+  ];
+  late final Shape0 goals = Shape0(
+    source: i0.VersionedTable(
+      entityName: 'goals',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_1,
+        _column_2,
+        _column_3,
+        _column_4,
+        _column_5,
+        _column_6,
+        _column_7,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape1 subjects = Shape1(
+    source: i0.VersionedTable(
+      entityName: 'subjects',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_6,
+        _column_7,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape9 milestones = Shape9(
+    source: i0.VersionedTable(
+      entityName: 'milestones',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_8,
+        _column_1,
+        _column_31,
+        _column_16,
+        _column_11,
+        _column_6,
+        _column_7,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape17 recurrenceTemplates = Shape17(
+    source: i0.VersionedTable(
+      entityName: 'recurrence_templates',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_8,
+        _column_12,
+        _column_1,
+        _column_15,
+        _column_22,
+        _column_23,
+        _column_24,
+        _column_25,
+        _column_46,
+        _column_26,
+        _column_27,
+        _column_6,
+        _column_7,
+        _column_29,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape18 tasks = Shape18(
+    source: i0.VersionedTable(
+      entityName: 'tasks',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_8,
+        _column_12,
+        _column_1,
+        _column_13,
+        _column_14,
+        _column_46,
+        _column_15,
+        _column_16,
+        _column_5,
+        _column_11,
+        _column_6,
+        _column_7,
+        _column_17,
+        _column_21,
+        _column_28,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape16 settings = Shape16(
+    source: i0.VersionedTable(
+      entityName: 'settings',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_18,
+        _column_19,
+        _column_20,
+        _column_30,
+        _column_34,
+        _column_35,
+        _column_39,
+        _column_43,
+        _column_44,
+        _column_45,
+        _column_6,
+        _column_7,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape10 checklistItems = Shape10(
+    source: i0.VersionedTable(
+      entityName: 'checklist_items',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_32,
+        _column_1,
+        _column_33,
+        _column_11,
+        _column_6,
+        _column_7,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  final i1.Index subjectsGoalIdx = i1.Index(
+    'subjects_goal_idx',
+    'CREATE INDEX subjects_goal_idx ON subjects (goal_id)',
+  );
+  final i1.Index milestonesGoalIdx = i1.Index(
+    'milestones_goal_idx',
+    'CREATE INDEX milestones_goal_idx ON milestones (goal_id)',
+  );
+  final i1.Index tasksGoalArchivedIdx = i1.Index(
+    'tasks_goal_archived_idx',
+    'CREATE INDEX tasks_goal_archived_idx ON tasks (goal_id, archived_at)',
+  );
+  final i1.Index tasksPlannedDateIdx = i1.Index(
+    'tasks_planned_date_idx',
+    'CREATE INDEX tasks_planned_date_idx ON tasks (planned_date)',
+  );
+  final i1.Index tasksStatusArchivedIdx = i1.Index(
+    'tasks_status_archived_idx',
+    'CREATE INDEX tasks_status_archived_idx ON tasks (status, archived_at)',
+  );
+  final i1.Index tasksStatusCompletedIdx = i1.Index(
+    'tasks_status_completed_idx',
+    'CREATE INDEX tasks_status_completed_idx ON tasks (status, completed_at)',
+  );
+  final i1.Index recurrenceTemplatesGoalIdx = i1.Index(
+    'recurrence_templates_goal_idx',
+    'CREATE INDEX recurrence_templates_goal_idx ON recurrence_templates (goal_id)',
+  );
+  final i1.Index checklistItemsTaskIdx = i1.Index(
+    'checklist_items_task_idx',
+    'CREATE INDEX checklist_items_task_idx ON checklist_items (task_id)',
+  );
+}
+
+class Shape17 extends i0.VersionedTable {
+  Shape17({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<int> get id =>
+      columnsByName['id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get goalId =>
+      columnsByName['goal_id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get subjectId =>
+      columnsByName['subject_id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get title =>
+      columnsByName['title']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get estimatedMinutes =>
+      columnsByName['estimated_minutes']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get ruleType =>
+      columnsByName['rule_type']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get ruleJson =>
+      columnsByName['rule_json']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get startDate =>
+      columnsByName['start_date']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get endDate =>
+      columnsByName['end_date']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get startTime =>
+      columnsByName['start_time']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get active =>
+      columnsByName['active']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get generatedThroughDate =>
+      columnsByName['generated_through_date']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get createdAt =>
+      columnsByName['created_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get updatedAt =>
+      columnsByName['updated_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get deletedInstanceDates =>
+      columnsByName['deleted_instance_dates']! as i1.GeneratedColumn<String>;
+}
+
+i1.GeneratedColumn<String> _column_46(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'start_time',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
+
+class Shape18 extends i0.VersionedTable {
+  Shape18({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<int> get id =>
+      columnsByName['id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get goalId =>
+      columnsByName['goal_id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get subjectId =>
+      columnsByName['subject_id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get title =>
+      columnsByName['title']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get note =>
+      columnsByName['note']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get plannedDate =>
+      columnsByName['planned_date']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get startTime =>
+      columnsByName['start_time']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get estimatedMinutes =>
+      columnsByName['estimated_minutes']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get status =>
+      columnsByName['status']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get completedAt =>
+      columnsByName['completed_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get sortOrder =>
+      columnsByName['sort_order']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get createdAt =>
+      columnsByName['created_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get updatedAt =>
+      columnsByName['updated_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get originalPlannedDate =>
+      columnsByName['original_planned_date']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get archivedAt =>
+      columnsByName['archived_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get recurrenceTemplateId =>
+      columnsByName['recurrence_template_id']! as i1.GeneratedColumn<int>;
+}
+
+final class Schema17 extends i0.VersionedSchema {
+  Schema17({required super.database}) : super(version: 17);
+  @override
+  late final List<i1.DatabaseSchemaEntity> entities = [
+    goals,
+    subjects,
+    milestones,
+    recurrenceTemplates,
+    tasks,
+    settings,
+    checklistItems,
+    courses,
+    subjectsGoalIdx,
+    milestonesGoalIdx,
+    tasksGoalArchivedIdx,
+    tasksPlannedDateIdx,
+    tasksStatusArchivedIdx,
+    tasksStatusCompletedIdx,
+    recurrenceTemplatesGoalIdx,
+    checklistItemsTaskIdx,
+    coursesWeekdayIdx,
+  ];
+  late final Shape0 goals = Shape0(
+    source: i0.VersionedTable(
+      entityName: 'goals',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_1,
+        _column_2,
+        _column_3,
+        _column_4,
+        _column_5,
+        _column_6,
+        _column_7,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape1 subjects = Shape1(
+    source: i0.VersionedTable(
+      entityName: 'subjects',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_6,
+        _column_7,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape9 milestones = Shape9(
+    source: i0.VersionedTable(
+      entityName: 'milestones',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_8,
+        _column_1,
+        _column_31,
+        _column_16,
+        _column_11,
+        _column_6,
+        _column_7,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape17 recurrenceTemplates = Shape17(
+    source: i0.VersionedTable(
+      entityName: 'recurrence_templates',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_8,
+        _column_12,
+        _column_1,
+        _column_15,
+        _column_22,
+        _column_23,
+        _column_24,
+        _column_25,
+        _column_46,
+        _column_26,
+        _column_27,
+        _column_6,
+        _column_7,
+        _column_29,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape18 tasks = Shape18(
+    source: i0.VersionedTable(
+      entityName: 'tasks',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_8,
+        _column_12,
+        _column_1,
+        _column_13,
+        _column_14,
+        _column_46,
+        _column_15,
+        _column_16,
+        _column_5,
+        _column_11,
+        _column_6,
+        _column_7,
+        _column_17,
+        _column_21,
+        _column_28,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape19 settings = Shape19(
+    source: i0.VersionedTable(
+      entityName: 'settings',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_18,
+        _column_19,
+        _column_20,
+        _column_30,
+        _column_34,
+        _column_35,
+        _column_39,
+        _column_43,
+        _column_44,
+        _column_45,
+        _column_47,
+        _column_6,
+        _column_7,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape10 checklistItems = Shape10(
+    source: i0.VersionedTable(
+      entityName: 'checklist_items',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_32,
+        _column_1,
+        _column_33,
+        _column_11,
+        _column_6,
+        _column_7,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape20 courses = Shape20(
+    source: i0.VersionedTable(
+      entityName: 'courses',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_1,
+        _column_48,
+        _column_49,
+        _column_50,
+        _column_51,
+        _column_52,
+        _column_53,
+        _column_54,
+        _column_55,
+        _column_56,
+        _column_10,
+        _column_13,
+        _column_6,
+        _column_7,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  final i1.Index subjectsGoalIdx = i1.Index(
+    'subjects_goal_idx',
+    'CREATE INDEX subjects_goal_idx ON subjects (goal_id)',
+  );
+  final i1.Index milestonesGoalIdx = i1.Index(
+    'milestones_goal_idx',
+    'CREATE INDEX milestones_goal_idx ON milestones (goal_id)',
+  );
+  final i1.Index tasksGoalArchivedIdx = i1.Index(
+    'tasks_goal_archived_idx',
+    'CREATE INDEX tasks_goal_archived_idx ON tasks (goal_id, archived_at)',
+  );
+  final i1.Index tasksPlannedDateIdx = i1.Index(
+    'tasks_planned_date_idx',
+    'CREATE INDEX tasks_planned_date_idx ON tasks (planned_date)',
+  );
+  final i1.Index tasksStatusArchivedIdx = i1.Index(
+    'tasks_status_archived_idx',
+    'CREATE INDEX tasks_status_archived_idx ON tasks (status, archived_at)',
+  );
+  final i1.Index tasksStatusCompletedIdx = i1.Index(
+    'tasks_status_completed_idx',
+    'CREATE INDEX tasks_status_completed_idx ON tasks (status, completed_at)',
+  );
+  final i1.Index recurrenceTemplatesGoalIdx = i1.Index(
+    'recurrence_templates_goal_idx',
+    'CREATE INDEX recurrence_templates_goal_idx ON recurrence_templates (goal_id)',
+  );
+  final i1.Index checklistItemsTaskIdx = i1.Index(
+    'checklist_items_task_idx',
+    'CREATE INDEX checklist_items_task_idx ON checklist_items (task_id)',
+  );
+  final i1.Index coursesWeekdayIdx = i1.Index(
+    'courses_weekday_idx',
+    'CREATE INDEX courses_weekday_idx ON courses (weekday)',
+  );
+}
+
+class Shape19 extends i0.VersionedTable {
+  Shape19({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<int> get id =>
+      columnsByName['id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get dailyAvailableMinutes =>
+      columnsByName['daily_available_minutes']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get availableWeekdays =>
+      columnsByName['available_weekdays']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get closeBehavior =>
+      columnsByName['close_behavior']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get autoBackupEnabled =>
+      columnsByName['auto_backup_enabled']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get localBackupFolder =>
+      columnsByName['local_backup_folder']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get lastAutoBackupAt =>
+      columnsByName['last_auto_backup_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get themeMode =>
+      columnsByName['theme_mode']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get accentColor =>
+      columnsByName['accent_color']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get reduceMotion =>
+      columnsByName['reduce_motion']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get semesterStartDate =>
+      columnsByName['semester_start_date']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get createdAt =>
+      columnsByName['created_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get updatedAt =>
+      columnsByName['updated_at']! as i1.GeneratedColumn<int>;
+}
+
+i1.GeneratedColumn<String> _column_47(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'semester_start_date',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
+
+class Shape20 extends i0.VersionedTable {
+  Shape20({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<int> get id =>
+      columnsByName['id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get title =>
+      columnsByName['title']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get teacher =>
+      columnsByName['teacher']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get location =>
+      columnsByName['location']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get weekday =>
+      columnsByName['weekday']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get startPeriod =>
+      columnsByName['start_period']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get endPeriod =>
+      columnsByName['end_period']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get startWeek =>
+      columnsByName['start_week']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get endWeek =>
+      columnsByName['end_week']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get weekParity =>
+      columnsByName['week_parity']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get category =>
+      columnsByName['category']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get color =>
+      columnsByName['color']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get note =>
+      columnsByName['note']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get createdAt =>
+      columnsByName['created_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get updatedAt =>
+      columnsByName['updated_at']! as i1.GeneratedColumn<int>;
+}
+
+i1.GeneratedColumn<String> _column_48(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'teacher',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<String> _column_49(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'location',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<int> _column_50(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'weekday',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<int> _column_51(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'start_period',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<int> _column_52(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'end_period',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<int> _column_53(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'start_week',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<int> _column_54(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'end_week',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<String> _column_55(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'week_parity',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL DEFAULT \'all\'',
+      defaultValue: const i1.CustomExpression('\'all\''),
+    );
+i1.GeneratedColumn<String> _column_56(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'category',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
 i0.MigrationStepWithVersion migrationSteps({
   required Future<void> Function(i1.Migrator m, Schema2 schema) from1To2,
   required Future<void> Function(i1.Migrator m, Schema3 schema) from2To3,
@@ -3118,6 +3800,8 @@ i0.MigrationStepWithVersion migrationSteps({
   required Future<void> Function(i1.Migrator m, Schema13 schema) from12To13,
   required Future<void> Function(i1.Migrator m, Schema14 schema) from13To14,
   required Future<void> Function(i1.Migrator m, Schema15 schema) from14To15,
+  required Future<void> Function(i1.Migrator m, Schema16 schema) from15To16,
+  required Future<void> Function(i1.Migrator m, Schema17 schema) from16To17,
 }) {
   return (currentVersion, database) async {
     switch (currentVersion) {
@@ -3191,6 +3875,16 @@ i0.MigrationStepWithVersion migrationSteps({
         final migrator = i1.Migrator(database, schema);
         await from14To15(migrator, schema);
         return 15;
+      case 15:
+        final schema = Schema16(database: database);
+        final migrator = i1.Migrator(database, schema);
+        await from15To16(migrator, schema);
+        return 16;
+      case 16:
+        final schema = Schema17(database: database);
+        final migrator = i1.Migrator(database, schema);
+        await from16To17(migrator, schema);
+        return 17;
       default:
         throw ArgumentError.value('Unknown migration from $currentVersion');
     }
@@ -3212,6 +3906,8 @@ i1.OnUpgrade stepByStep({
   required Future<void> Function(i1.Migrator m, Schema13 schema) from12To13,
   required Future<void> Function(i1.Migrator m, Schema14 schema) from13To14,
   required Future<void> Function(i1.Migrator m, Schema15 schema) from14To15,
+  required Future<void> Function(i1.Migrator m, Schema16 schema) from15To16,
+  required Future<void> Function(i1.Migrator m, Schema17 schema) from16To17,
 }) => i0.VersionedSchema.stepByStepHelper(
   step: migrationSteps(
     from1To2: from1To2,
@@ -3228,5 +3924,7 @@ i1.OnUpgrade stepByStep({
     from12To13: from12To13,
     from13To14: from13To14,
     from14To15: from14To15,
+    from15To16: from15To16,
+    from16To17: from16To17,
   ),
 );

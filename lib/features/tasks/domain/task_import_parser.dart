@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../../../core/utils/time_text.dart';
+
 /// 单个待导入任务（JSON 导入计划项）。
 class ImportedTaskItem {
   const ImportedTaskItem({
@@ -7,6 +9,7 @@ class ImportedTaskItem {
     required this.date,
     this.subjectName,
     this.minutes,
+    this.time,
   });
 
   final String title;
@@ -17,6 +20,9 @@ class ImportedTaskItem {
   /// 归属科目名；null 表示未分类任务。
   final String? subjectName;
   final int? minutes;
+
+  /// 计划开始时刻（`HH:mm`，已规范化）；null 表示只排到天。
+  final String? time;
 }
 
 /// 解析通过的导入计划：科目（隔离分组）与未分类任务。
@@ -80,7 +86,7 @@ class TaskImportResult {
 /// {
 ///   "subjects": {
 ///     "数学": [
-///       { "title": "真题 2013", "date": "2026-08-06", "minutes": 180 }
+///       { "title": "真题 2013", "date": "2026-08-06", "minutes": 180, "time": "08:30" }
 ///     ]
 ///   },
 ///   "unclassified": [
@@ -93,6 +99,8 @@ class TaskImportResult {
 /// - `subjects`（可选，对象）与 `unclassified`（可选，数组）相互隔离；
 /// - 每条任务：`title` 必填非空；`date` 必填，格式 yyyy-MM-dd、必须是
 ///   真实日历日期、不得早于 [today]（本地日期）；`minutes` 可选 1～1440；
+///   `time` 可选，`HH:mm`（24 小时制，`9:05` 这类单位数写法会补零），
+///   用来把任务排到具体钟点；
 /// - 任一问题存在时返回 [TaskImportResult.issues] 且不带计划，阻止导入。
 class TaskImportParser {
   const TaskImportParser();
@@ -102,9 +110,7 @@ class TaskImportParser {
     try {
       decoded = jsonDecode(source);
     } on FormatException catch (e) {
-      return TaskImportResult(
-        issues: [ImportIssue('JSON 格式不合法：${e.message}')],
-      );
+      return TaskImportResult(issues: [ImportIssue('JSON 格式不合法：${e.message}')]);
     }
 
     if (decoded is! Map<String, dynamic>) {
@@ -193,7 +199,10 @@ class TaskImportParser {
       final location = '$subjectLabel · 第 ${i + 1} 项';
       if (raw is! Map<String, dynamic>) {
         issues.add(
-          ImportIssue('必须是对象 { "title": ..., "date": ... }', location: location),
+          ImportIssue(
+            '必须是对象 { "title": ..., "date": ... }',
+            location: location,
+          ),
         );
         continue;
       }
@@ -235,12 +244,38 @@ class TaskImportParser {
         minutes = minutesRaw;
       }
 
-      items.add(ImportedTaskItem(
-        title: title.trim(),
-        date: date,
-        subjectName: subjectName,
-        minutes: minutes,
-      ));
+      // time 可选：小时级排程（schema v16），非法写法直接拦下而不是静默忽略。
+      String? time;
+      final timeRaw = raw['time'];
+      if (timeRaw != null) {
+        if (timeRaw is! String) {
+          issues.add(
+            ImportIssue('time 必须是字符串，格式 HH:mm（如 "20:30"）', location: location),
+          );
+          continue;
+        }
+        final normalized = tryNormalizeTimeOfDay(timeRaw);
+        if (normalized == null) {
+          issues.add(
+            ImportIssue(
+              'time 不是合法时刻（应为 HH:mm，00:00～23:59）',
+              location: location,
+            ),
+          );
+          continue;
+        }
+        time = normalized;
+      }
+
+      items.add(
+        ImportedTaskItem(
+          title: title.trim(),
+          date: date,
+          subjectName: subjectName,
+          minutes: minutes,
+          time: time,
+        ),
+      );
     }
   }
 

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/theme/app_tokens.dart';
+import '../../../core/utils/time_text.dart';
 import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/app_form_field.dart';
 import '../../../shared/widgets/duration_step_input.dart';
@@ -35,10 +36,7 @@ class QuickTaskFormDialog extends ConsumerStatefulWidget {
       title: '快速添加任务',
       titleIcon: Icons.bolt_outlined,
       maxWidth: 440,
-      content: QuickTaskFormDialog(
-        date: date,
-        goals: goals,
-      ),
+      content: QuickTaskFormDialog(date: date, goals: goals),
       barrierDismissible: false,
     );
   }
@@ -54,6 +52,9 @@ class _QuickTaskFormDialogState extends ConsumerState<QuickTaskFormDialog> {
   final _noteController = TextEditingController();
   late int? _goalId;
   int? _estimatedMinutes;
+
+  /// 计划时刻（`HH:mm`，可空）；null = 只排到天。
+  String? _startTime;
   bool _saving = false;
 
   @override
@@ -69,6 +70,22 @@ class _QuickTaskFormDialogState extends ConsumerState<QuickTaskFormDialog> {
     _titleController.dispose();
     _noteController.dispose();
     super.dispose();
+  }
+
+  /// 选择计划时刻（可选）——快速录入也支持小时级排程。
+  Future<void> _pickTime() async {
+    final current = tryTimeOfDayMinutes(_startTime) ?? 9 * 60;
+    final picked = await showTimePicker(
+      context: context,
+      helpText: '选择计划时刻（可选）',
+      initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
+    );
+    if (picked == null) return;
+    setState(() {
+      _startTime =
+          '${picked.hour.toString().padLeft(2, '0')}:'
+          '${picked.minute.toString().padLeft(2, '0')}';
+    });
   }
 
   Future<void> _save() async {
@@ -90,6 +107,7 @@ class _QuickTaskFormDialogState extends ConsumerState<QuickTaskFormDialog> {
               ? null
               : _noteController.text.trim(),
           plannedDate: DateFormat('yyyy-MM-dd').format(widget.date),
+          startTime: _startTime,
           estimatedMinutes: minutes,
         ),
       );
@@ -147,13 +165,21 @@ class _QuickTaskFormDialogState extends ConsumerState<QuickTaskFormDialog> {
           ),
           const SizedBox(height: AppTokens.spaceLg),
 
+          // 计划时刻（可选）：小时级排程（该任务本身排在 widget.date 当天）。
+          AppTimeField(
+            label: '计划时刻（可选）',
+            value: _startTime,
+            onTap: _pickTime,
+            onClear: () => setState(() => _startTime = null),
+          ),
+          const SizedBox(height: AppTokens.spaceLg),
+
           // 预估时长
           DurationStepInput(
             label: '预估时长',
             value: _estimatedMinutes,
             allowEmpty: true,
-            onChanged: (minutes) =>
-                setState(() => _estimatedMinutes = minutes),
+            onChanged: (minutes) => setState(() => _estimatedMinutes = minutes),
             hourFieldKey: const Key('quickHourField'),
             minuteFieldKey: const Key('quickMinuteField'),
           ),
@@ -172,8 +198,7 @@ class _QuickTaskFormDialogState extends ConsumerState<QuickTaskFormDialog> {
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               TextButton(
-                onPressed:
-                    _saving ? null : () => Navigator.of(context).pop(),
+                onPressed: _saving ? null : () => Navigator.of(context).pop(),
                 child: const Text('取消'),
               ),
               const SizedBox(width: AppTokens.spaceSm),

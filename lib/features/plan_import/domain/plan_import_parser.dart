@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../../../core/utils/time_text.dart';
 import '../../tasks/domain/task_import_parser.dart' show ImportIssue;
 
 /// 单个待导入的里程碑（目标下的阶段性节点，FR-2 语义）。
@@ -24,6 +25,7 @@ class ImportedPlanTask {
     this.subjectName,
     this.note,
     this.minutes,
+    this.time,
   });
 
   final String title;
@@ -41,6 +43,12 @@ class ImportedPlanTask {
   /// 剩余工作量趋势 / 任务耗时图只统计带预估时长的任务（FR-7.4），
   /// 不设置则导入的任务不进入进度统计。
   final int? minutes;
+
+  /// 计划开始时刻（`HH:mm`，已规范化）；null 表示只排到天。
+  ///
+  /// 完整计划 JSON 的可选 `time` 字段；iCalendar 导入则由 `DTSTART` 的
+  /// 钟点部分填充（详见 ics_plan_parser）。
+  final String? time;
 }
 
 /// 单个待导入的「每天」重复模板（每周 daily_must_do 一条）。
@@ -54,6 +62,7 @@ class ImportedPlanTemplate {
     required this.startDate,
     required this.endDate,
     this.minutes,
+    this.time,
   });
 
   final String title;
@@ -62,6 +71,10 @@ class ImportedPlanTemplate {
 
   /// 每条实例的预估时长（分钟，1～1440）；未设置为 null。
   final int? minutes;
+
+  /// 每条实例的计划时刻（`HH:mm`，可空）：继承到所有生成的实例，
+  /// 使「每天 20:00 背单词」这类安排能落到日历上。
+  final String? time;
 
   /// 固定「每天」规则类型与参数。
   static const ruleType = 'daily';
@@ -156,10 +169,12 @@ class PlanImportResult {
 /// - `stages[].stage` → 阶段里程碑；`weekly_plan[].focus` → 周里程碑
 ///   （标题「第 N 周：focus」），日期取 `week_range` 起点；
 /// - `subjects.<科目>.daily_breakdown`（date 为键）→ 科目任务。值为文本
-///   （历史写法）或对象 `{ "title": ..., "minutes": 180 }`；
+///   （历史写法）或对象 `{ "title": ..., "minutes": 180, "time": "20:30" }`
+///   （`time` 可选，小时级排程）；
 /// - `subjects.daily_must_do`（每周数组）→ 每条生成一个「每天」重复模板，
 ///   覆盖该周 7 天。条目为文本（历史写法）或对象
-///   `{ "title": ..., "minutes": 30 }`（时长继承到每条实例）；
+///   `{ "title": ..., "minutes": 30, "time": "20:00" }`（时长与时刻继承到
+///   每条实例）；
 /// - `unclassified` → 未分类任务（note 落库，`minutes` 可带预估时长）。
 ///
 /// 校验（错误全收集 + location 定位，任一结构性错误则整体不通过）：
@@ -290,6 +305,11 @@ class PlanImportParser {
             location: location,
             issues: issues,
           );
+          final time = _readTime(
+            raw['time'],
+            location: location,
+            issues: issues,
+          );
           final note = raw['note'];
           tasks.add(ImportedPlanTask(
             title: title,
@@ -297,6 +317,7 @@ class PlanImportParser {
             subjectName: null,
             note: note is String && note.trim().isNotEmpty ? note.trim() : null,
             minutes: minutes,
+            time: time,
           ));
         }
       }
@@ -426,7 +447,7 @@ class PlanImportParser {
         for (var mi = 0; mi < mustDo.length; mi++) {
           final item = mustDo[mi];
           final itemLocation = '$location · 每日例行 ${mi + 1}';
-          final (title, minutes) = _readMustDoEntry(
+          final (title, minutes, time) = _readMustDoEntry(
             item,
             location: itemLocation,
             issues: issues,
@@ -453,6 +474,7 @@ class PlanImportParser {
             startDate: effectiveStart,
             endDate: endDate,
             minutes: minutes,
+            time: time,
           ));
         }
       }
@@ -495,7 +517,7 @@ class PlanImportParser {
             issues.add(ImportIssue('${dateEntry.key} 不是有效日期（应为 yyyy-MM-dd）', location: itemLocation));
             continue;
           }
-          final (title, minutes) = _readTaskEntry(
+          final (title, minutes, time) = _readTaskEntry(
             dateEntry.value,
             location: itemLocation,
             issues: issues,
@@ -517,6 +539,7 @@ class PlanImportParser {
             date: date,
             subjectName: name,
             minutes: minutes,
+            time: time,
           ));
         }
       }
@@ -573,17 +596,18 @@ class PlanImportParser {
 
   /// 解析 daily_breakdown 单个条目（兼容两种写法）：
   /// - 字符串：任务标题（历史写法，无时长）；
-  /// - 对象：`{ "title": ..., "minutes": 180 }`（带预估时长，与 JSON 任务
-  ///   导入对齐——进度统计只计带时长的任务，FR-7.4）。
+  /// - 对象：`{ "title": ..., "minutes": 180, "time": "20:30" }`（带预估
+  ///   时长与可选计划时刻，与 JSON 任务导入对齐——进度统计只计带时长的
+  ///   任务，FR-7.4）。
   ///
-  /// 返回 (标题, 时长)；标题为 null 表示非法（错误已入 [issues]）。
-  static (String?, int?) _readTaskEntry(
+  /// 返回 (标题, 时长, 时刻)；标题为 null 表示非法（错误已入 [issues]）。
+  static (String?, int?, String?) _readTaskEntry(
     Object? value, {
     required String location,
     required List<ImportIssue> issues,
   }) {
     if (value is String) {
-      return (_readTitle(value), null);
+      return (_readTitle(value), null, null);
     }
     if (value is Map<String, dynamic>) {
       final title = _readTitle(value['title']);
@@ -595,21 +619,27 @@ class PlanImportParser {
         location: location,
         issues: issues,
       );
-      return (title, minutes);
+      final time = _readTime(
+        value['time'],
+        location: location,
+        issues: issues,
+      );
+      return (title, minutes, time);
     }
     issues.add(
       ImportIssue('任务内容必须是文本或 { "title": ..., "minutes": ... } 对象', location: location),
     );
-    return (null, null);
+    return (null, null, null);
   }
 
   /// 解析 daily_must_do 单个条目（兼容两种写法）：
   /// - 字符串：例行标题（历史写法，无时长）；
-  /// - 对象：`{ "title": ..., "minutes": 30 }`（带预估时长，继承到每天实例）。
+  /// - 对象：`{ "title": ..., "minutes": 30, "time": "20:00" }`（带预估
+  ///   时长与可选时刻，继承到每天实例）。
   ///
-  /// 返回 (标题, 时长)；标题为 null 表示非法（错误已入 [issues]）。
+  /// 返回 (标题, 时长, 时刻)；标题为 null 表示非法（错误已入 [issues]）。
   /// 标题长度上限与 schema 一致（tasks.title ≤ 200，M10）。
-  static (String?, int?) _readMustDoEntry(
+  static (String?, int?, String?) _readMustDoEntry(
     Object? value, {
     required String location,
     required List<ImportIssue> issues,
@@ -620,9 +650,9 @@ class PlanImportParser {
         issues.add(ImportIssue('daily_must_do 条目必须是非空文本', location: location));
       } else if (title.length > 200) {
         issues.add(ImportIssue('daily_must_do 标题不能超过 200 字', location: location));
-        return (null, null);
+        return (null, null, null);
       }
-      return (title, null);
+      return (title, null, null);
     }
     if (value is Map<String, dynamic>) {
       final title = _readTitle(value['title']);
@@ -630,14 +660,19 @@ class PlanImportParser {
         issues.add(ImportIssue('daily_must_do 条目必须是非空文本', location: location));
       } else if (title.length > 200) {
         issues.add(ImportIssue('daily_must_do 标题不能超过 200 字', location: location));
-        return (null, null);
+        return (null, null, null);
       }
       final minutes = _readMinutes(
         value['minutes'],
         location: location,
         issues: issues,
       );
-      return (title, minutes);
+      final time = _readTime(
+        value['time'],
+        location: location,
+        issues: issues,
+      );
+      return (title, minutes, time);
     }
     issues.add(
       ImportIssue(
@@ -645,7 +680,33 @@ class PlanImportParser {
         location: location,
       ),
     );
-    return (null, null);
+    return (null, null, null);
+  }
+
+  /// 读取并校验计划时刻（可选）：`HH:mm`（24 小时制，`9:05` 补零为 `09:05`）。
+  ///
+  /// 非法写法只记 issue 不静默丢弃（与 _readMinutes 同契约：issues 非空时
+  /// 整体校验不通过，不写入任何数据）。
+  static String? _readTime(
+    Object? value, {
+    required String location,
+    required List<ImportIssue> issues,
+  }) {
+    if (value == null) return null;
+    if (value is! String) {
+      issues.add(
+        ImportIssue('time 必须是字符串，格式 HH:mm（如 "20:30"）', location: location),
+      );
+      return null;
+    }
+    final normalized = tryNormalizeTimeOfDay(value);
+    if (normalized == null) {
+      issues.add(
+        ImportIssue('time 不是合法时刻（应为 HH:mm，00:00～23:59）', location: location),
+      );
+      return null;
+    }
+    return normalized;
   }
 
   /// 读取并校验预估时长（分钟）：整数 1～1440；非法入 [issues] 返回 null。

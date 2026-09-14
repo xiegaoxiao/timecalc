@@ -21,18 +21,26 @@ import '../../features/tasks/data/recurrence_repository_provider.dart';
 import '../../features/tasks/data/task_repository_provider.dart';
 import '../../features/tasks/presentation/goal_tasks_page.dart';
 import '../../features/tasks/presentation/subject_task_page.dart';
+import '../../features/timetable/presentation/timetable_page.dart';
 import '../../features/today/presentation/today_page.dart';
 import '../providers/clock_provider.dart';
 import '../providers/motion_provider.dart';
 import '../theme/app_tokens.dart';
 
-/// 主导航目的地（v1.12：今天 / 计划 / 目标 / 进度 / 设置）。
+/// 主导航目的地（v1.18：今天 / 计划 / 课表 / 目标 / 进度 / 设置）。
 enum AppDestination {
   today(label: '今天', icon: Icons.today_outlined, selectedIcon: Icons.today),
   plan(
     label: '计划',
     icon: Icons.calendar_month_outlined,
     selectedIcon: Icons.calendar_month,
+  ),
+  // 课表（FR-10）：外部给定的固定作息，与「计划」互补——计划回答「我打算
+  // 做什么」，课表回答「我什么时候有课」。
+  timetable(
+    label: '课表',
+    icon: Icons.calendar_view_week_outlined,
+    selectedIcon: Icons.calendar_view_week,
   ),
   goal(label: '目标', icon: Icons.flag_outlined, selectedIcon: Icons.flag),
   progress(
@@ -68,41 +76,60 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return AppShell(navigationShell: navigationShell);
         },
         branches: [
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: '/today',
-              name: 'today',
-              builder: (context, state) => const TodayPage(),
-            ),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: '/plan',
-              name: 'plan',
-              builder: (context, state) => const PlanPage(),
-            ),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: '/goals',
-              name: 'goals',
-              builder: (context, state) => const GoalListPage(),
-            ),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: '/progress',
-              name: 'progress',
-              builder: (context, state) => const ProgressPage(),
-            ),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: '/settings',
-              name: 'settings',
-              builder: (context, state) => const SettingsPage(),
-            ),
-          ]),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/today',
+                name: 'today',
+                builder: (context, state) => const TodayPage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/plan',
+                name: 'plan',
+                builder: (context, state) => const PlanPage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/timetable',
+                name: 'timetable',
+                builder: (context, state) => const TimetablePage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/goals',
+                name: 'goals',
+                builder: (context, state) => const GoalListPage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/progress',
+                name: 'progress',
+                builder: (context, state) => const ProgressPage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/settings',
+                name: 'settings',
+                builder: (context, state) => const SettingsPage(),
+              ),
+            ],
+          ),
         ],
       ),
       GoRoute(
@@ -268,8 +295,11 @@ class _AppShellState extends ConsumerState<AppShell> {
   void _armMidnightTimer() {
     _midnightTimer?.cancel();
     final now = DateTime.now();
-    final nextMidnight = DateTime(now.year, now.month, now.day + 1)
-        .add(const Duration(seconds: 1));
+    final nextMidnight = DateTime(
+      now.year,
+      now.month,
+      now.day + 1,
+    ).add(const Duration(seconds: 1));
     _midnightTimer = Timer(nextMidnight.difference(now), () {
       if (!mounted) return;
       ref.invalidate(clockProvider);
@@ -436,8 +466,8 @@ class _NavItemState extends ConsumerState<_NavItem> {
     final hoverColor = isSelected
         ? scheme.primary.withValues(alpha: 0.10)
         : (Theme.of(context).brightness == Brightness.dark
-            ? scheme.surfaceContainerHighest
-            : scheme.primary.withValues(alpha: 0.06));
+              ? scheme.surfaceContainerHighest
+              : scheme.primary.withValues(alpha: 0.06));
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -453,10 +483,7 @@ class _NavItemState extends ConsumerState<_NavItem> {
             child: AnimatedContainer(
               duration: motion.duration(AppTokens.motionFast),
               curve: motion.curve,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 10,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: _hovered ? hoverColor : Colors.transparent,
                 borderRadius: BorderRadius.circular(AppTokens.radiusMd),
@@ -500,8 +527,9 @@ class _NavItemState extends ConsumerState<_NavItem> {
                     curve: motion.curve,
                     style: TextStyle(
                       fontSize: 14,
-                      fontWeight:
-                          isSelected ? FontWeight.w600 : FontWeight.w500,
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.w500,
                       color: color,
                     ),
                     child: Text(dest.label),

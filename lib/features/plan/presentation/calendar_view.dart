@@ -15,6 +15,7 @@ import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/chart_empty_state.dart';
 import '../../../shared/widgets/page_skeletons.dart';
 import '../../../shared/widgets/progressive_rows.dart';
+import '../../calendar_io/data/ics_export_service.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../../goals/data/subject_repository_provider.dart';
 import '../../settings/data/settings_repository.dart';
@@ -63,6 +64,35 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
     _year = today.year;
     _selectedDate = formatLocalDate(today);
     _monthHideCompleted = false;
+  }
+
+  /// 导出当前计划为 iCalendar（.ics）文件：未归档任务 + 全部里程碑。
+  ///
+  /// 与备份导出同款交互（原生「另存为」对话框）；用户取消不提示，
+  /// 失败给出可读 SnackBar（不阻断页面）。
+  Future<void> _exportIcs() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final result = await ref
+          .read(icsExportServiceProvider)
+          .export(calendarName: 'TimeCalc 学习计划');
+      if (!mounted || result == null) return; // 用户取消。
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            result.eventCount == 0
+                ? '没有可导出的日程（任务与里程碑都为空）'
+                : '已导出 ${result.eventCount} 个日程'
+                    '（任务 ${result.taskCount} · 里程碑 ${result.milestoneCount}）'
+                    '到 ${result.path}',
+          ),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text('导出日历失败：$e')));
+    }
   }
 
   /// 所在周的周一（周一开头，与网格一致）。
@@ -227,6 +257,7 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
             onPrev: onPrev,
             onNext: onNext,
             onBackToToday: onBackToToday,
+            onExportIcs: _exportIcs,
             hideCompleted: _monthHideCompleted,
             onHideCompletedChanged: _mode == CalendarViewMode.month
                 ? (value) => setState(() => _monthHideCompleted = value)
@@ -615,6 +646,7 @@ class _CalendarHeader extends StatelessWidget {
     required this.onPrev,
     required this.onNext,
     required this.onBackToToday,
+    required this.onExportIcs,
     this.hideCompleted = false,
     this.onHideCompletedChanged,
   });
@@ -626,6 +658,9 @@ class _CalendarHeader extends StatelessWidget {
   final VoidCallback onPrev;
   final VoidCallback onNext;
   final VoidCallback onBackToToday;
+
+  /// 导出 .ics 日历（全部未归档任务 + 里程碑）。
+  final VoidCallback onExportIcs;
 
   /// 仅月视图：「隐藏已完成」开关的当前值。
   final bool hideCompleted;
@@ -675,6 +710,11 @@ class _CalendarHeader extends StatelessWidget {
               ),
             ],
             const Spacer(),
+            IconButton(
+              tooltip: '导出日历（.ics，可导入手机/Google 日历）',
+              onPressed: onExportIcs,
+              icon: const Icon(Icons.ios_share_outlined),
+            ),
             IconButton(
               tooltip: '上一单元',
               onPressed: onPrev,

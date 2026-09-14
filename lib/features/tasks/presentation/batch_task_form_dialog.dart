@@ -8,6 +8,7 @@ import '../../../core/providers/clock_provider.dart';
 import '../../../core/providers/app_refresh.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/date_text.dart';
+import '../../../core/utils/time_text.dart';
 import '../../../services/duration_format.dart';
 import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/app_form_field.dart';
@@ -67,6 +68,9 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
   bool _useInterval = false;
   int? _subjectId;
   int? _estimatedMinutes;
+
+  /// 统一计划时刻（`HH:mm`，可空）：本批任务共享同一钟点（schema v16）。
+  String? _startTime;
   bool _saving = false;
 
   List<String> get _lines => _titlesController.text
@@ -89,6 +93,22 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
     _titlesController.dispose();
     _intervalController.dispose();
     super.dispose();
+  }
+
+  /// 选择本批任务的统一计划时刻（可选，小时级排程）。
+  Future<void> _pickTime() async {
+    final current = tryTimeOfDayMinutes(_startTime) ?? 9 * 60;
+    final picked = await showTimePicker(
+      context: context,
+      helpText: '选择计划时刻（可选，本批共用）',
+      initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
+    );
+    if (picked == null) return;
+    setState(() {
+      _startTime =
+          '${picked.hour.toString().padLeft(2, '0')}:'
+          '${picked.minute.toString().padLeft(2, '0')}';
+    });
   }
 
   Future<void> _pickStartDate() async {
@@ -128,9 +148,9 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
 
   /// 起始日期越界提示（不静默失败）。
   void _showDateError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// 保存守卫：起始日期与递推的最后一个任务日期都必须在 [今天, 目标截止日]。
@@ -143,8 +163,9 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
     final today = DateUtils.dateOnly(ref.read(clockProvider)());
     final deadline = _goalDeadline();
     final lines = _lines;
-    final intervalDays =
-        _useInterval ? (int.tryParse(_intervalController.text.trim()) ?? 1) : 0;
+    final intervalDays = _useInterval
+        ? (int.tryParse(_intervalController.text.trim()) ?? 1)
+        : 0;
     // 最后一个任务的计划日期（纯日历加法，同 batchCreate 语义）。
     final lastTaskDate = addLocalDays(
       _startDate,
@@ -190,6 +211,7 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
           startDate: DateFormat('yyyy-MM-dd').format(_startDate),
           dateIntervalDays: _useInterval ? intervalDays : 0,
           estimatedMinutes: minutes,
+          startTime: _startTime,
         ),
       );
       if (!ok) return;
@@ -212,8 +234,7 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
         ? 0
         : lines.length * _estimatedMinutes!;
     // 间隔天数取输入框实时解析值，保证「所见即所存」。
-    final intervalDays =
-        int.tryParse(_intervalController.text.trim()) ?? 1;
+    final intervalDays = int.tryParse(_intervalController.text.trim()) ?? 1;
 
     return Form(
       key: _formKey,
@@ -255,10 +276,7 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
                 scheme: Theme.of(context).colorScheme,
               ),
               items: [
-                const DropdownMenuItem<int?>(
-                  value: null,
-                  child: Text('未分类'),
-                ),
+                const DropdownMenuItem<int?>(value: null, child: Text('未分类')),
                 for (final s in widget.subjects)
                   DropdownMenuItem<int?>(value: s.id, child: Text(s.name)),
               ],
@@ -279,9 +297,9 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
               Text(
                 '日期安排',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppTokens.neutralTextSecondaryLight,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  color: AppTokens.neutralTextSecondaryLight,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ],
           ),
@@ -290,8 +308,7 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
           // 日期安排选项
           RadioGroup<bool>(
             groupValue: _useInterval,
-            onChanged: (value) =>
-                setState(() => _useInterval = value ?? false),
+            onChanged: (value) => setState(() => _useInterval = value ?? false),
             child: Row(
               children: [
                 Expanded(
@@ -306,7 +323,10 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
                 Expanded(
                   child: RadioListTile<bool>(
                     value: true,
-                    title: const Text('每 N 天一个', style: TextStyle(fontSize: 13)),
+                    title: const Text(
+                      '每 N 天一个',
+                      style: TextStyle(fontSize: 13),
+                    ),
                     dense: true,
                     contentPadding: EdgeInsets.zero,
                     visualDensity: VisualDensity.compact,
@@ -352,13 +372,21 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
           ),
           const SizedBox(height: AppTokens.spaceMd),
 
+          // 统一计划时刻（可选）：本批任务共用同一钟点，排进日历。
+          AppTimeField(
+            label: '计划时刻（可选，本批共用）',
+            value: _startTime,
+            onTap: _pickTime,
+            onClear: () => setState(() => _startTime = null),
+          ),
+          const SizedBox(height: AppTokens.spaceMd),
+
           // 预估时长
           DurationStepInput(
             label: '预估时长',
             value: _estimatedMinutes,
             allowEmpty: true,
-            onChanged: (minutes) =>
-                setState(() => _estimatedMinutes = minutes),
+            onChanged: (minutes) => setState(() => _estimatedMinutes = minutes),
             hourFieldKey: const Key('batchHourField'),
             minuteFieldKey: const Key('batchMinuteField'),
           ),
@@ -368,18 +396,20 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
           Container(
             padding: const EdgeInsets.all(AppTokens.spaceMd),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
+              color: Theme.of(
+                context,
+              ).colorScheme.primary.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(AppTokens.radiusMd),
             ),
             child: Text(
               lines.isEmpty
                   ? '输入标题后将在此预览'
                   : '将创建 ${lines.length} 个任务'
-                      '${_useInterval ? '，自 ${DateFormat('yyyy-MM-dd').format(_startDate)} 起每 $intervalDays 天一个' : '，日期 ${DateFormat('yyyy-MM-dd').format(_startDate)}'}'
-                      '${totalMinutes > 0 ? '，共 ${DurationFormat.minutes(totalMinutes)}' : ''}',
+                        '${_useInterval ? '，自 ${DateFormat('yyyy-MM-dd').format(_startDate)} 起每 $intervalDays 天一个' : '，日期 ${DateFormat('yyyy-MM-dd').format(_startDate)}'}'
+                        '${totalMinutes > 0 ? '，共 ${DurationFormat.minutes(totalMinutes)}' : ''}',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
+                color: Theme.of(context).colorScheme.primary,
+              ),
             ),
           ),
           const SizedBox(height: AppTokens.spaceSm),
@@ -389,8 +419,7 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               TextButton(
-                onPressed:
-                    _saving ? null : () => Navigator.of(context).pop(),
+                onPressed: _saving ? null : () => Navigator.of(context).pop(),
                 child: const Text('取消'),
               ),
               const SizedBox(width: AppTokens.spaceSm),

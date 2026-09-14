@@ -1574,6 +1574,17 @@ class $RecurrenceTemplatesTable extends RecurrenceTemplates
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _startTimeMeta = const VerificationMeta(
+    'startTime',
+  );
+  @override
+  late final GeneratedColumn<String> startTime = GeneratedColumn<String>(
+    'start_time',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _activeMeta = const VerificationMeta('active');
   @override
   late final GeneratedColumn<bool> active = GeneratedColumn<bool>(
@@ -1642,6 +1653,7 @@ class $RecurrenceTemplatesTable extends RecurrenceTemplates
     ruleJson,
     startDate,
     endDate,
+    startTime,
     active,
     generatedThroughDate,
     createdAt,
@@ -1722,6 +1734,12 @@ class $RecurrenceTemplatesTable extends RecurrenceTemplates
       context.handle(
         _endDateMeta,
         endDate.isAcceptableOrUnknown(data['end_date']!, _endDateMeta),
+      );
+    }
+    if (data.containsKey('start_time')) {
+      context.handle(
+        _startTimeMeta,
+        startTime.isAcceptableOrUnknown(data['start_time']!, _startTimeMeta),
       );
     }
     if (data.containsKey('active')) {
@@ -1811,6 +1829,10 @@ class $RecurrenceTemplatesTable extends RecurrenceTemplates
         DriftSqlType.string,
         data['${effectivePrefix}end_date'],
       ),
+      startTime: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}start_time'],
+      ),
       active: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}active'],
@@ -1851,6 +1873,12 @@ class RecurrenceTemplate extends DataClass
   final String ruleJson;
   final String startDate;
   final String? endDate;
+
+  /// 实例的计划开始时刻（本地时钟 `HH:mm`，schema v16 引入）。
+  ///
+  /// 模板上的「钟点」随规则一起继承到每条生成的实例（Tasks.startTime），
+  /// 使「每天 20:00 背单词」这类重复安排能落到日历上。null 表示只排到天。
+  final String? startTime;
   final bool active;
   final String generatedThroughDate;
   final DateTime createdAt;
@@ -1872,6 +1900,7 @@ class RecurrenceTemplate extends DataClass
     required this.ruleJson,
     required this.startDate,
     this.endDate,
+    this.startTime,
     required this.active,
     required this.generatedThroughDate,
     required this.createdAt,
@@ -1895,6 +1924,9 @@ class RecurrenceTemplate extends DataClass
     map['start_date'] = Variable<String>(startDate);
     if (!nullToAbsent || endDate != null) {
       map['end_date'] = Variable<String>(endDate);
+    }
+    if (!nullToAbsent || startTime != null) {
+      map['start_time'] = Variable<String>(startTime);
     }
     map['active'] = Variable<bool>(active);
     map['generated_through_date'] = Variable<String>(generatedThroughDate);
@@ -1923,6 +1955,9 @@ class RecurrenceTemplate extends DataClass
       endDate: endDate == null && nullToAbsent
           ? const Value.absent()
           : Value(endDate),
+      startTime: startTime == null && nullToAbsent
+          ? const Value.absent()
+          : Value(startTime),
       active: Value(active),
       generatedThroughDate: Value(generatedThroughDate),
       createdAt: Value(createdAt),
@@ -1948,6 +1983,7 @@ class RecurrenceTemplate extends DataClass
       ruleJson: serializer.fromJson<String>(json['ruleJson']),
       startDate: serializer.fromJson<String>(json['startDate']),
       endDate: serializer.fromJson<String?>(json['endDate']),
+      startTime: serializer.fromJson<String?>(json['startTime']),
       active: serializer.fromJson<bool>(json['active']),
       generatedThroughDate: serializer.fromJson<String>(
         json['generatedThroughDate'],
@@ -1972,6 +2008,7 @@ class RecurrenceTemplate extends DataClass
       'ruleJson': serializer.toJson<String>(ruleJson),
       'startDate': serializer.toJson<String>(startDate),
       'endDate': serializer.toJson<String?>(endDate),
+      'startTime': serializer.toJson<String?>(startTime),
       'active': serializer.toJson<bool>(active),
       'generatedThroughDate': serializer.toJson<String>(generatedThroughDate),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -1990,6 +2027,7 @@ class RecurrenceTemplate extends DataClass
     String? ruleJson,
     String? startDate,
     Value<String?> endDate = const Value.absent(),
+    Value<String?> startTime = const Value.absent(),
     bool? active,
     String? generatedThroughDate,
     DateTime? createdAt,
@@ -2007,6 +2045,7 @@ class RecurrenceTemplate extends DataClass
     ruleJson: ruleJson ?? this.ruleJson,
     startDate: startDate ?? this.startDate,
     endDate: endDate.present ? endDate.value : this.endDate,
+    startTime: startTime.present ? startTime.value : this.startTime,
     active: active ?? this.active,
     generatedThroughDate: generatedThroughDate ?? this.generatedThroughDate,
     createdAt: createdAt ?? this.createdAt,
@@ -2028,6 +2067,7 @@ class RecurrenceTemplate extends DataClass
       ruleJson: data.ruleJson.present ? data.ruleJson.value : this.ruleJson,
       startDate: data.startDate.present ? data.startDate.value : this.startDate,
       endDate: data.endDate.present ? data.endDate.value : this.endDate,
+      startTime: data.startTime.present ? data.startTime.value : this.startTime,
       active: data.active.present ? data.active.value : this.active,
       generatedThroughDate: data.generatedThroughDate.present
           ? data.generatedThroughDate.value
@@ -2052,6 +2092,7 @@ class RecurrenceTemplate extends DataClass
           ..write('ruleJson: $ruleJson, ')
           ..write('startDate: $startDate, ')
           ..write('endDate: $endDate, ')
+          ..write('startTime: $startTime, ')
           ..write('active: $active, ')
           ..write('generatedThroughDate: $generatedThroughDate, ')
           ..write('createdAt: $createdAt, ')
@@ -2072,6 +2113,7 @@ class RecurrenceTemplate extends DataClass
     ruleJson,
     startDate,
     endDate,
+    startTime,
     active,
     generatedThroughDate,
     createdAt,
@@ -2091,6 +2133,7 @@ class RecurrenceTemplate extends DataClass
           other.ruleJson == this.ruleJson &&
           other.startDate == this.startDate &&
           other.endDate == this.endDate &&
+          other.startTime == this.startTime &&
           other.active == this.active &&
           other.generatedThroughDate == this.generatedThroughDate &&
           other.createdAt == this.createdAt &&
@@ -2108,6 +2151,7 @@ class RecurrenceTemplatesCompanion extends UpdateCompanion<RecurrenceTemplate> {
   final Value<String> ruleJson;
   final Value<String> startDate;
   final Value<String?> endDate;
+  final Value<String?> startTime;
   final Value<bool> active;
   final Value<String> generatedThroughDate;
   final Value<DateTime> createdAt;
@@ -2123,6 +2167,7 @@ class RecurrenceTemplatesCompanion extends UpdateCompanion<RecurrenceTemplate> {
     this.ruleJson = const Value.absent(),
     this.startDate = const Value.absent(),
     this.endDate = const Value.absent(),
+    this.startTime = const Value.absent(),
     this.active = const Value.absent(),
     this.generatedThroughDate = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -2139,6 +2184,7 @@ class RecurrenceTemplatesCompanion extends UpdateCompanion<RecurrenceTemplate> {
     required String ruleJson,
     required String startDate,
     this.endDate = const Value.absent(),
+    this.startTime = const Value.absent(),
     this.active = const Value.absent(),
     required String generatedThroughDate,
     required DateTime createdAt,
@@ -2162,6 +2208,7 @@ class RecurrenceTemplatesCompanion extends UpdateCompanion<RecurrenceTemplate> {
     Expression<String>? ruleJson,
     Expression<String>? startDate,
     Expression<String>? endDate,
+    Expression<String>? startTime,
     Expression<bool>? active,
     Expression<String>? generatedThroughDate,
     Expression<DateTime>? createdAt,
@@ -2178,6 +2225,7 @@ class RecurrenceTemplatesCompanion extends UpdateCompanion<RecurrenceTemplate> {
       if (ruleJson != null) 'rule_json': ruleJson,
       if (startDate != null) 'start_date': startDate,
       if (endDate != null) 'end_date': endDate,
+      if (startTime != null) 'start_time': startTime,
       if (active != null) 'active': active,
       if (generatedThroughDate != null)
         'generated_through_date': generatedThroughDate,
@@ -2198,6 +2246,7 @@ class RecurrenceTemplatesCompanion extends UpdateCompanion<RecurrenceTemplate> {
     Value<String>? ruleJson,
     Value<String>? startDate,
     Value<String?>? endDate,
+    Value<String?>? startTime,
     Value<bool>? active,
     Value<String>? generatedThroughDate,
     Value<DateTime>? createdAt,
@@ -2214,6 +2263,7 @@ class RecurrenceTemplatesCompanion extends UpdateCompanion<RecurrenceTemplate> {
       ruleJson: ruleJson ?? this.ruleJson,
       startDate: startDate ?? this.startDate,
       endDate: endDate ?? this.endDate,
+      startTime: startTime ?? this.startTime,
       active: active ?? this.active,
       generatedThroughDate: generatedThroughDate ?? this.generatedThroughDate,
       createdAt: createdAt ?? this.createdAt,
@@ -2252,6 +2302,9 @@ class RecurrenceTemplatesCompanion extends UpdateCompanion<RecurrenceTemplate> {
     if (endDate.present) {
       map['end_date'] = Variable<String>(endDate.value);
     }
+    if (startTime.present) {
+      map['start_time'] = Variable<String>(startTime.value);
+    }
     if (active.present) {
       map['active'] = Variable<bool>(active.value);
     }
@@ -2286,6 +2339,7 @@ class RecurrenceTemplatesCompanion extends UpdateCompanion<RecurrenceTemplate> {
           ..write('ruleJson: $ruleJson, ')
           ..write('startDate: $startDate, ')
           ..write('endDate: $endDate, ')
+          ..write('startTime: $startTime, ')
           ..write('active: $active, ')
           ..write('generatedThroughDate: $generatedThroughDate, ')
           ..write('createdAt: $createdAt, ')
@@ -2372,6 +2426,17 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: true,
+  );
+  static const VerificationMeta _startTimeMeta = const VerificationMeta(
+    'startTime',
+  );
+  @override
+  late final GeneratedColumn<String> startTime = GeneratedColumn<String>(
+    'start_time',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
   );
   static const VerificationMeta _estimatedMinutesMeta = const VerificationMeta(
     'estimatedMinutes',
@@ -2482,6 +2547,7 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     title,
     note,
     plannedDate,
+    startTime,
     estimatedMinutes,
     status,
     completedAt,
@@ -2545,6 +2611,12 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
       );
     } else if (isInserting) {
       context.missing(_plannedDateMeta);
+    }
+    if (data.containsKey('start_time')) {
+      context.handle(
+        _startTimeMeta,
+        startTime.isAcceptableOrUnknown(data['start_time']!, _startTimeMeta),
+      );
     }
     if (data.containsKey('estimated_minutes')) {
       context.handle(
@@ -2649,6 +2721,10 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
         DriftSqlType.string,
         data['${effectivePrefix}planned_date'],
       )!,
+      startTime: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}start_time'],
+      ),
       estimatedMinutes: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}estimated_minutes'],
@@ -2701,6 +2777,17 @@ class Task extends DataClass implements Insertable<Task> {
   final String title;
   final String? note;
   final String plannedDate;
+
+  /// 计划开始时刻（本地时钟 `HH:mm`，24 小时制，schema v16 引入）。
+  ///
+  /// 计划日期仍以 [plannedDate] 的 `yyyy-MM-dd` 为锚点，本列只在「天」之上
+  /// 追加可选的钟点，用于把任务排进日历（升序排序、日历视图时间轴、
+  /// iCalendar 导出）。null 表示「当天某个时刻未定」——即原按天计划的语义，
+  /// 旧数据无需回填，按天逻辑（负载、延期、重复生成）不受影响。
+  ///
+  /// 不存 UTC 也不存带时区的时刻：与 [plannedDate] 同为「本地墙上时间」，
+  /// 避免跨时区漂移（tables.dart 头注释）。
+  final String? startTime;
   final int? estimatedMinutes;
   final String status;
   final DateTime? completedAt;
@@ -2734,6 +2821,7 @@ class Task extends DataClass implements Insertable<Task> {
     required this.title,
     this.note,
     required this.plannedDate,
+    this.startTime,
     this.estimatedMinutes,
     required this.status,
     this.completedAt,
@@ -2757,6 +2845,9 @@ class Task extends DataClass implements Insertable<Task> {
       map['note'] = Variable<String>(note);
     }
     map['planned_date'] = Variable<String>(plannedDate);
+    if (!nullToAbsent || startTime != null) {
+      map['start_time'] = Variable<String>(startTime);
+    }
     if (!nullToAbsent || estimatedMinutes != null) {
       map['estimated_minutes'] = Variable<int>(estimatedMinutes);
     }
@@ -2789,6 +2880,9 @@ class Task extends DataClass implements Insertable<Task> {
       title: Value(title),
       note: note == null && nullToAbsent ? const Value.absent() : Value(note),
       plannedDate: Value(plannedDate),
+      startTime: startTime == null && nullToAbsent
+          ? const Value.absent()
+          : Value(startTime),
       estimatedMinutes: estimatedMinutes == null && nullToAbsent
           ? const Value.absent()
           : Value(estimatedMinutes),
@@ -2823,6 +2917,7 @@ class Task extends DataClass implements Insertable<Task> {
       title: serializer.fromJson<String>(json['title']),
       note: serializer.fromJson<String?>(json['note']),
       plannedDate: serializer.fromJson<String>(json['plannedDate']),
+      startTime: serializer.fromJson<String?>(json['startTime']),
       estimatedMinutes: serializer.fromJson<int?>(json['estimatedMinutes']),
       status: serializer.fromJson<String>(json['status']),
       completedAt: serializer.fromJson<DateTime?>(json['completedAt']),
@@ -2848,6 +2943,7 @@ class Task extends DataClass implements Insertable<Task> {
       'title': serializer.toJson<String>(title),
       'note': serializer.toJson<String?>(note),
       'plannedDate': serializer.toJson<String>(plannedDate),
+      'startTime': serializer.toJson<String?>(startTime),
       'estimatedMinutes': serializer.toJson<int?>(estimatedMinutes),
       'status': serializer.toJson<String>(status),
       'completedAt': serializer.toJson<DateTime?>(completedAt),
@@ -2867,6 +2963,7 @@ class Task extends DataClass implements Insertable<Task> {
     String? title,
     Value<String?> note = const Value.absent(),
     String? plannedDate,
+    Value<String?> startTime = const Value.absent(),
     Value<int?> estimatedMinutes = const Value.absent(),
     String? status,
     Value<DateTime?> completedAt = const Value.absent(),
@@ -2883,6 +2980,7 @@ class Task extends DataClass implements Insertable<Task> {
     title: title ?? this.title,
     note: note.present ? note.value : this.note,
     plannedDate: plannedDate ?? this.plannedDate,
+    startTime: startTime.present ? startTime.value : this.startTime,
     estimatedMinutes: estimatedMinutes.present
         ? estimatedMinutes.value
         : this.estimatedMinutes,
@@ -2909,6 +3007,7 @@ class Task extends DataClass implements Insertable<Task> {
       plannedDate: data.plannedDate.present
           ? data.plannedDate.value
           : this.plannedDate,
+      startTime: data.startTime.present ? data.startTime.value : this.startTime,
       estimatedMinutes: data.estimatedMinutes.present
           ? data.estimatedMinutes.value
           : this.estimatedMinutes,
@@ -2940,6 +3039,7 @@ class Task extends DataClass implements Insertable<Task> {
           ..write('title: $title, ')
           ..write('note: $note, ')
           ..write('plannedDate: $plannedDate, ')
+          ..write('startTime: $startTime, ')
           ..write('estimatedMinutes: $estimatedMinutes, ')
           ..write('status: $status, ')
           ..write('completedAt: $completedAt, ')
@@ -2961,6 +3061,7 @@ class Task extends DataClass implements Insertable<Task> {
     title,
     note,
     plannedDate,
+    startTime,
     estimatedMinutes,
     status,
     completedAt,
@@ -2981,6 +3082,7 @@ class Task extends DataClass implements Insertable<Task> {
           other.title == this.title &&
           other.note == this.note &&
           other.plannedDate == this.plannedDate &&
+          other.startTime == this.startTime &&
           other.estimatedMinutes == this.estimatedMinutes &&
           other.status == this.status &&
           other.completedAt == this.completedAt &&
@@ -2999,6 +3101,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
   final Value<String> title;
   final Value<String?> note;
   final Value<String> plannedDate;
+  final Value<String?> startTime;
   final Value<int?> estimatedMinutes;
   final Value<String> status;
   final Value<DateTime?> completedAt;
@@ -3015,6 +3118,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.title = const Value.absent(),
     this.note = const Value.absent(),
     this.plannedDate = const Value.absent(),
+    this.startTime = const Value.absent(),
     this.estimatedMinutes = const Value.absent(),
     this.status = const Value.absent(),
     this.completedAt = const Value.absent(),
@@ -3032,6 +3136,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     required String title,
     this.note = const Value.absent(),
     required String plannedDate,
+    this.startTime = const Value.absent(),
     this.estimatedMinutes = const Value.absent(),
     this.status = const Value.absent(),
     this.completedAt = const Value.absent(),
@@ -3053,6 +3158,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Expression<String>? title,
     Expression<String>? note,
     Expression<String>? plannedDate,
+    Expression<String>? startTime,
     Expression<int>? estimatedMinutes,
     Expression<String>? status,
     Expression<DateTime>? completedAt,
@@ -3070,6 +3176,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
       if (title != null) 'title': title,
       if (note != null) 'note': note,
       if (plannedDate != null) 'planned_date': plannedDate,
+      if (startTime != null) 'start_time': startTime,
       if (estimatedMinutes != null) 'estimated_minutes': estimatedMinutes,
       if (status != null) 'status': status,
       if (completedAt != null) 'completed_at': completedAt,
@@ -3091,6 +3198,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Value<String>? title,
     Value<String?>? note,
     Value<String>? plannedDate,
+    Value<String?>? startTime,
     Value<int?>? estimatedMinutes,
     Value<String>? status,
     Value<DateTime?>? completedAt,
@@ -3108,6 +3216,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
       title: title ?? this.title,
       note: note ?? this.note,
       plannedDate: plannedDate ?? this.plannedDate,
+      startTime: startTime ?? this.startTime,
       estimatedMinutes: estimatedMinutes ?? this.estimatedMinutes,
       status: status ?? this.status,
       completedAt: completedAt ?? this.completedAt,
@@ -3140,6 +3249,9 @@ class TasksCompanion extends UpdateCompanion<Task> {
     }
     if (plannedDate.present) {
       map['planned_date'] = Variable<String>(plannedDate.value);
+    }
+    if (startTime.present) {
+      map['start_time'] = Variable<String>(startTime.value);
     }
     if (estimatedMinutes.present) {
       map['estimated_minutes'] = Variable<int>(estimatedMinutes.value);
@@ -3182,6 +3294,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
           ..write('title: $title, ')
           ..write('note: $note, ')
           ..write('plannedDate: $plannedDate, ')
+          ..write('startTime: $startTime, ')
           ..write('estimatedMinutes: $estimatedMinutes, ')
           ..write('status: $status, ')
           ..write('completedAt: $completedAt, ')
@@ -3324,6 +3437,18 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _semesterStartDateMeta = const VerificationMeta(
+    'semesterStartDate',
+  );
+  @override
+  late final GeneratedColumn<String> semesterStartDate =
+      GeneratedColumn<String>(
+        'semester_start_date',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -3358,6 +3483,7 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
     themeMode,
     accentColor,
     reduceMotion,
+    semesterStartDate,
     createdAt,
     updatedAt,
   ];
@@ -3454,6 +3580,15 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
         ),
       );
     }
+    if (data.containsKey('semester_start_date')) {
+      context.handle(
+        _semesterStartDateMeta,
+        semesterStartDate.isAcceptableOrUnknown(
+          data['semester_start_date']!,
+          _semesterStartDateMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -3519,6 +3654,10 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
         DriftSqlType.bool,
         data['${effectivePrefix}reduce_motion'],
       )!,
+      semesterStartDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}semester_start_date'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -3588,6 +3727,14 @@ class Setting extends DataClass implements Insertable<Setting> {
   /// 开启后全局过渡/入场动效时长归零（直接显示），仅保留必要操作反馈。
   /// 设备级外观配置（同 theme_mode），不进入业务数据备份（FR-9.5）。
   final bool reduceMotion;
+
+  /// 教学周基准：第 1 周周一（本地日历日期 `yyyy-MM-dd`，schema v17）。
+  ///
+  /// 课表页把「第 N 教学周 + 星期几」换算成真实日期时要一个锚点——
+  /// 该锚点就是学期第 1 周的周一。它属于「本学期的时间设定」而非外观
+  /// 偏好，随课表一起备份（FR-9.1）；为空表示尚未设定，课表页退化为
+  /// 不按周筛选的「全部课程」视图并提示设置。
+  final String? semesterStartDate;
   final DateTime createdAt;
   final DateTime updatedAt;
   const Setting({
@@ -3601,6 +3748,7 @@ class Setting extends DataClass implements Insertable<Setting> {
     required this.themeMode,
     required this.accentColor,
     required this.reduceMotion,
+    this.semesterStartDate,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -3621,6 +3769,9 @@ class Setting extends DataClass implements Insertable<Setting> {
     map['theme_mode'] = Variable<String>(themeMode);
     map['accent_color'] = Variable<String>(accentColor);
     map['reduce_motion'] = Variable<bool>(reduceMotion);
+    if (!nullToAbsent || semesterStartDate != null) {
+      map['semester_start_date'] = Variable<String>(semesterStartDate);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -3642,6 +3793,9 @@ class Setting extends DataClass implements Insertable<Setting> {
       themeMode: Value(themeMode),
       accentColor: Value(accentColor),
       reduceMotion: Value(reduceMotion),
+      semesterStartDate: semesterStartDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(semesterStartDate),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -3669,6 +3823,9 @@ class Setting extends DataClass implements Insertable<Setting> {
       themeMode: serializer.fromJson<String>(json['themeMode']),
       accentColor: serializer.fromJson<String>(json['accentColor']),
       reduceMotion: serializer.fromJson<bool>(json['reduceMotion']),
+      semesterStartDate: serializer.fromJson<String?>(
+        json['semesterStartDate'],
+      ),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -3687,6 +3844,7 @@ class Setting extends DataClass implements Insertable<Setting> {
       'themeMode': serializer.toJson<String>(themeMode),
       'accentColor': serializer.toJson<String>(accentColor),
       'reduceMotion': serializer.toJson<bool>(reduceMotion),
+      'semesterStartDate': serializer.toJson<String?>(semesterStartDate),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -3703,6 +3861,7 @@ class Setting extends DataClass implements Insertable<Setting> {
     String? themeMode,
     String? accentColor,
     bool? reduceMotion,
+    Value<String?> semesterStartDate = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => Setting(
@@ -3720,6 +3879,9 @@ class Setting extends DataClass implements Insertable<Setting> {
     themeMode: themeMode ?? this.themeMode,
     accentColor: accentColor ?? this.accentColor,
     reduceMotion: reduceMotion ?? this.reduceMotion,
+    semesterStartDate: semesterStartDate.present
+        ? semesterStartDate.value
+        : this.semesterStartDate,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -3751,6 +3913,9 @@ class Setting extends DataClass implements Insertable<Setting> {
       reduceMotion: data.reduceMotion.present
           ? data.reduceMotion.value
           : this.reduceMotion,
+      semesterStartDate: data.semesterStartDate.present
+          ? data.semesterStartDate.value
+          : this.semesterStartDate,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -3769,6 +3934,7 @@ class Setting extends DataClass implements Insertable<Setting> {
           ..write('themeMode: $themeMode, ')
           ..write('accentColor: $accentColor, ')
           ..write('reduceMotion: $reduceMotion, ')
+          ..write('semesterStartDate: $semesterStartDate, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -3787,6 +3953,7 @@ class Setting extends DataClass implements Insertable<Setting> {
     themeMode,
     accentColor,
     reduceMotion,
+    semesterStartDate,
     createdAt,
     updatedAt,
   );
@@ -3804,6 +3971,7 @@ class Setting extends DataClass implements Insertable<Setting> {
           other.themeMode == this.themeMode &&
           other.accentColor == this.accentColor &&
           other.reduceMotion == this.reduceMotion &&
+          other.semesterStartDate == this.semesterStartDate &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -3819,6 +3987,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
   final Value<String> themeMode;
   final Value<String> accentColor;
   final Value<bool> reduceMotion;
+  final Value<String?> semesterStartDate;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   const SettingsCompanion({
@@ -3832,6 +4001,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     this.themeMode = const Value.absent(),
     this.accentColor = const Value.absent(),
     this.reduceMotion = const Value.absent(),
+    this.semesterStartDate = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
@@ -3846,6 +4016,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     this.themeMode = const Value.absent(),
     this.accentColor = const Value.absent(),
     this.reduceMotion = const Value.absent(),
+    this.semesterStartDate = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
   }) : createdAt = Value(createdAt),
@@ -3861,6 +4032,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     Expression<String>? themeMode,
     Expression<String>? accentColor,
     Expression<bool>? reduceMotion,
+    Expression<String>? semesterStartDate,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
   }) {
@@ -3876,6 +4048,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
       if (themeMode != null) 'theme_mode': themeMode,
       if (accentColor != null) 'accent_color': accentColor,
       if (reduceMotion != null) 'reduce_motion': reduceMotion,
+      if (semesterStartDate != null) 'semester_start_date': semesterStartDate,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
@@ -3892,6 +4065,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     Value<String>? themeMode,
     Value<String>? accentColor,
     Value<bool>? reduceMotion,
+    Value<String?>? semesterStartDate,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
   }) {
@@ -3907,6 +4081,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
       themeMode: themeMode ?? this.themeMode,
       accentColor: accentColor ?? this.accentColor,
       reduceMotion: reduceMotion ?? this.reduceMotion,
+      semesterStartDate: semesterStartDate ?? this.semesterStartDate,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -3947,6 +4122,9 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
     if (reduceMotion.present) {
       map['reduce_motion'] = Variable<bool>(reduceMotion.value);
     }
+    if (semesterStartDate.present) {
+      map['semester_start_date'] = Variable<String>(semesterStartDate.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -3969,6 +4147,7 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
           ..write('themeMode: $themeMode, ')
           ..write('accentColor: $accentColor, ')
           ..write('reduceMotion: $reduceMotion, ')
+          ..write('semesterStartDate: $semesterStartDate, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -4423,6 +4602,862 @@ class ChecklistItemsCompanion extends UpdateCompanion<ChecklistItem> {
   }
 }
 
+class $CoursesTable extends Courses with TableInfo<$CoursesTable, Course> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CoursesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 200,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _teacherMeta = const VerificationMeta(
+    'teacher',
+  );
+  @override
+  late final GeneratedColumn<String> teacher = GeneratedColumn<String>(
+    'teacher',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _locationMeta = const VerificationMeta(
+    'location',
+  );
+  @override
+  late final GeneratedColumn<String> location = GeneratedColumn<String>(
+    'location',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _weekdayMeta = const VerificationMeta(
+    'weekday',
+  );
+  @override
+  late final GeneratedColumn<int> weekday = GeneratedColumn<int>(
+    'weekday',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _startPeriodMeta = const VerificationMeta(
+    'startPeriod',
+  );
+  @override
+  late final GeneratedColumn<int> startPeriod = GeneratedColumn<int>(
+    'start_period',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _endPeriodMeta = const VerificationMeta(
+    'endPeriod',
+  );
+  @override
+  late final GeneratedColumn<int> endPeriod = GeneratedColumn<int>(
+    'end_period',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _startWeekMeta = const VerificationMeta(
+    'startWeek',
+  );
+  @override
+  late final GeneratedColumn<int> startWeek = GeneratedColumn<int>(
+    'start_week',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _endWeekMeta = const VerificationMeta(
+    'endWeek',
+  );
+  @override
+  late final GeneratedColumn<int> endWeek = GeneratedColumn<int>(
+    'end_week',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _weekParityMeta = const VerificationMeta(
+    'weekParity',
+  );
+  @override
+  late final GeneratedColumn<String> weekParity = GeneratedColumn<String>(
+    'week_parity',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(WeekParity.all),
+  );
+  static const VerificationMeta _categoryMeta = const VerificationMeta(
+    'category',
+  );
+  @override
+  late final GeneratedColumn<String> category = GeneratedColumn<String>(
+    'category',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _colorMeta = const VerificationMeta('color');
+  @override
+  late final GeneratedColumn<String> color = GeneratedColumn<String>(
+    'color',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _noteMeta = const VerificationMeta('note');
+  @override
+  late final GeneratedColumn<String> note = GeneratedColumn<String>(
+    'note',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    title,
+    teacher,
+    location,
+    weekday,
+    startPeriod,
+    endPeriod,
+    startWeek,
+    endWeek,
+    weekParity,
+    category,
+    color,
+    note,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'courses';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Course> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('teacher')) {
+      context.handle(
+        _teacherMeta,
+        teacher.isAcceptableOrUnknown(data['teacher']!, _teacherMeta),
+      );
+    }
+    if (data.containsKey('location')) {
+      context.handle(
+        _locationMeta,
+        location.isAcceptableOrUnknown(data['location']!, _locationMeta),
+      );
+    }
+    if (data.containsKey('weekday')) {
+      context.handle(
+        _weekdayMeta,
+        weekday.isAcceptableOrUnknown(data['weekday']!, _weekdayMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_weekdayMeta);
+    }
+    if (data.containsKey('start_period')) {
+      context.handle(
+        _startPeriodMeta,
+        startPeriod.isAcceptableOrUnknown(
+          data['start_period']!,
+          _startPeriodMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_startPeriodMeta);
+    }
+    if (data.containsKey('end_period')) {
+      context.handle(
+        _endPeriodMeta,
+        endPeriod.isAcceptableOrUnknown(data['end_period']!, _endPeriodMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_endPeriodMeta);
+    }
+    if (data.containsKey('start_week')) {
+      context.handle(
+        _startWeekMeta,
+        startWeek.isAcceptableOrUnknown(data['start_week']!, _startWeekMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_startWeekMeta);
+    }
+    if (data.containsKey('end_week')) {
+      context.handle(
+        _endWeekMeta,
+        endWeek.isAcceptableOrUnknown(data['end_week']!, _endWeekMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_endWeekMeta);
+    }
+    if (data.containsKey('week_parity')) {
+      context.handle(
+        _weekParityMeta,
+        weekParity.isAcceptableOrUnknown(data['week_parity']!, _weekParityMeta),
+      );
+    }
+    if (data.containsKey('category')) {
+      context.handle(
+        _categoryMeta,
+        category.isAcceptableOrUnknown(data['category']!, _categoryMeta),
+      );
+    }
+    if (data.containsKey('color')) {
+      context.handle(
+        _colorMeta,
+        color.isAcceptableOrUnknown(data['color']!, _colorMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_colorMeta);
+    }
+    if (data.containsKey('note')) {
+      context.handle(
+        _noteMeta,
+        note.isAcceptableOrUnknown(data['note']!, _noteMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Course map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Course(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      teacher: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}teacher'],
+      ),
+      location: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}location'],
+      ),
+      weekday: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}weekday'],
+      )!,
+      startPeriod: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}start_period'],
+      )!,
+      endPeriod: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}end_period'],
+      )!,
+      startWeek: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}start_week'],
+      )!,
+      endWeek: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}end_week'],
+      )!,
+      weekParity: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}week_parity'],
+      )!,
+      category: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}category'],
+      ),
+      color: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}color'],
+      )!,
+      note: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}note'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $CoursesTable createAlias(String alias) {
+    return $CoursesTable(attachedDatabase, alias);
+  }
+}
+
+class Course extends DataClass implements Insertable<Course> {
+  final int id;
+  final String title;
+  final String? teacher;
+  final String? location;
+
+  /// 星期几（ISO，1=周一 … 7=周日）。
+  final int weekday;
+
+  /// 起始节次与结束节次（含两端，1 起）。
+  final int startPeriod;
+  final int endPeriod;
+
+  /// 教学周范围（含两端，1 起）。
+  final int startWeek;
+  final int endWeek;
+
+  /// 单双周：见 [WeekParity]（`all` 每周 / `odd` 单周 / `even` 双周）。
+  final String weekParity;
+
+  /// 课程类别（公共必修课/学科基础课/方向必修课/选修课…），可空。
+  final String? category;
+
+  /// 卡片配色（`#RRGGBB`，与 Subjects.color 同格式）。
+  final String color;
+
+  /// 备注（如「官方标注 17:50 开始，以任课教师通知为准」）。
+  final String? note;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const Course({
+    required this.id,
+    required this.title,
+    this.teacher,
+    this.location,
+    required this.weekday,
+    required this.startPeriod,
+    required this.endPeriod,
+    required this.startWeek,
+    required this.endWeek,
+    required this.weekParity,
+    this.category,
+    required this.color,
+    this.note,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['title'] = Variable<String>(title);
+    if (!nullToAbsent || teacher != null) {
+      map['teacher'] = Variable<String>(teacher);
+    }
+    if (!nullToAbsent || location != null) {
+      map['location'] = Variable<String>(location);
+    }
+    map['weekday'] = Variable<int>(weekday);
+    map['start_period'] = Variable<int>(startPeriod);
+    map['end_period'] = Variable<int>(endPeriod);
+    map['start_week'] = Variable<int>(startWeek);
+    map['end_week'] = Variable<int>(endWeek);
+    map['week_parity'] = Variable<String>(weekParity);
+    if (!nullToAbsent || category != null) {
+      map['category'] = Variable<String>(category);
+    }
+    map['color'] = Variable<String>(color);
+    if (!nullToAbsent || note != null) {
+      map['note'] = Variable<String>(note);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  CoursesCompanion toCompanion(bool nullToAbsent) {
+    return CoursesCompanion(
+      id: Value(id),
+      title: Value(title),
+      teacher: teacher == null && nullToAbsent
+          ? const Value.absent()
+          : Value(teacher),
+      location: location == null && nullToAbsent
+          ? const Value.absent()
+          : Value(location),
+      weekday: Value(weekday),
+      startPeriod: Value(startPeriod),
+      endPeriod: Value(endPeriod),
+      startWeek: Value(startWeek),
+      endWeek: Value(endWeek),
+      weekParity: Value(weekParity),
+      category: category == null && nullToAbsent
+          ? const Value.absent()
+          : Value(category),
+      color: Value(color),
+      note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory Course.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Course(
+      id: serializer.fromJson<int>(json['id']),
+      title: serializer.fromJson<String>(json['title']),
+      teacher: serializer.fromJson<String?>(json['teacher']),
+      location: serializer.fromJson<String?>(json['location']),
+      weekday: serializer.fromJson<int>(json['weekday']),
+      startPeriod: serializer.fromJson<int>(json['startPeriod']),
+      endPeriod: serializer.fromJson<int>(json['endPeriod']),
+      startWeek: serializer.fromJson<int>(json['startWeek']),
+      endWeek: serializer.fromJson<int>(json['endWeek']),
+      weekParity: serializer.fromJson<String>(json['weekParity']),
+      category: serializer.fromJson<String?>(json['category']),
+      color: serializer.fromJson<String>(json['color']),
+      note: serializer.fromJson<String?>(json['note']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'title': serializer.toJson<String>(title),
+      'teacher': serializer.toJson<String?>(teacher),
+      'location': serializer.toJson<String?>(location),
+      'weekday': serializer.toJson<int>(weekday),
+      'startPeriod': serializer.toJson<int>(startPeriod),
+      'endPeriod': serializer.toJson<int>(endPeriod),
+      'startWeek': serializer.toJson<int>(startWeek),
+      'endWeek': serializer.toJson<int>(endWeek),
+      'weekParity': serializer.toJson<String>(weekParity),
+      'category': serializer.toJson<String?>(category),
+      'color': serializer.toJson<String>(color),
+      'note': serializer.toJson<String?>(note),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  Course copyWith({
+    int? id,
+    String? title,
+    Value<String?> teacher = const Value.absent(),
+    Value<String?> location = const Value.absent(),
+    int? weekday,
+    int? startPeriod,
+    int? endPeriod,
+    int? startWeek,
+    int? endWeek,
+    String? weekParity,
+    Value<String?> category = const Value.absent(),
+    String? color,
+    Value<String?> note = const Value.absent(),
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => Course(
+    id: id ?? this.id,
+    title: title ?? this.title,
+    teacher: teacher.present ? teacher.value : this.teacher,
+    location: location.present ? location.value : this.location,
+    weekday: weekday ?? this.weekday,
+    startPeriod: startPeriod ?? this.startPeriod,
+    endPeriod: endPeriod ?? this.endPeriod,
+    startWeek: startWeek ?? this.startWeek,
+    endWeek: endWeek ?? this.endWeek,
+    weekParity: weekParity ?? this.weekParity,
+    category: category.present ? category.value : this.category,
+    color: color ?? this.color,
+    note: note.present ? note.value : this.note,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  Course copyWithCompanion(CoursesCompanion data) {
+    return Course(
+      id: data.id.present ? data.id.value : this.id,
+      title: data.title.present ? data.title.value : this.title,
+      teacher: data.teacher.present ? data.teacher.value : this.teacher,
+      location: data.location.present ? data.location.value : this.location,
+      weekday: data.weekday.present ? data.weekday.value : this.weekday,
+      startPeriod: data.startPeriod.present
+          ? data.startPeriod.value
+          : this.startPeriod,
+      endPeriod: data.endPeriod.present ? data.endPeriod.value : this.endPeriod,
+      startWeek: data.startWeek.present ? data.startWeek.value : this.startWeek,
+      endWeek: data.endWeek.present ? data.endWeek.value : this.endWeek,
+      weekParity: data.weekParity.present
+          ? data.weekParity.value
+          : this.weekParity,
+      category: data.category.present ? data.category.value : this.category,
+      color: data.color.present ? data.color.value : this.color,
+      note: data.note.present ? data.note.value : this.note,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Course(')
+          ..write('id: $id, ')
+          ..write('title: $title, ')
+          ..write('teacher: $teacher, ')
+          ..write('location: $location, ')
+          ..write('weekday: $weekday, ')
+          ..write('startPeriod: $startPeriod, ')
+          ..write('endPeriod: $endPeriod, ')
+          ..write('startWeek: $startWeek, ')
+          ..write('endWeek: $endWeek, ')
+          ..write('weekParity: $weekParity, ')
+          ..write('category: $category, ')
+          ..write('color: $color, ')
+          ..write('note: $note, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    title,
+    teacher,
+    location,
+    weekday,
+    startPeriod,
+    endPeriod,
+    startWeek,
+    endWeek,
+    weekParity,
+    category,
+    color,
+    note,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Course &&
+          other.id == this.id &&
+          other.title == this.title &&
+          other.teacher == this.teacher &&
+          other.location == this.location &&
+          other.weekday == this.weekday &&
+          other.startPeriod == this.startPeriod &&
+          other.endPeriod == this.endPeriod &&
+          other.startWeek == this.startWeek &&
+          other.endWeek == this.endWeek &&
+          other.weekParity == this.weekParity &&
+          other.category == this.category &&
+          other.color == this.color &&
+          other.note == this.note &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class CoursesCompanion extends UpdateCompanion<Course> {
+  final Value<int> id;
+  final Value<String> title;
+  final Value<String?> teacher;
+  final Value<String?> location;
+  final Value<int> weekday;
+  final Value<int> startPeriod;
+  final Value<int> endPeriod;
+  final Value<int> startWeek;
+  final Value<int> endWeek;
+  final Value<String> weekParity;
+  final Value<String?> category;
+  final Value<String> color;
+  final Value<String?> note;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  const CoursesCompanion({
+    this.id = const Value.absent(),
+    this.title = const Value.absent(),
+    this.teacher = const Value.absent(),
+    this.location = const Value.absent(),
+    this.weekday = const Value.absent(),
+    this.startPeriod = const Value.absent(),
+    this.endPeriod = const Value.absent(),
+    this.startWeek = const Value.absent(),
+    this.endWeek = const Value.absent(),
+    this.weekParity = const Value.absent(),
+    this.category = const Value.absent(),
+    this.color = const Value.absent(),
+    this.note = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  CoursesCompanion.insert({
+    this.id = const Value.absent(),
+    required String title,
+    this.teacher = const Value.absent(),
+    this.location = const Value.absent(),
+    required int weekday,
+    required int startPeriod,
+    required int endPeriod,
+    required int startWeek,
+    required int endWeek,
+    this.weekParity = const Value.absent(),
+    this.category = const Value.absent(),
+    required String color,
+    this.note = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+  }) : title = Value(title),
+       weekday = Value(weekday),
+       startPeriod = Value(startPeriod),
+       endPeriod = Value(endPeriod),
+       startWeek = Value(startWeek),
+       endWeek = Value(endWeek),
+       color = Value(color),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<Course> custom({
+    Expression<int>? id,
+    Expression<String>? title,
+    Expression<String>? teacher,
+    Expression<String>? location,
+    Expression<int>? weekday,
+    Expression<int>? startPeriod,
+    Expression<int>? endPeriod,
+    Expression<int>? startWeek,
+    Expression<int>? endWeek,
+    Expression<String>? weekParity,
+    Expression<String>? category,
+    Expression<String>? color,
+    Expression<String>? note,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (title != null) 'title': title,
+      if (teacher != null) 'teacher': teacher,
+      if (location != null) 'location': location,
+      if (weekday != null) 'weekday': weekday,
+      if (startPeriod != null) 'start_period': startPeriod,
+      if (endPeriod != null) 'end_period': endPeriod,
+      if (startWeek != null) 'start_week': startWeek,
+      if (endWeek != null) 'end_week': endWeek,
+      if (weekParity != null) 'week_parity': weekParity,
+      if (category != null) 'category': category,
+      if (color != null) 'color': color,
+      if (note != null) 'note': note,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  CoursesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? title,
+    Value<String?>? teacher,
+    Value<String?>? location,
+    Value<int>? weekday,
+    Value<int>? startPeriod,
+    Value<int>? endPeriod,
+    Value<int>? startWeek,
+    Value<int>? endWeek,
+    Value<String>? weekParity,
+    Value<String?>? category,
+    Value<String>? color,
+    Value<String?>? note,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+  }) {
+    return CoursesCompanion(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      teacher: teacher ?? this.teacher,
+      location: location ?? this.location,
+      weekday: weekday ?? this.weekday,
+      startPeriod: startPeriod ?? this.startPeriod,
+      endPeriod: endPeriod ?? this.endPeriod,
+      startWeek: startWeek ?? this.startWeek,
+      endWeek: endWeek ?? this.endWeek,
+      weekParity: weekParity ?? this.weekParity,
+      category: category ?? this.category,
+      color: color ?? this.color,
+      note: note ?? this.note,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (teacher.present) {
+      map['teacher'] = Variable<String>(teacher.value);
+    }
+    if (location.present) {
+      map['location'] = Variable<String>(location.value);
+    }
+    if (weekday.present) {
+      map['weekday'] = Variable<int>(weekday.value);
+    }
+    if (startPeriod.present) {
+      map['start_period'] = Variable<int>(startPeriod.value);
+    }
+    if (endPeriod.present) {
+      map['end_period'] = Variable<int>(endPeriod.value);
+    }
+    if (startWeek.present) {
+      map['start_week'] = Variable<int>(startWeek.value);
+    }
+    if (endWeek.present) {
+      map['end_week'] = Variable<int>(endWeek.value);
+    }
+    if (weekParity.present) {
+      map['week_parity'] = Variable<String>(weekParity.value);
+    }
+    if (category.present) {
+      map['category'] = Variable<String>(category.value);
+    }
+    if (color.present) {
+      map['color'] = Variable<String>(color.value);
+    }
+    if (note.present) {
+      map['note'] = Variable<String>(note.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CoursesCompanion(')
+          ..write('id: $id, ')
+          ..write('title: $title, ')
+          ..write('teacher: $teacher, ')
+          ..write('location: $location, ')
+          ..write('weekday: $weekday, ')
+          ..write('startPeriod: $startPeriod, ')
+          ..write('endPeriod: $endPeriod, ')
+          ..write('startWeek: $startWeek, ')
+          ..write('endWeek: $endWeek, ')
+          ..write('weekParity: $weekParity, ')
+          ..write('category: $category, ')
+          ..write('color: $color, ')
+          ..write('note: $note, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -4434,6 +5469,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $TasksTable tasks = $TasksTable(this);
   late final $SettingsTable settings = $SettingsTable(this);
   late final $ChecklistItemsTable checklistItems = $ChecklistItemsTable(this);
+  late final $CoursesTable courses = $CoursesTable(this);
   late final Index subjectsGoalIdx = Index(
     'subjects_goal_idx',
     'CREATE INDEX subjects_goal_idx ON subjects (goal_id)',
@@ -4466,6 +5502,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     'checklist_items_task_idx',
     'CREATE INDEX checklist_items_task_idx ON checklist_items (task_id)',
   );
+  late final Index coursesWeekdayIdx = Index(
+    'courses_weekday_idx',
+    'CREATE INDEX courses_weekday_idx ON courses (weekday)',
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4478,6 +5518,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     tasks,
     settings,
     checklistItems,
+    courses,
     subjectsGoalIdx,
     milestonesGoalIdx,
     tasksGoalArchivedIdx,
@@ -4486,6 +5527,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     tasksStatusCompletedIdx,
     recurrenceTemplatesGoalIdx,
     checklistItemsTaskIdx,
+    coursesWeekdayIdx,
   ];
 }
 
@@ -6058,6 +7100,7 @@ typedef $$RecurrenceTemplatesTableCreateCompanionBuilder =
       required String ruleJson,
       required String startDate,
       Value<String?> endDate,
+      Value<String?> startTime,
       Value<bool> active,
       required String generatedThroughDate,
       required DateTime createdAt,
@@ -6075,6 +7118,7 @@ typedef $$RecurrenceTemplatesTableUpdateCompanionBuilder =
       Value<String> ruleJson,
       Value<String> startDate,
       Value<String?> endDate,
+      Value<String?> startTime,
       Value<bool> active,
       Value<String> generatedThroughDate,
       Value<DateTime> createdAt,
@@ -6189,6 +7233,11 @@ class $$RecurrenceTemplatesTableFilterComposer
 
   ColumnFilters<String> get endDate => $composableBuilder(
     column: $table.endDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get startTime => $composableBuilder(
+    column: $table.startTime,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -6333,6 +7382,11 @@ class $$RecurrenceTemplatesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get startTime => $composableBuilder(
+    column: $table.startTime,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get active => $composableBuilder(
     column: $table.active,
     builder: (column) => ColumnOrderings(column),
@@ -6436,6 +7490,9 @@ class $$RecurrenceTemplatesTableAnnotationComposer
 
   GeneratedColumn<String> get endDate =>
       $composableBuilder(column: $table.endDate, builder: (column) => column);
+
+  GeneratedColumn<String> get startTime =>
+      $composableBuilder(column: $table.startTime, builder: (column) => column);
 
   GeneratedColumn<bool> get active =>
       $composableBuilder(column: $table.active, builder: (column) => column);
@@ -6573,6 +7630,7 @@ class $$RecurrenceTemplatesTableTableManager
                 Value<String> ruleJson = const Value.absent(),
                 Value<String> startDate = const Value.absent(),
                 Value<String?> endDate = const Value.absent(),
+                Value<String?> startTime = const Value.absent(),
                 Value<bool> active = const Value.absent(),
                 Value<String> generatedThroughDate = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -6588,6 +7646,7 @@ class $$RecurrenceTemplatesTableTableManager
                 ruleJson: ruleJson,
                 startDate: startDate,
                 endDate: endDate,
+                startTime: startTime,
                 active: active,
                 generatedThroughDate: generatedThroughDate,
                 createdAt: createdAt,
@@ -6605,6 +7664,7 @@ class $$RecurrenceTemplatesTableTableManager
                 required String ruleJson,
                 required String startDate,
                 Value<String?> endDate = const Value.absent(),
+                Value<String?> startTime = const Value.absent(),
                 Value<bool> active = const Value.absent(),
                 required String generatedThroughDate,
                 required DateTime createdAt,
@@ -6620,6 +7680,7 @@ class $$RecurrenceTemplatesTableTableManager
                 ruleJson: ruleJson,
                 startDate: startDate,
                 endDate: endDate,
+                startTime: startTime,
                 active: active,
                 generatedThroughDate: generatedThroughDate,
                 createdAt: createdAt,
@@ -6741,6 +7802,7 @@ typedef $$TasksTableCreateCompanionBuilder =
       required String title,
       Value<String?> note,
       required String plannedDate,
+      Value<String?> startTime,
       Value<int?> estimatedMinutes,
       Value<String> status,
       Value<DateTime?> completedAt,
@@ -6759,6 +7821,7 @@ typedef $$TasksTableUpdateCompanionBuilder =
       Value<String> title,
       Value<String?> note,
       Value<String> plannedDate,
+      Value<String?> startTime,
       Value<int?> estimatedMinutes,
       Value<String> status,
       Value<DateTime?> completedAt,
@@ -6874,6 +7937,11 @@ class $$TasksTableFilterComposer extends Composer<_$AppDatabase, $TasksTable> {
 
   ColumnFilters<String> get plannedDate => $composableBuilder(
     column: $table.plannedDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get startTime => $composableBuilder(
+    column: $table.startTime,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7041,6 +8109,11 @@ class $$TasksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get startTime => $composableBuilder(
+    column: $table.startTime,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get estimatedMinutes => $composableBuilder(
     column: $table.estimatedMinutes,
     builder: (column) => ColumnOrderings(column),
@@ -7174,6 +8247,9 @@ class $$TasksTableAnnotationComposer
     column: $table.plannedDate,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get startTime =>
+      $composableBuilder(column: $table.startTime, builder: (column) => column);
 
   GeneratedColumn<int> get estimatedMinutes => $composableBuilder(
     column: $table.estimatedMinutes,
@@ -7342,6 +8418,7 @@ class $$TasksTableTableManager
                 Value<String> title = const Value.absent(),
                 Value<String?> note = const Value.absent(),
                 Value<String> plannedDate = const Value.absent(),
+                Value<String?> startTime = const Value.absent(),
                 Value<int?> estimatedMinutes = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<DateTime?> completedAt = const Value.absent(),
@@ -7358,6 +8435,7 @@ class $$TasksTableTableManager
                 title: title,
                 note: note,
                 plannedDate: plannedDate,
+                startTime: startTime,
                 estimatedMinutes: estimatedMinutes,
                 status: status,
                 completedAt: completedAt,
@@ -7376,6 +8454,7 @@ class $$TasksTableTableManager
                 required String title,
                 Value<String?> note = const Value.absent(),
                 required String plannedDate,
+                Value<String?> startTime = const Value.absent(),
                 Value<int?> estimatedMinutes = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<DateTime?> completedAt = const Value.absent(),
@@ -7392,6 +8471,7 @@ class $$TasksTableTableManager
                 title: title,
                 note: note,
                 plannedDate: plannedDate,
+                startTime: startTime,
                 estimatedMinutes: estimatedMinutes,
                 status: status,
                 completedAt: completedAt,
@@ -7540,6 +8620,7 @@ typedef $$SettingsTableCreateCompanionBuilder =
       Value<String> themeMode,
       Value<String> accentColor,
       Value<bool> reduceMotion,
+      Value<String?> semesterStartDate,
       required DateTime createdAt,
       required DateTime updatedAt,
     });
@@ -7555,6 +8636,7 @@ typedef $$SettingsTableUpdateCompanionBuilder =
       Value<String> themeMode,
       Value<String> accentColor,
       Value<bool> reduceMotion,
+      Value<String?> semesterStartDate,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
     });
@@ -7615,6 +8697,11 @@ class $$SettingsTableFilterComposer
 
   ColumnFilters<bool> get reduceMotion => $composableBuilder(
     column: $table.reduceMotion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get semesterStartDate => $composableBuilder(
+    column: $table.semesterStartDate,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7688,6 +8775,11 @@ class $$SettingsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get semesterStartDate => $composableBuilder(
+    column: $table.semesterStartDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -7754,6 +8846,11 @@ class $$SettingsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get semesterStartDate => $composableBuilder(
+    column: $table.semesterStartDate,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -7799,6 +8896,7 @@ class $$SettingsTableTableManager
                 Value<String> themeMode = const Value.absent(),
                 Value<String> accentColor = const Value.absent(),
                 Value<bool> reduceMotion = const Value.absent(),
+                Value<String?> semesterStartDate = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => SettingsCompanion(
@@ -7812,6 +8910,7 @@ class $$SettingsTableTableManager
                 themeMode: themeMode,
                 accentColor: accentColor,
                 reduceMotion: reduceMotion,
+                semesterStartDate: semesterStartDate,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),
@@ -7827,6 +8926,7 @@ class $$SettingsTableTableManager
                 Value<String> themeMode = const Value.absent(),
                 Value<String> accentColor = const Value.absent(),
                 Value<bool> reduceMotion = const Value.absent(),
+                Value<String?> semesterStartDate = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
               }) => SettingsCompanion.insert(
@@ -7840,6 +8940,7 @@ class $$SettingsTableTableManager
                 themeMode: themeMode,
                 accentColor: accentColor,
                 reduceMotion: reduceMotion,
+                semesterStartDate: semesterStartDate,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),
@@ -8221,6 +9322,388 @@ typedef $$ChecklistItemsTableProcessedTableManager =
       ChecklistItem,
       PrefetchHooks Function({bool taskId})
     >;
+typedef $$CoursesTableCreateCompanionBuilder =
+    CoursesCompanion Function({
+      Value<int> id,
+      required String title,
+      Value<String?> teacher,
+      Value<String?> location,
+      required int weekday,
+      required int startPeriod,
+      required int endPeriod,
+      required int startWeek,
+      required int endWeek,
+      Value<String> weekParity,
+      Value<String?> category,
+      required String color,
+      Value<String?> note,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+    });
+typedef $$CoursesTableUpdateCompanionBuilder =
+    CoursesCompanion Function({
+      Value<int> id,
+      Value<String> title,
+      Value<String?> teacher,
+      Value<String?> location,
+      Value<int> weekday,
+      Value<int> startPeriod,
+      Value<int> endPeriod,
+      Value<int> startWeek,
+      Value<int> endWeek,
+      Value<String> weekParity,
+      Value<String?> category,
+      Value<String> color,
+      Value<String?> note,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+
+class $$CoursesTableFilterComposer
+    extends Composer<_$AppDatabase, $CoursesTable> {
+  $$CoursesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get teacher => $composableBuilder(
+    column: $table.teacher,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get location => $composableBuilder(
+    column: $table.location,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get weekday => $composableBuilder(
+    column: $table.weekday,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get startPeriod => $composableBuilder(
+    column: $table.startPeriod,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get endPeriod => $composableBuilder(
+    column: $table.endPeriod,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get startWeek => $composableBuilder(
+    column: $table.startWeek,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get endWeek => $composableBuilder(
+    column: $table.endWeek,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get weekParity => $composableBuilder(
+    column: $table.weekParity,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get category => $composableBuilder(
+    column: $table.category,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CoursesTableOrderingComposer
+    extends Composer<_$AppDatabase, $CoursesTable> {
+  $$CoursesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get teacher => $composableBuilder(
+    column: $table.teacher,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get location => $composableBuilder(
+    column: $table.location,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get weekday => $composableBuilder(
+    column: $table.weekday,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get startPeriod => $composableBuilder(
+    column: $table.startPeriod,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get endPeriod => $composableBuilder(
+    column: $table.endPeriod,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get startWeek => $composableBuilder(
+    column: $table.startWeek,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get endWeek => $composableBuilder(
+    column: $table.endWeek,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get weekParity => $composableBuilder(
+    column: $table.weekParity,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get category => $composableBuilder(
+    column: $table.category,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CoursesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CoursesTable> {
+  $$CoursesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get teacher =>
+      $composableBuilder(column: $table.teacher, builder: (column) => column);
+
+  GeneratedColumn<String> get location =>
+      $composableBuilder(column: $table.location, builder: (column) => column);
+
+  GeneratedColumn<int> get weekday =>
+      $composableBuilder(column: $table.weekday, builder: (column) => column);
+
+  GeneratedColumn<int> get startPeriod => $composableBuilder(
+    column: $table.startPeriod,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get endPeriod =>
+      $composableBuilder(column: $table.endPeriod, builder: (column) => column);
+
+  GeneratedColumn<int> get startWeek =>
+      $composableBuilder(column: $table.startWeek, builder: (column) => column);
+
+  GeneratedColumn<int> get endWeek =>
+      $composableBuilder(column: $table.endWeek, builder: (column) => column);
+
+  GeneratedColumn<String> get weekParity => $composableBuilder(
+    column: $table.weekParity,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get category =>
+      $composableBuilder(column: $table.category, builder: (column) => column);
+
+  GeneratedColumn<String> get color =>
+      $composableBuilder(column: $table.color, builder: (column) => column);
+
+  GeneratedColumn<String> get note =>
+      $composableBuilder(column: $table.note, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$CoursesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CoursesTable,
+          Course,
+          $$CoursesTableFilterComposer,
+          $$CoursesTableOrderingComposer,
+          $$CoursesTableAnnotationComposer,
+          $$CoursesTableCreateCompanionBuilder,
+          $$CoursesTableUpdateCompanionBuilder,
+          (Course, BaseReferences<_$AppDatabase, $CoursesTable, Course>),
+          Course,
+          PrefetchHooks Function()
+        > {
+  $$CoursesTableTableManager(_$AppDatabase db, $CoursesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CoursesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CoursesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CoursesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String?> teacher = const Value.absent(),
+                Value<String?> location = const Value.absent(),
+                Value<int> weekday = const Value.absent(),
+                Value<int> startPeriod = const Value.absent(),
+                Value<int> endPeriod = const Value.absent(),
+                Value<int> startWeek = const Value.absent(),
+                Value<int> endWeek = const Value.absent(),
+                Value<String> weekParity = const Value.absent(),
+                Value<String?> category = const Value.absent(),
+                Value<String> color = const Value.absent(),
+                Value<String?> note = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => CoursesCompanion(
+                id: id,
+                title: title,
+                teacher: teacher,
+                location: location,
+                weekday: weekday,
+                startPeriod: startPeriod,
+                endPeriod: endPeriod,
+                startWeek: startWeek,
+                endWeek: endWeek,
+                weekParity: weekParity,
+                category: category,
+                color: color,
+                note: note,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String title,
+                Value<String?> teacher = const Value.absent(),
+                Value<String?> location = const Value.absent(),
+                required int weekday,
+                required int startPeriod,
+                required int endPeriod,
+                required int startWeek,
+                required int endWeek,
+                Value<String> weekParity = const Value.absent(),
+                Value<String?> category = const Value.absent(),
+                required String color,
+                Value<String?> note = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime updatedAt,
+              }) => CoursesCompanion.insert(
+                id: id,
+                title: title,
+                teacher: teacher,
+                location: location,
+                weekday: weekday,
+                startPeriod: startPeriod,
+                endPeriod: endPeriod,
+                startWeek: startWeek,
+                endWeek: endWeek,
+                weekParity: weekParity,
+                category: category,
+                color: color,
+                note: note,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CoursesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CoursesTable,
+      Course,
+      $$CoursesTableFilterComposer,
+      $$CoursesTableOrderingComposer,
+      $$CoursesTableAnnotationComposer,
+      $$CoursesTableCreateCompanionBuilder,
+      $$CoursesTableUpdateCompanionBuilder,
+      (Course, BaseReferences<_$AppDatabase, $CoursesTable, Course>),
+      Course,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -8239,4 +9722,6 @@ class $AppDatabaseManager {
       $$SettingsTableTableManager(_db, _db.settings);
   $$ChecklistItemsTableTableManager get checklistItems =>
       $$ChecklistItemsTableTableManager(_db, _db.checklistItems);
+  $$CoursesTableTableManager get courses =>
+      $$CoursesTableTableManager(_db, _db.courses);
 }

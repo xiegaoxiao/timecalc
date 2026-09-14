@@ -96,10 +96,7 @@ void main() {
     });
 
     test('阶段 + 每周 focus：生成阶段里程碑与周里程碑', () {
-      final result = parser.parse(
-        minimalPlan(withFocus: true),
-        today: today,
-      );
+      final result = parser.parse(minimalPlan(withFocus: true), today: today);
       expect(result.isValid, isTrue);
       final plan = result.plan!;
       expect(plan.milestones, hasLength(2));
@@ -110,10 +107,7 @@ void main() {
     });
 
     test('daily_must_do：每周生成一个「每天」重复模板，覆盖该周 7 天', () {
-      final result = parser.parse(
-        minimalPlan(withMustDo: true),
-        today: today,
-      );
+      final result = parser.parse(minimalPlan(withMustDo: true), today: today);
       expect(result.isValid, isTrue);
       final plan = result.plan!;
       expect(plan.templates, hasLength(1));
@@ -351,10 +345,7 @@ void main() {
 
   group('校验错误', () {
     test('plan_name 缺失', () {
-      final result = parser.parse(
-        '{ "end_date": "2026-08-15" }',
-        today: today,
-      );
+      final result = parser.parse('{ "end_date": "2026-08-15" }', today: today);
       expect(result.isValid, isFalse);
       expect(
         result.issues.map((i) => i.message),
@@ -510,7 +501,8 @@ void main() {
 
     test('超长阶段/周里程碑标题被拦截（M10）', () {
       final longName = '长' * 201;
-      final json = '''
+      final json =
+          '''
 {
   "plan_name": "计划",
   "start_date": "2026-08-09",
@@ -686,6 +678,118 @@ void main() {
       );
       expect(result.isValid, isTrue);
       expect(result.plan!.deadlineDate, '2026-08-05');
+    });
+  });
+
+  group('小时级排程（time 字段，schema v16）', () {
+    test('daily_breakdown 对象写法可带 time，单位数小时被补零规范化', () {
+      const json = '''
+{
+  "plan_name": "计划",
+  "end_date": "2026-08-15",
+  "stages": [
+    {
+      "stage": "阶段",
+      "weekly_plan": [
+        {
+          "week": 1,
+          "week_range": "2026-08-09 ~ 2026-08-15",
+          "subjects": {
+            "高等数学": {
+              "daily_breakdown": {
+                "2026-08-10": { "title": "三重积分", "minutes": 180, "time": "8:30" }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}''';
+      final result = parser.parse(json, today: today);
+      expect(result.isValid, isTrue);
+      final task = result.plan!.tasks.single;
+      expect(task.time, '08:30');
+      expect(task.minutes, 180);
+    });
+
+    test('daily_must_do 的 time 继承到模板', () {
+      // daily_must_do 是 subjects 下的同级键（与科目名并列），非科目内部键。
+      const json = '''
+{
+  "plan_name": "计划",
+  "end_date": "2026-08-15",
+  "stages": [
+    {
+      "stage": "阶段",
+      "weekly_plan": [
+        {
+          "week": 1,
+          "week_range": "2026-08-09 ~ 2026-08-15",
+          "subjects": {
+            "高等数学": {
+              "daily_breakdown": { "2026-08-10": "任务" }
+            },
+            "daily_must_do": [
+              { "title": "背单词", "minutes": 30, "time": "20:00" }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}''';
+      final result = parser.parse(json, today: today);
+      expect(result.isValid, isTrue);
+      expect(result.plan!.templates.single.time, '20:00');
+    });
+
+    test('unclassified 的 time 落到未分类任务', () {
+      final result = parser.parse(
+        minimalPlan(
+          unclassified:
+              '[{"title": "复盘", "date": "2026-08-10", "time": "21:45"}]',
+        ),
+        today: today,
+      );
+      expect(result.isValid, isTrue);
+      final task = result.plan!.tasks.firstWhere((t) => t.subjectName == null);
+      expect(task.time, '21:45');
+    });
+
+    test('不带 time 时为 null（只排到天，向后兼容）', () {
+      final result = parser.parse(minimalPlan(), today: today);
+      expect(result.isValid, isTrue);
+      expect(result.plan!.tasks.single.time, isNull);
+    });
+
+    test('非法 time 报 issue 且整体不通过（不静默丢弃）', () {
+      final result = parser.parse(
+        minimalPlan(
+          unclassified:
+              '[{"title": "复盘", "date": "2026-08-10", "time": "25:00"}]',
+        ),
+        today: today,
+      );
+      expect(result.isValid, isFalse);
+      expect(
+        result.issues.map((i) => i.message),
+        anyElement(contains('time 不是合法时刻')),
+      );
+    });
+
+    test('time 类型非字符串报 issue', () {
+      final result = parser.parse(
+        minimalPlan(
+          unclassified: '[{"title": "复盘", "date": "2026-08-10", "time": 2030}]',
+        ),
+        today: today,
+      );
+      expect(result.isValid, isFalse);
+      expect(
+        result.issues.map((i) => i.message),
+        anyElement(contains('time 必须是字符串')),
+      );
     });
   });
 }

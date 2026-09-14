@@ -28,14 +28,21 @@ class SectionHeader extends StatelessWidget {
       children: [
         Row(
           children: [
-            Icon(icon, size: 20, color: scheme.primary),
-            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: scheme.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 20, color: scheme.primary),
+            ),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
                 title,
                 style: textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
             ?trailing,
@@ -46,8 +53,8 @@ class SectionHeader extends StatelessWidget {
           Text(
             subtitle!,
             style: textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
+              color: scheme.onSurfaceVariant,
+            ),
           ),
         ],
       ],

@@ -49,6 +49,7 @@ class BackupCodec {
         'title': row.title,
         'note': row.note,
         'plannedDate': row.plannedDate,
+        'startTime': row.startTime,
         'estimatedMinutes': row.estimatedMinutes,
         'status': row.status,
         'completedAt': row.completedAt?.toUtc().toIso8601String(),
@@ -71,6 +72,7 @@ class BackupCodec {
         'ruleJson': row.ruleJson,
         'startDate': row.startDate,
         'endDate': row.endDate,
+        'startTime': row.startTime,
         'active': row.active,
         'generatedThroughDate': row.generatedThroughDate,
         'createdAt': row.createdAt.toUtc().toIso8601String(),
@@ -80,11 +82,13 @@ class BackupCodec {
 
   /// 计划偏好行 → JSON。
   ///
-  /// 只包含计划偏好（FR-9.5：窗口状态/关闭行为等桌面层状态不进入业务
-  /// 备份；API Key 与日志本就不存于本表）。
+  /// 只包含计划偏好与学期基准（FR-9.5：窗口状态/关闭行为等桌面层状态不进入
+  /// 业务备份；API Key 与日志本就不存于本表）。`semesterStartDate` 属于
+  /// 「本学期的时间设定」而非设备外观配置，故与课表一起进备份（FR-10）。
   Map<String, Object?> settingsToJson(Setting row) => {
         'dailyAvailableMinutes': row.dailyAvailableMinutes,
         'availableWeekdays': row.availableWeekdays,
+        'semesterStartDate': row.semesterStartDate,
       };
 
   /// 里程碑行 → JSON（FR-2，schema v7）。
@@ -106,6 +110,28 @@ class BackupCodec {
         'title': row.title,
         'done': row.done,
         'sortOrder': row.sortOrder,
+        'createdAt': row.createdAt.toUtc().toIso8601String(),
+        'updatedAt': row.updatedAt.toUtc().toIso8601String(),
+      };
+
+  /// 课程行 → JSON（FR-10 课表，schema v17）。
+  ///
+  /// 节次/周次/星期都是整数、颜色是 `#RRGGBB` 文本，无时间戳以外的转换；
+  /// 课程无外键，恢复侧不需要 ID 映射。
+  Map<String, Object?> courseToJson(Course row) => {
+        'id': row.id,
+        'title': row.title,
+        'teacher': row.teacher,
+        'location': row.location,
+        'weekday': row.weekday,
+        'startPeriod': row.startPeriod,
+        'endPeriod': row.endPeriod,
+        'startWeek': row.startWeek,
+        'endWeek': row.endWeek,
+        'weekParity': row.weekParity,
+        'category': row.category,
+        'color': row.color,
+        'note': row.note,
         'createdAt': row.createdAt.toUtc().toIso8601String(),
         'updatedAt': row.updatedAt.toUtc().toIso8601String(),
       };
@@ -159,6 +185,7 @@ class BackupCodec {
       title: json['title'] as String,
       note: Value(json['note'] as String?),
       plannedDate: json['plannedDate'] as String,
+      startTime: Value(json['startTime'] as String?),
       estimatedMinutes: Value(json['estimatedMinutes'] as int?),
       status: Value(json['status'] as String? ?? 'todo'),
       completedAt: Value(_parseOptionalUtc(json['completedAt'])),
@@ -189,6 +216,7 @@ class BackupCodec {
       ruleJson: json['ruleJson'] as String? ?? '{}',
       startDate: json['startDate'] as String,
       endDate: Value(json['endDate'] as String?),
+      startTime: Value(json['startTime'] as String?),
       active: Value(json['active'] as bool? ?? true),
       generatedThroughDate: json['generatedThroughDate'] as String? ?? '',
       createdAt: _parseUtc(json['createdAt']) ?? now,
@@ -211,6 +239,7 @@ class BackupCodec {
     DateTime? lastAutoBackupAt,
     String? themeMode,
     String? accentColor,
+    String? semesterStartDate,
   }) {
     final now = clock().toUtc();
     return SettingsCompanion.insert(
@@ -239,6 +268,11 @@ class BackupCodec {
       accentColor: accentColor == null
           ? const Value.absent()
           : Value(accentColor),
+      // 学期基准随业务数据恢复（FR-10）：备份带它时以备份为准，不带
+      // （旧版本备份）时保留当前值，避免课表周号突然失去锚点。
+      semesterStartDate: semesterStartDate == null
+          ? const Value.absent()
+          : Value(semesterStartDate),
       createdAt: now,
       updatedAt: now,
     );
@@ -278,6 +312,35 @@ class BackupCodec {
       title: json['title'] as String,
       done: Value(json['done'] as bool? ?? false),
       sortOrder: Value(json['sortOrder'] as int? ?? 0),
+      createdAt: _parseUtc(json['createdAt']) ?? now,
+      updatedAt: _parseUtc(json['updatedAt']) ?? now,
+    );
+  }
+
+  /// JSON → CoursesCompanion（FR-10 课表，schema v17）。
+  ///
+  /// 课程无外键，恢复侧不需要 ID 映射。字段用宽容兜底（`as int? ?? 默认`）
+  /// 而非强转：旧版本备份里没有 courses.json，但手工构造的备份可能带着
+  /// 缺字段的课程对象，让它落到合法默认值比整份备份恢复失败更合理。
+  CoursesCompanion courseFromJson(
+    Map<String, Object?> json, {
+    bool keepId = false,
+  }) {
+    final now = clock().toUtc();
+    return CoursesCompanion.insert(
+      id: keepId ? Value(json['id'] as int) : const Value.absent(),
+      title: json['title'] as String,
+      teacher: Value(json['teacher'] as String?),
+      location: Value(json['location'] as String?),
+      weekday: (json['weekday'] as int?) ?? 1,
+      startPeriod: (json['startPeriod'] as int?) ?? 1,
+      endPeriod: (json['endPeriod'] as int?) ?? 1,
+      startWeek: (json['startWeek'] as int?) ?? 1,
+      endWeek: (json['endWeek'] as int?) ?? 1,
+      weekParity: Value(json['weekParity'] as String? ?? 'all'),
+      category: Value(json['category'] as String?),
+      color: json['color'] as String? ?? '#3F6C51',
+      note: Value(json['note'] as String?),
       createdAt: _parseUtc(json['createdAt']) ?? now,
       updatedAt: _parseUtc(json['updatedAt']) ?? now,
     );

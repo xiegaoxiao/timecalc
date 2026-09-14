@@ -85,8 +85,8 @@ class _HoverableCardState extends ConsumerState<HoverableCard> {
     final scheme = Theme.of(context).colorScheme;
     return base.copyWith(
       border: Border.all(
-        color: widget.hoverBorderColor ??
-            scheme.primary.withValues(alpha: 0.35),
+        color:
+            widget.hoverBorderColor ?? scheme.primary.withValues(alpha: 0.35),
       ),
       boxShadow: [
         BoxShadow(

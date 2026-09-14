@@ -14,12 +14,22 @@ class TaskRepository {
   final AppDatabase _db;
   final DateTime Function() clock;
 
-  /// 返回目标下的全部未归档任务，按计划日期、创建时间排序。
+  /// 同一天内的次级排序：无时刻（只排到天）的排最前，其余按钟点升序
+  /// （time_text.timeOfDaySortKey 同语义；nulls-first 与日历「全天」事项
+  /// 置顶的惯例一致）。
+  ///
+  /// 旧数据 startTime 全为 null，该键对所有行取等值，因此不会改变既有
+  /// 排序结果（仅在同日 + 有时刻时生效）。
+  static OrderingTerm _byStartTime($TasksTable t) =>
+      OrderingTerm.asc(t.startTime, nulls: NullsOrder.first);
+
+  /// 返回目标下的全部未归档任务，按计划日期、计划时刻、创建时间排序。
   Future<List<Task>> byGoal(int goalId) {
     final query = _db.select(_db.tasks)
       ..where((t) => t.goalId.equals(goalId) & t.archivedAt.isNull())
       ..orderBy([
         (t) => OrderingTerm.asc(t.plannedDate),
+        (t) => _byStartTime(t),
         (t) => OrderingTerm.asc(t.sortOrder),
         (t) => OrderingTerm.asc(t.id),
       ]);
@@ -35,6 +45,7 @@ class TaskRepository {
       ..where((t) => t.subjectId.equals(subjectId) & t.archivedAt.isNull())
       ..orderBy([
         (t) => OrderingTerm.asc(t.plannedDate),
+        (t) => _byStartTime(t),
         (t) => OrderingTerm.asc(t.sortOrder),
         (t) => OrderingTerm.asc(t.id),
       ]);
@@ -78,10 +89,13 @@ class TaskRepository {
   }
 
   /// 返回计划日期为 [date]（yyyy-MM-dd）的全部未归档任务（跨目标，供今日页使用）。
+  ///
+  /// 同日按计划时刻升序（无时刻置顶），使今日页呈现「时间轴」顺序。
   Future<List<Task>> byDate(String date) {
     final query = _db.select(_db.tasks)
       ..where((t) => t.plannedDate.equals(date) & t.archivedAt.isNull())
       ..orderBy([
+        (t) => _byStartTime(t),
         (t) => OrderingTerm.asc(t.goalId),
         (t) => OrderingTerm.asc(t.sortOrder),
         (t) => OrderingTerm.asc(t.id),
@@ -97,6 +111,7 @@ class TaskRepository {
           t.archivedAt.isNull())
       ..orderBy([
         (t) => OrderingTerm.asc(t.plannedDate),
+        (t) => _byStartTime(t),
         (t) => OrderingTerm.asc(t.goalId),
         (t) => OrderingTerm.asc(t.id),
       ]);
@@ -113,6 +128,7 @@ class TaskRepository {
           t.archivedAt.isNull())
       ..orderBy([
         (t) => OrderingTerm.asc(t.plannedDate),
+        (t) => _byStartTime(t),
         (t) => OrderingTerm.asc(t.goalId),
         (t) => OrderingTerm.asc(t.id),
       ]);
@@ -178,12 +194,31 @@ class TaskRepository {
       ..where((t) => t.status.equals(TaskStatus.todo) & t.archivedAt.isNull())
       ..orderBy([
         (t) => OrderingTerm.asc(t.plannedDate),
+        (t) => _byStartTime(t),
+        (t) => OrderingTerm.asc(t.id),
+      ]);
+    return query.get();
+  }
+
+  /// 返回全部未归档任务（跨目标，按计划日期与时刻升序）。
+  ///
+  /// 供日历导出（.ics）整表读取：归档任务属于历史记录，不进日历。
+  Future<List<Task>> allActive() {
+    final query = _db.select(_db.tasks)
+      ..where((t) => t.archivedAt.isNull())
+      ..orderBy([
+        (t) => OrderingTerm.asc(t.plannedDate),
+        (t) => _byStartTime(t),
+        (t) => OrderingTerm.asc(t.goalId),
         (t) => OrderingTerm.asc(t.id),
       ]);
     return query.get();
   }
 
   /// 创建任务。plannedDate 为本地日历日期文本（yyyy-MM-dd）。
+  ///
+  /// [startTime] 为可选的本地墙上时刻（`HH:mm`，schema v16）：null 表示
+  /// 只排到天。非法时刻由调用方/校验层阻止，本方法不进行业务校验。
   ///
   /// [estimatedMinutes] 仅接受 1～1440 分钟整数（FR-3 验收），
   /// 非法值由调用方/校验层阻止，本方法不进行业务校验。
@@ -193,6 +228,7 @@ class TaskRepository {
     required String title,
     String? note,
     required String plannedDate,
+    String? startTime,
     int? estimatedMinutes,
     int sortOrder = 0,
   }) {
@@ -208,6 +244,7 @@ class TaskRepository {
             title: title,
             note: Value(note),
             plannedDate: plannedDate,
+            startTime: Value(startTime),
             estimatedMinutes: Value(estimatedMinutes),
             createdAt: now,
             updatedAt: now,
@@ -221,6 +258,7 @@ class TaskRepository {
   /// 每条 [titles] 生成一个任务；计划日期从 [startDate]（yyyy-MM-dd）起，
   /// 按 [dateIntervalDays] 递增：0 表示全部同一天，1 表示每天一个（如
   /// 真题套卷），7 表示每周一个。[estimatedMinutes] 为统一预估时长。
+  /// [startTime] 为统一计划时刻（`HH:mm`，可空），各条共享同一钟点。
   /// 空标题条自动跳过。
   Future<int> batchCreate({
     required int goalId,
@@ -229,6 +267,7 @@ class TaskRepository {
     required String startDate,
     int dateIntervalDays = 0,
     int? estimatedMinutes,
+    String? startTime,
   }) {
     if (dateIntervalDays < 0) {
       throw ArgumentError.value(dateIntervalDays, 'dateIntervalDays', '不能为负数');
@@ -266,6 +305,7 @@ class TaskRepository {
               subjectId: Value(subjectId),
               title: cleanTitles[i],
               plannedDate: formatLocalDate(date),
+              startTime: Value(startTime),
               estimatedMinutes: Value(estimatedMinutes),
               createdAt: now,
               updatedAt: now,
@@ -374,6 +414,7 @@ class TaskRepository {
               subjectId: Value(subjectId),
               title: item.title,
               plannedDate: item.date,
+              startTime: Value(item.time),
               estimatedMinutes: Value(item.minutes),
               createdAt: now,
               updatedAt: now,
@@ -461,8 +502,9 @@ class TaskRepository {
   }
 
   /// 更新任务字段。字符串字段为 null 表示不修改；
-  /// 可置空字段（[note]、[estimatedMinutes]、[subjectId]）用 `Value` 包装，
-  /// 传 `Value(null)` 表示显式置空，不传（null）表示不修改。
+  /// 可置空字段（[note]、[startTime]、[estimatedMinutes]、[subjectId]）
+  /// 用 `Value` 包装，传 `Value(null)` 表示显式置空（如把任务从「20:00」
+  /// 改回「只排到天」），不传（null）表示不修改。
   ///
   /// 当计划日期变化且任务尚未记录原计划日期时，自动记录原日期
   /// （FR-3.3 验收：延期/改期保留原计划日期；仅记录首次，不随后续调整刷新）。
@@ -471,6 +513,7 @@ class TaskRepository {
     String? title,
     Value<String?>? note,
     String? plannedDate,
+    Value<String?>? startTime,
     Value<int?>? estimatedMinutes,
     Value<int?>? subjectId,
   }) {
@@ -490,6 +533,7 @@ class TaskRepository {
           note: note ?? const Value.absent(),
           plannedDate:
               plannedDate == null ? const Value.absent() : Value(plannedDate),
+          startTime: startTime ?? const Value.absent(),
           estimatedMinutes: estimatedMinutes ?? const Value.absent(),
           subjectId: subjectId ?? const Value.absent(),
           originalPlannedDate: original,

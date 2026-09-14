@@ -25,6 +25,12 @@ void main() {
   late DateTime fixedNow;
 
   Future<void> pumpApp(WidgetTester tester) async {
+    // 今天页改版后首屏被头部（标题区 + 倒计时 + 负载概览）占满，今日任务区落在
+    // 默认 800×600 视口之外；视口驱动懒构建下未挂载的 Element 无法被 finder
+    // 命中，故与本仓库其余 UI 用例一致给足高度（宽度仍取 800，导航形态不变）。
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [

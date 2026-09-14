@@ -29,6 +29,7 @@ class BackupPayload {
     required this.templates,
     required this.milestones,
     required this.checklistItems,
+    required this.courses,
     required this.settings,
   });
 
@@ -39,6 +40,9 @@ class BackupPayload {
   final List<Map<String, Object?>> templates;
   final List<Map<String, Object?>> milestones;
   final List<Map<String, Object?>> checklistItems;
+
+  /// 课表课程（FR-10，schema v17）；旧版本备份为空。
+  final List<Map<String, Object?>> courses;
   final List<Map<String, Object?>> settings;
 }
 
@@ -48,7 +52,8 @@ class BackupPayload {
 /// - `manifest.json`：格式/版本/类型/导出时间/计数；
 /// - `data/goals.json`、`data/subjects.json`、`data/tasks.json`、
 ///   `data/recurrence_templates.json`、`data/milestones.json`、
-///   `data/checklist_items.json`、`data/settings.json`（配置目录）。
+///   `data/checklist_items.json`、`data/courses.json`（课表）、
+///   `data/settings.json`（配置目录）。
 ///
 /// 恢复流程（NFR-2：先校验后写入，失败保持原库可用）：
 /// 1. 解包并校验格式、版本、类型、计数与数组长度一致；
@@ -84,6 +89,7 @@ class BackupService {
       final templates = await _db.select(_db.recurrenceTemplates).get();
       final milestones = await _db.select(_db.milestones).get();
       final checklistItems = await _db.select(_db.checklistItems).get();
+      final courses = await _db.select(_db.courses).get();
       final settings = await _db.select(_db.settings).get();
       return (
         goals: goals,
@@ -92,6 +98,7 @@ class BackupService {
         templates: templates,
         milestones: milestones,
         checklistItems: checklistItems,
+        courses: courses,
         settings: settings,
       );
     });
@@ -109,6 +116,7 @@ class BackupService {
       recurrenceTemplateCount: snapshot.templates.length,
       milestoneCount: snapshot.milestones.length,
       checklistItemCount: snapshot.checklistItems.length,
+      courseCount: snapshot.courses.length,
     );
 
     final archive = Archive()
@@ -141,6 +149,10 @@ class BackupService {
         jsonEncode(
           snapshot.checklistItems.map(_codec.checklistItemToJson).toList(),
         ),
+      ))
+      ..addFile(ArchiveFile.string(
+        '$_dataDir${_jsonFileName('courses')}',
+        jsonEncode(snapshot.courses.map(_codec.courseToJson).toList()),
       ))
       ..addFile(ArchiveFile.string(
         '$_dataDir${_jsonFileName('settings')}',
@@ -277,6 +289,10 @@ class BackupService {
       await _db.delete(_db.milestones).go();
       await _db.delete(_db.subjects).go();
       await _db.delete(_db.goals).go();
+      // 课表（FR-10）无外键，独立清空。学期基准属于 settings，随
+      // includeSettings 一起处理（不清 settings 时课表基准仍指向本学期，
+      // 用户重新导入课表即可对上）。
+      await _db.delete(_db.courses).go();
       if (includeSettings) {
         await _db.delete(_db.settings).go();
       }
@@ -403,14 +419,21 @@ class BackupService {
               _codec.checklistItemFromJson(json, taskId: newTaskId),
             );
       }
+
+      // 课程（FR-10，schema v17）：无外键，直接追加。合并语义下不做
+      // 「同名去重」——同一门课在不同学期/不同班级都可能是不同记录，
+      // 去重反而会静默吞掉用户想保留的课程（重复了可在课表页手动删）。
+      for (final json in payload.courses) {
+        await _db.into(_db.courses).insert(_codec.courseFromJson(json));
+      }
     });
   }
 
   /// 覆盖模式：单事务清空业务表并写入备份数据（settings 一并恢复）。
   ///
   /// 清空按子表→父表顺序（checklist_items → tasks → recurrence_templates →
-  /// milestones → subjects → goals），写入按父表→子表顺序并保留原 ID，
-  /// 保证外键一致。
+  /// milestones → subjects → goals → courses），写入按父表→子表顺序并保留
+  /// 原 ID，保证外键一致（courses 无外键，清空/写入位置随意，两端对称即可）。
   Future<void> _overwriteRestore(BackupPayload payload) async {
     await _db.transaction(() async {
       await _db.delete(_db.checklistItems).go();
@@ -419,6 +442,7 @@ class BackupService {
       await _db.delete(_db.milestones).go();
       await _db.delete(_db.subjects).go();
       await _db.delete(_db.goals).go();
+      await _db.delete(_db.courses).go();
 
       for (final json in payload.goals) {
         await _db.into(_db.goals).insert(
@@ -477,6 +501,14 @@ class BackupService {
             );
       }
 
+      // 课表（FR-10，schema v17）：覆盖模式保留原 ID 还原课程。
+      for (final json in payload.courses) {
+        await _db.into(_db.courses).insert(
+              _codec.courseFromJson(json, keepId: true),
+              mode: InsertMode.insertOrReplace,
+            );
+      }
+
       // 计划偏好：覆盖模式下随备份一并恢复（FR-9.2 覆盖语义）。
       if (payload.settings.isNotEmpty) {
         // 运行时配置不进备份文件（FR-9.5：关闭行为、自动备份配置；
@@ -490,6 +522,7 @@ class BackupService {
         final previousLastAutoBackupAt = previous?.lastAutoBackupAt;
         final previousThemeMode = previous?.themeMode;
         final previousAccentColor = previous?.accentColor;
+        final previousSemesterStart = previous?.semesterStartDate;
         await _db.delete(_db.settings).go();
         await _db.into(_db.settings).insert(
               _codec.settingsFromJson(
@@ -513,6 +546,12 @@ class BackupService {
                     previousThemeMode,
                 accentColor: payload.settings.first['accentColor'] as String? ??
                     previousAccentColor,
+                // 学期基准属于「本学期时间设定」：备份带它（v17 起）则以备份
+                // 为准，旧版本备份不带时保留当前值——否则恢复后课表会突然
+                // 失去教学周锚点（课程仍在，周号无从谈起）。
+                semesterStartDate:
+                    payload.settings.first['semesterStartDate'] as String? ??
+                        previousSemesterStart,
               ),
             );
       } else {
@@ -532,6 +571,7 @@ class BackupService {
                   lastAutoBackupAt: existing.lastAutoBackupAt,
                   themeMode: existing.themeMode,
                   accentColor: existing.accentColor,
+                  semesterStartDate: existing.semesterStartDate,
                 ),
                 mode: InsertMode.insertOrReplace,
               );
@@ -604,10 +644,11 @@ class BackupService {
     final subjects = readJson(_jsonFileName('subjects'));
     final tasks = readJson(_jsonFileName('tasks'));
     final templates = readJson(_jsonFileName('recurrence_templates'));
-    // 旧版本备份不含 milestones.json / checklist_items.json：缺失时按空
-    // 处理，计数随 manifest 的对应字段（缺失为 0）保持一致。
+    // 旧版本备份不含 milestones.json / checklist_items.json / courses.json：
+    // 缺失时按空处理，计数随 manifest 的对应字段（缺失为 0）保持一致。
     final milestones = readJsonOptional(_jsonFileName('milestones'));
     final checklistItems = readJsonOptional(_jsonFileName('checklist_items'));
+    final courses = readJsonOptional(_jsonFileName('courses'));
     final settings = readJson(_jsonFileName('settings'));
 
     // 计数校验：manifest 声明的数量必须与实际数组长度一致（NFR-2）。
@@ -616,7 +657,8 @@ class BackupService {
         tasks.length != manifest.taskCount ||
         templates.length != manifest.recurrenceTemplateCount ||
         milestones.length != manifest.milestoneCount ||
-        checklistItems.length != manifest.checklistItemCount) {
+        checklistItems.length != manifest.checklistItemCount ||
+        courses.length != manifest.courseCount) {
       throw const BackupException('备份文件内容与清单不一致，已拒绝恢复');
     }
 
@@ -628,6 +670,7 @@ class BackupService {
       templates: templates,
       milestones: milestones,
       checklistItems: checklistItems,
+      courses: courses,
       settings: settings,
     );
   }

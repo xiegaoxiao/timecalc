@@ -30,6 +30,9 @@ void main() {
   late DateTime fixedNow;
 
   Future<void> pumpApp(WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1440, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -52,6 +55,20 @@ void main() {
 
   tearDown(() async {
     await db.close();
+  });
+
+  testWidgets('首页在紧凑窗口和桌面窗口下无布局溢出，今日任务优先展示', (tester) async {
+    final goal = await goals.create(title: '研究生入学准备计划', deadlineDate: '2026-12-31');
+    await tasks.create(goalId: goal.id, title: '今日阅读', plannedDate: '2026-08-05', estimatedMinutes: 90);
+    await tasks.create(goalId: goal.id, title: '补充笔记', plannedDate: '2026-08-04', estimatedMinutes: 30);
+    await pumpApp(tester);
+    expect(tester.getTopLeft(find.text('今日任务')).dy,
+        lessThan(tester.getTopLeft(find.text('过期任务')).dy));
+    for (final width in [520.0, 900.0, 1440.0]) {
+      tester.view.physicalSize = Size(width, 1000);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    }
   });
 
   testWidgets('今日任务展示，勾选即时完成，负载归零（FR-3.2）', (tester) async {

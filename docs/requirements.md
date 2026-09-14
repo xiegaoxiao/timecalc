@@ -75,6 +75,7 @@ MVP 优先服务具有单个明确截止目标、计划周期为 7～180 天的�
 | 目标 | 倒计时、目标编辑/归档、逾期状态 | 里程碑 | 多目标综合负载 |
 | 任务 | 增删改查、完成、延期、预估时长、日历 | 检查项、重复任务、批量操作 | 跨目标模板库 |
 | 计划 | 手动排程、每日负载提示 | AI 生成草稿及确认 | AI 历史版本对比 |
+| 课表 | 课程增删改查、教学周网格、周次切换、`.ics`/JSON 导入 | 单双周、冲突并排、学期基准 | 教务系统直连、调课/停课提醒 |
 | 反馈 | 今日概览、完成率、基础热力图 | 简单燃尽趋势 | 交互甘特图、PDF 报告 |
 | Windows | 主窗口、托盘、窗口位置恢复 | 精简悬浮窗、全局快捷键 | 托盘动态图标、多屏高级规则 |
 | 数据 | 本地存储、手动备份/恢复 | 自动备份 | ~~云同步、跨端同步~~（M9 曾交付 WebDAV 整库文件同步，v1.15 起移除，回到纯本地） |
@@ -221,16 +222,37 @@ MVP 不包含账号体系、团队协作、Android/iOS 客户端、复杂番茄�
 - FR-9.4（P1）支持每日自动备份，默认保留最近 7 份；路径不可写时通知用户。
 - FR-9.5 API Key、日志和窗口状态不进入业务数据备份。
 
+### FR-10 课表（P1）
+
+#### 需求
+
+- FR-10.1（P1）用户可维护一学期的课程表：课程名、教师、地点、星期几、起止节次、起止教学周、单双周、类别、配色与备注。
+- FR-10.2（P1）课表页以「教学周 × 星期」网格展示课程：左侧节次作息标签、卡片按节次跨行、同时段多门课并排（不互相遮挡）、当前教学周与今天所在列高亮。
+- FR-10.3（P1）教学周换算以「学期第 1 周周一」为基准（`Settings.semesterStartDate`），可前后切换教学周并「回到本周」；未设置基准时退化为「全部课程」视图并提示设置。
+- FR-10.4（P1）支持从 `.ics`（按周重复的日程）与课表 JSON 导入课程：优先读取日历 `DESCRIPTION` 中的结构化字段（教师/周次/类别/节次），缺失时由上课钟点就近换算节次、由 `RRULE` 的 `COUNT`/`INTERVAL` 推周次与单双周；导入前预览、校验不通过不写入任何数据。
+- FR-10.5（P1）导入可选「替换现有课表」或「追加到现有课表」，写入在单事务内完成（失败整体回滚）。
+- FR-10.6（P1）课程为外部给定的固定作息：不参与任务负载与完成度统计，也不出现在「今天」页的待办闭包；课程数据与学期基准随备份导出与恢复。
+
+#### 验收标准
+
+- 网格中同一时段的两门课并排显示（各自可点开详情），不做「后到覆盖先到」；
+- 切到某门课不在其周次区间内的教学周时不显示该课；单周课在双周不显示；
+- 导入一份课表后再导入同一份（替换模式）课程数不翻倍；校验失败时课程数与学期基准均不变；
+- 删除单门课不影响其它课；「清空课表」不动任务、目标与学期基准；
+- 备份导出 → 修改 → 覆盖恢复后，课程字段（含配色与备注）与学期基准原样回来。
+
 ## 7. 信息架构
 
-主导航保持四个一级入口：
+主导航为六个一级入口（桌面宽窗为左侧 200px 侧栏，窄窗回退底部导航）：
 
 1. **今天**：倒计时、今日任务、过载提示和快速添加。
-2. **计划**：日历、目标、科目、里程碑和任务调整。
-3. **进度**：完成趋势、热力图和燃尽趋势。
-4. **设置**：计划偏好、外观、AI Provider、备份与快捷键。
+2. **计划**：日历、科目、里程碑和任务调整。
+3. **课表**：一学期课程的教学周网格、周次切换与课表导入。
+4. **目标**：目标列表与详情（里程碑、科目、任务）。
+5. **进度**：完成趋势、热力图和燃尽趋势。
+6. **设置**：计划偏好、外观、备份与快捷键。
 
-首页不重复展示全部图表。目标详情遵循“目标概览 → 里程碑 → 任务”的层级，避免同时堆叠目标、科目、统计和甘特图。
+首页不重复展示全部图表。目标详情遵循“目标概览 → 里程碑 → 任务”的层级，避免同时堆叠目标、科目、统计和甘特图。课表与计划互补而不重叠：计划回答「我打算做什么」，课表回答「我什么时候有课」。
 
 ## 8. 关键状态与文案
 
@@ -262,7 +284,11 @@ MVP 不包含账号体系、团队协作、Android/iOS 客户端、复杂番茄�
 
 ### Task
 
-`goalId`, `subjectId?`, `recurrenceTemplateId?`, `title`, `note?`, `plannedDate`, `originalPlannedDate?`, `estimatedMinutes?`, `status(todo/done)`, `completedAt?`, `sortOrder`
+`goalId`, `subjectId?`, `recurrenceTemplateId?`, `title`, `note?`, `plannedDate`, `startTime?(HH:mm 本地墙上时间，schema v16)`, `originalPlannedDate?`, `estimatedMinutes?`, `status(todo/done)`, `completedAt?`, `sortOrder`
+
+> `plannedDate` 是排程锚点（本地日历日）；`startTime` 只在其上追加可选精度，
+> 为空即「只排到天」。导出 `.ics` 时全天事件用 `DTSTART;VALUE=DATE`，
+> 有时刻则用浮动本地时间 + `estimatedMinutes` 作为时长。
 
 ### ChecklistItem
 
@@ -270,15 +296,23 @@ MVP 不包含账号体系、团队协作、Android/iOS 客户端、复杂番茄�
 
 ### RecurrenceTemplate
 
-`goalId`, `subjectId?`, `title`, `estimatedMinutes?`, `ruleType(daily/weekly/interval)`, `ruleJson`, `startDate`, `endDate?`, `active`, `generatedThroughDate`
+`goalId`, `subjectId?`, `title`, `estimatedMinutes?`, `ruleType(daily/weekly/interval)`, `ruleJson`, `startDate`, `endDate?`, `startTime?(HH:mm，继承到每条实例)`, `active`, `generatedThroughDate`
 
 ### AIDraft
 
 `goalId`, `provider`, `model`, `inputSummaryJson`, `planJson`, `status(draft/applied/discarded)`, `error?`
 
+### Course（FR-10，schema v17）
+
+`title`, `teacher?`, `location?`, `weekday(1=周一…7=周日)`, `startPeriod`, `endPeriod`, `startWeek`, `endWeek`, `weekParity(all/odd/even)`, `category?`, `color(#RRGGBB)`, `note?`
+
+> 时间定位是「第几教学周 + 星期几 + 第几节」四元组（全部整数），不存绝对
+> 日期：课程表按学期循环复用，存绝对日期会在每学期导入时产生一轮无意义的
+> 日期漂移。节次 ↔ 钟点的作息表在 `features/timetable/domain/class_period.dart`。
+
 ### Settings
 
-`dailyAvailableMinutes`, `availableWeekdays`, `theme`, `language`, `closeBehavior`, `backupPath?`, `autoBackup`, `hotkeysJson?`
+`dailyAvailableMinutes`, `availableWeekdays`, `theme`, `language`, `closeBehavior`, `backupPath?`, `autoBackup`, `hotkeysJson?`, `semesterStartDate?`（第 1 周周一，`yyyy-MM-dd`，FR-10）
 
 ## 10. 非功能需求
 
@@ -371,6 +405,10 @@ MVP 不包含账号体系、团队协作、Android/iOS 客户端、复杂番茄�
 ### M10：明暗主题切换（外观页落地）
 
 交付外观设置：跟随系统 / 浅色 / 深色三选一，保存即换肤无需重启；主题模式为设备级配置（schema v12 `theme_mode`），不进入业务备份（FR-9.5），覆盖恢复时保留本设备选择。退出条件：换肤链路 + 覆盖恢复保留 + 迁移测试通过。
+
+### M17：课表（FR-10）
+
+交付课表页：`courses` 表（schema v17）+ 教学周网格（节次跨行、冲突并排、今天高亮）+ 教学周切换与「学期第 1 周周一」基准（`settings.semester_start_date`）+ 课程增删改 + `.ics`/JSON 导入（替换/追加、单事务）。退出条件：作息表/周次/单双周与导入解析的单元测试 + 课表页 Widget 测试 + v16→v17 迁移（含半迁移幂等）+ 备份往返测试通过。
 
 ## 13. 主要风险与应对
 

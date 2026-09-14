@@ -8,7 +8,9 @@ import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../core/providers/app_refresh.dart';
 import '../../../core/utils/date_text.dart';
+import '../../../core/utils/time_text.dart';
 import '../../../services/recurrence_service.dart';
+import '../../../shared/widgets/app_form_field.dart';
 import '../../../shared/widgets/duration_step_input.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../data/recurrence_repository.dart';
@@ -20,7 +22,8 @@ import '../domain/recurrence/rule_param.dart';
 
 /// 安全读取 int 参数：污染模板（值非 int，如手工改库的字符串/数字字符串）
 /// 时回退默认，避免 `as int?` 抛 TypeError。
-int _safeIntParam(Object? value, int fallback) => value is int ? value : fallback;
+int _safeIntParam(Object? value, int fallback) =>
+    value is int ? value : fallback;
 
 /// 安全读取 int 列表：非 List 或含非 int 元素时丢弃非法元素，避免惰性
 /// `cast<int>()` 在 build 中访问元素时抛 TypeError（本体已崩溃过）。
@@ -86,6 +89,9 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
   late Map<String, dynamic> _ruleJson;
   late DateTime _startDate;
   DateTime? _endDate;
+
+  /// 实例计划时刻（`HH:mm`，可空）：随规则继承到每条生成的实例（schema v16）。
+  String? _startTime;
   int? _subjectId;
   int? _estimatedMinutes;
   bool _saving = false;
@@ -102,6 +108,7 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
     _titleController = TextEditingController(text: template?.title ?? '');
     _subjectId = template?.subjectId;
     _estimatedMinutes = template?.estimatedMinutes;
+    _startTime = tryNormalizeTimeOfDay(template?.startTime);
     _startDate = template == null ? today : parseLocalDate(template.startDate);
     final endDate = template?.endDate;
     _endDate = endDate == null ? null : parseLocalDate(endDate);
@@ -119,7 +126,9 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
         _ruleJson = Map<String, dynamic>.from(rule.jsonMap);
       } else {
         _ruleType = _registry.all.first.type;
-        _ruleJson = Map<String, dynamic>.from(_registry.all.first.defaultJson());
+        _ruleJson = Map<String, dynamic>.from(
+          _registry.all.first.defaultJson(),
+        );
       }
     } else {
       _ruleType = _registry.all.first.type;
@@ -209,6 +218,22 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
     });
   }
 
+  /// 选择实例的计划时刻（可选，小时级排程）：确定后落 `HH:mm`，取消不动原值。
+  Future<void> _pickTime() async {
+    final current = tryTimeOfDayMinutes(_startTime) ?? 20 * 60;
+    final picked = await showTimePicker(
+      context: context,
+      helpText: '选择计划时刻（可选）',
+      initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
+    );
+    if (picked == null) return;
+    setState(() {
+      _startTime =
+          '${picked.hour.toString().padLeft(2, '0')}:'
+          '${picked.minute.toString().padLeft(2, '0')}';
+    });
+  }
+
   /// 未来发生日预览（前 12 次，至多到起始日 + 30 天）。
   List<String> _previewDates() {
     final service = RecurrenceService();
@@ -245,17 +270,17 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
     }
     final ruleError = _ruleError;
     if (ruleError != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('重复规则不合法：$ruleError')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('重复规则不合法：$ruleError')));
       return;
     }
     // 兜底校验：结束日期不得早于起始日期（选择器已防住，此处防状态被
     // 意外改写后仍落库为「0 个未来实例」的无效窗口，FR-4）。
     if (_endDate != null && _endDate!.isBefore(_startDate)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('结束日期不能早于起始日期')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('结束日期不能早于起始日期')));
       return;
     }
     // 兜底校验：起始日期不得早于今天或晚于目标截止日（选择器已置灰区间外
@@ -263,9 +288,9 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
     // 统一为纯日期比较（clockProvider 带时刻，datepicker 产出午夜）。
     final today = DateUtils.dateOnly(ref.read(clockProvider)());
     if (_startDate.isBefore(today)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('起始日期不能早于今天')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('起始日期不能早于今天')));
       return;
     }
     final deadline = _goalDeadline();
@@ -296,11 +321,13 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
           content: const Text('修改重复规则时：'),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(RecurrenceApplyTo.template),
+              onPressed: () =>
+                  Navigator.of(context).pop(RecurrenceApplyTo.template),
               child: const Text('仅修改模板'),
             ),
             TextButton(
-              onPressed: () => Navigator.of(context).pop(RecurrenceApplyTo.future),
+              onPressed: () =>
+                  Navigator.of(context).pop(RecurrenceApplyTo.future),
               child: const Text('仅修改未来实例'),
             ),
             TextButton(
@@ -328,11 +355,13 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
               endDate: endDate,
               applyTo: applyTo!,
               today: today,
-              // 编辑模式的标题/科目/时长/起始日期在对话框中可编辑（FR-4）。
+              // 编辑模式的标题/科目/时长/起始日期/实例时刻在对话框中可编辑
+              // （FR-4）。
               title: _titleController.text.trim(),
               subjectId: Value(_subjectId),
               estimatedMinutes: Value(_estimatedMinutes),
               startDate: startDate,
+              startTime: Value(_startTime),
             );
           } else {
             await repo.create(
@@ -340,6 +369,7 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
               subjectId: _subjectId,
               title: _titleController.text.trim(),
               estimatedMinutes: _estimatedMinutes,
+              startTime: _startTime,
               rule: rule,
               startDate: startDate,
               endDate: endDate,
@@ -395,7 +425,10 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
                     border: OutlineInputBorder(),
                   ),
                   items: [
-                    const DropdownMenuItem<int?>(value: null, child: Text('未分类')),
+                    const DropdownMenuItem<int?>(
+                      value: null,
+                      child: Text('未分类'),
+                    ),
                     for (final s in widget.subjects)
                       DropdownMenuItem<int?>(value: s.id, child: Text(s.name)),
                   ],
@@ -444,6 +477,14 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              // 实例时刻（可选）：随规则继承到每条生成的实例，排进日历。
+              AppTimeField(
+                label: '每次的计划时刻（可选）',
+                value: _startTime,
+                onTap: _pickTime,
+                onClear: () => setState(() => _startTime = null),
+              ),
               const SizedBox(height: 16),
               Text('未来发生日预览', style: Theme.of(context).textTheme.bodyMedium),
               const SizedBox(height: 4),
@@ -456,8 +497,8 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
                 Text(
                   _previewDates().join('、'),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                 ),
             ],
           ),
@@ -485,7 +526,10 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
           if (param.type == RuleParamType.intValue)
             _IntStepField(
               label: param.label,
-              value: _safeIntParam(_ruleJson[param.key], param.defaultValue ?? 1),
+              value: _safeIntParam(
+                _ruleJson[param.key],
+                param.defaultValue ?? 1,
+              ),
               min: param.min ?? 1,
               max: param.max ?? 100,
               onChanged: (v) => setState(() => _ruleJson[param.key] = v),
@@ -585,7 +629,15 @@ class _WeekdaysPicker extends StatelessWidget {
   final List<int> selected;
   final ValueChanged<List<int>> onChanged;
 
-  static const _labels = {1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 7: '日'};
+  static const _labels = {
+    1: '一',
+    2: '二',
+    3: '三',
+    4: '四',
+    5: '五',
+    6: '六',
+    7: '日',
+  };
 
   @override
   Widget build(BuildContext context) {

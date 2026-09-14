@@ -56,8 +56,10 @@ Future<void> dropColumnIfExists(
 /// 随后让 drift 把 user_version 写回当前版本。原数据
 /// （目标/任务/科目/模板/设置）全部保留，且各操作幂等（表/列不存在时跳过）。
 ///
-/// 注意：只清理「当前代码不认识」的结构。当前版本（v15）认识
-/// reduce_motion 列，故不在此删除（降级到 v15 时该列保留）。
+/// 注意：只清理「当前代码不认识」的结构。当前版本（v17）认识
+/// reduce_motion（v15）、tasks/recurrence_templates 的 start_time（v16）
+/// 与 courses 表 / settings.semester_start_date（v17），故不在此删除
+/// （降级到 v17 时这些结构保留）。
 Future<void> downgradeCleanup(Migrator m) async {
   final db = m.database;
   // v13 -> v14 新增的 AI 供应商表（可能不存在，IF NOT EXISTS 语义由
@@ -87,7 +89,7 @@ Future<void> downgradeCleanup(Migrator m) async {
   }
 }
 
-/// TimeCalc 本地数据库（schema v15）。
+/// TimeCalc 本地数据库（schema v16）。
 ///
 /// v1：目标/科目/任务三张表。
 /// v2：Tasks 增加 original_planned_date；新增 Settings 计划偏好表（M2）。
@@ -116,6 +118,15 @@ Future<void> downgradeCleanup(Migrator m) async {
 /// v15：Settings 增加 reduce_motion（2026-08-20 动效改造：开启后全局
 ///     过渡/入场动效时长归零，仅保留必要操作反馈；设备级外观配置，
 ///     不进入业务备份；带默认值旧行免回填）。
+/// v16：小时级排程——Tasks / RecurrenceTemplates 增加 start_time
+///     （本地墙上时间 `HH:mm`，可空）。planned_date 仍是排程锚点，
+///     时刻只在其上追加精度：旧数据全部为 null（只排到天），
+///     按天逻辑（负载、延期、重复生成）行为不变。
+/// v17：课表（FR-10）——新增 Courses 课程表（title/teacher/location/
+///     weekday/start_period/end_period/start_week/end_week/week_parity/
+///     category/color/note + 时间戳，见 tables.dart）；Settings 增加
+///     semester_start_date（教学周基准，可空）。课程不参与任务负载与
+///     完成度统计，故不影响既有查询语义；旧库新表为空、新列可空。
 /// 后续 schema 变更必须提供 migration 与 migration 测试（SOP S3、NFR-2）。
 @DriftDatabase(
   tables: [
@@ -126,6 +137,7 @@ Future<void> downgradeCleanup(Migrator m) async {
     Settings,
     RecurrenceTemplates,
     ChecklistItems,
+    Courses,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -135,7 +147,7 @@ class AppDatabase extends _$AppDatabase {
   factory AppDatabase.open() => AppDatabase(driftDatabase(name: 'timecalc'));
 
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 17;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -341,6 +353,39 @@ class AppDatabase extends _$AppDatabase {
             m,
             schema.settings,
             schema.settings.reduceMotion,
+          );
+        },
+        from15To16: (m, schema) async {
+          // v15 -> v16：小时级排程。任务与重复模板各加可空的 start_time
+          // （本地墙上时间 HH:mm）。旧行全为 null = 只排到天，因此
+          // 无需回填，按天查询/负载/延期语义完全不变；加列用幂等 helper
+          // 防半迁移重复（与 v11->v12 themeMode 同模式）。
+          await addColumnIfMissing(m, schema.tasks, schema.tasks.startTime);
+          await addColumnIfMissing(
+            m,
+            schema.recurrenceTemplates,
+            schema.recurrenceTemplates.startTime,
+          );
+        },
+        from16To17: (m, schema) async {
+          // v16 -> v17：课表（FR-10）。新增 courses 表；settings 增加可空的
+          // semester_start_date。createTable 自带 IF NOT EXISTS、新列可空，
+          // 旧行免回填，既有任务/目标/统计语义完全不变；加列用幂等 helper
+          // 防半迁移重复（与 v11->v12 themeMode 同模式）。
+          await m.createTable(schema.courses);
+          // Migrator.createTable 只建表、不建 @TableIndex 索引（drift 的
+          // createAll 才连带建索引，逐表 createTable 不会）。缺索引不报错、
+          // 只是查询退化为全表扫描，迁移库与全新安装因此静默分叉——必须
+          // 显式补上，与 v9->v10 的索引步骤同款（CREATE INDEX IF NOT EXISTS
+          // 幂等，迁移可重复执行）。
+          await m.database.customStatement(
+            'CREATE INDEX IF NOT EXISTS courses_weekday_idx '
+            'ON courses (weekday)',
+          );
+          await addColumnIfMissing(
+            m,
+            schema.settings,
+            schema.settings.semesterStartDate,
           );
         },
       )(migrator, from, to);

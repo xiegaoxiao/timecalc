@@ -91,7 +91,7 @@ class PlanImportRepository {
 
       // 4. 任务（科目任务 + 未分类任务；note 落库，subjectId 经映射，
       // estimatedMinutes 来自 JSON minutes 字段——进度统计只计带时长
-      // 的任务，FR-7.4）。
+      // 的任务，FR-7.4；startTime 来自可选 time 字段，小时级排程）。
       for (final t in plan.tasks) {
         await _db.into(_db.tasks).insert(TasksCompanion.insert(
               goalId: goalId,
@@ -102,6 +102,7 @@ class PlanImportRepository {
               note: Value(t.note),
               estimatedMinutes: Value(t.minutes),
               plannedDate: t.date,
+              startTime: Value(t.time),
               createdAt: now,
               updatedAt: now,
             ));
@@ -111,7 +112,8 @@ class PlanImportRepository {
       // 实例生成内联（RecurrenceService.occurrences + 直接 insert），不调用
       // RecurrenceRepository.create（自带事务，避免嵌套事务退化）。
       // 模板的 estimatedMinutes（JSON minutes 字段）继承到每条实例，
-      // 保证进度页统计（FR-7.4）能看到重复任务。
+      // 保证进度页统计（FR-7.4）能看到重复任务；startTime（time 字段）
+      // 同样继承，使例行安排落到具体钟点。
       var instanceCount = 0;
       for (final t in plan.templates) {
         final templateId = await _db.into(_db.recurrenceTemplates).insert(
@@ -123,6 +125,7 @@ class PlanImportRepository {
                 ruleJson: ImportedPlanTemplate.ruleJson,
                 startDate: t.startDate,
                 endDate: Value(t.endDate),
+                startTime: Value(t.time),
                 generatedThroughDate: t.endDate,
                 createdAt: now,
                 updatedAt: now,
@@ -139,6 +142,7 @@ class PlanImportRepository {
                 goalId: goalId,
                 title: t.title,
                 plannedDate: date,
+                startTime: Value(t.time),
                 estimatedMinutes: Value(t.minutes),
                 recurrenceTemplateId: Value(templateId),
                 createdAt: now,

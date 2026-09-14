@@ -4,6 +4,7 @@ import 'package:drift_dev/api/migrations_native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:timecalc/core/database/database.dart';
+import 'package:timecalc/core/database/tables.dart';
 
 import '../../generated_migrations/schema.dart';
 
@@ -1104,12 +1105,282 @@ void main() {
     schema.close();
   });
 
-  test('v16 库降级到 v15：清理高版本残留结构，数据保留（回退兼容）', () async {
-    // 模拟「代码回退」：v15（当前）以上版本（如带 AI 功能的 v16+）新增了
+  test('schema v15 -> v16：tasks / recurrence_templates 增加 start_time，v15 数据保留（小时级排程）', () async {
+    final verifier = SchemaVerifier(GeneratedHelper());
+    // 以 v15 结构初始化数据库并写入数据（任务 + 重复模板）。
+    final schema = await verifier.schemaAt(15);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['v15 目标', '2026-08-05', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO tasks (goal_id, title, planned_date, estimated_minutes, '
+      'status, created_at, updated_at) VALUES (1, ?, ?, 90, ?, ?, ?)',
+      ['v15 任务', '2026-08-06', 'todo', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO recurrence_templates '
+      '(goal_id, title, rule_type, rule_json, start_date, generated_through_date, '
+      'created_at, updated_at) VALUES (1, ?, ?, ?, ?, ?, ?, ?)',
+      ['v15 模板', 'daily', '{}', '2026-08-06', '2026-09-04', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO settings (id, created_at, updated_at) VALUES (1, ?, ?)',
+      [1750000000, 1750000000],
+    );
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 16);
+
+    // v15 数据保留。
+    final goal = await (upgraded.select(upgraded.goals)..where((g) => g.id.equals(1))).getSingle();
+    expect(goal.title, 'v15 目标');
+
+    // 新列存在且既有行默认为 null（= 原按天语义，无需回填）。
+    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    expect(task.title, 'v15 任务');
+    expect(task.plannedDate, '2026-08-06');
+    expect(task.estimatedMinutes, 90);
+    expect(task.startTime, isNull);
+
+    final template = await upgraded.select(upgraded.recurrenceTemplates).getSingle();
+    expect(template.title, 'v15 模板');
+    expect(template.startTime, isNull);
+
+    expect(await _columns(upgraded, 'tasks'), contains('start_time'));
+    expect(
+      await _columns(upgraded, 'recurrence_templates'),
+      contains('start_time'),
+    );
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('schema v1 -> v16：迁移成功保留数据，小时级排程列存在（完整链路）', () async {
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(1);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['迁移目标', '2026-08-05', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO tasks (goal_id, title, planned_date, created_at, updated_at) '
+      'VALUES (1, ?, ?, ?, ?)',
+      ['迁移任务', '2026-08-05', 1750000000, 1750000000],
+    );
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 16);
+
+    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    expect(task.title, '迁移任务');
+    expect(task.startTime, isNull); // 旧数据只排到天
+
+    expect(await _columns(upgraded, 'tasks'), contains('start_time'));
+    expect(
+      await _columns(upgraded, 'recurrence_templates'),
+      contains('start_time'),
+    );
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('schema v16 -> v17：新增 courses 表与 semester_start_date，v16 数据保留（课表）', () async {
+    final verifier = SchemaVerifier(GeneratedHelper());
+    // 以 v16 结构初始化并写入数据（目标/任务/设置/重复模板都要有，验证
+    // 新表新列不影响既有行）。
+    final schema = await verifier.schemaAt(16);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['v16 目标', '2026-12-31', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO tasks (goal_id, title, planned_date, start_time, '
+      'estimated_minutes, status, created_at, updated_at) '
+      'VALUES (1, ?, ?, ?, 90, ?, ?, ?)',
+      ['v16 任务', '2026-08-06', '20:30', 'todo', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO settings (id, daily_available_minutes, created_at, updated_at) '
+      'VALUES (1, 180, ?, ?)',
+      [1750000000, 1750000000],
+    );
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 17);
+
+    // v16 数据保留（含小时级排程列的内容）。
+    final goal = await (upgraded.select(upgraded.goals)..where((g) => g.id.equals(1))).getSingle();
+    expect(goal.title, 'v16 目标');
+    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    expect(task.title, 'v16 任务');
+    expect(task.startTime, '20:30');
+
+    // v17：courses 表创建，列结构与索引符合预期。
+    final columns = await _columns(upgraded, 'courses');
+    expect(columns, containsAll([
+      'id',
+      'title',
+      'teacher',
+      'location',
+      'weekday',
+      'start_period',
+      'end_period',
+      'start_week',
+      'end_week',
+      'week_parity',
+      'category',
+      'color',
+      'note',
+      'created_at',
+      'updated_at',
+    ]));
+    final indexes = await upgraded.customSelect(
+      "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='courses'",
+    ).get();
+    expect(
+      indexes.map((row) => row.read<String>('name')),
+      contains('courses_weekday_idx'),
+    );
+
+    // 新表为空、默认周次取值正确（旧库没有任何课程）。
+    expect(await upgraded.select(upgraded.courses).get(), isEmpty);
+    final inserted = await upgraded.into(upgraded.courses).insert(
+          CoursesCompanion.insert(
+            title: '算法设计与分析',
+            weekday: 4,
+            startPeriod: 5,
+            endPeriod: 8,
+            startWeek: 2,
+            endWeek: 8,
+            color: '#3F6C51',
+            createdAt: DateTime.utc(2026, 9, 1),
+            updatedAt: DateTime.utc(2026, 9, 1),
+          ),
+        );
+    final course = await (upgraded.select(upgraded.courses)
+          ..where((c) => c.id.equals(inserted)))
+        .getSingle();
+    expect(course.weekParity, WeekParity.all); // 列默认值
+    expect(course.teacher, isNull);
+
+    // v17：settings 增加可空 semester_start_date，旧行默认 null（未设学期）。
+    final setting = await upgraded.select(upgraded.settings).getSingle();
+    expect(setting.dailyAvailableMinutes, 180);
+    expect(setting.semesterStartDate, isNull);
+    expect(
+      await _columns(upgraded, 'settings'),
+      contains('semester_start_date'),
+    );
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('半迁移状态：v16 版本号但 courses 表已存在时迁移可重复成功（幂等回归）', () async {
+    // v16 库手工建过 courses（模拟半迁移：表已建但版本号停在 16），并写入
+    // 一门课：v16 -> v17 的 createTable 自带 IF NOT EXISTS，已存在的表不被
+    // 重建，已写入的课程不被清空；semester_start_date 列正常补上。
+    // DDL 逐字对齐 drift 生成的建表语句（含 NOT NULL/NULL 限定与 200 字
+    // 长度的等价形态），否则 SchemaVerifier 会判定结构不一致。
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(16);
+    final raw = schema.rawDatabase;
+    raw.execute('CREATE TABLE courses ('
+        'id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, '
+        'title TEXT NOT NULL, '
+        'teacher TEXT NULL, '
+        'location TEXT NULL, '
+        'weekday INTEGER NOT NULL, '
+        'start_period INTEGER NOT NULL, '
+        'end_period INTEGER NOT NULL, '
+        'start_week INTEGER NOT NULL, '
+        'end_week INTEGER NOT NULL, '
+        "week_parity TEXT NOT NULL DEFAULT 'all', "
+        'category TEXT NULL, '
+        'color TEXT NOT NULL, '
+        'note TEXT NULL, '
+        'created_at INTEGER NOT NULL, '
+        'updated_at INTEGER NOT NULL)');
+    raw.execute('CREATE INDEX courses_weekday_idx ON courses (weekday)');
+    raw.execute(
+      "INSERT INTO courses (title, weekday, start_period, end_period, "
+      "start_week, end_week, color, created_at, updated_at) "
+      "VALUES ('半迁移课程', 3, 5, 7, 2, 17, '#2F6F9F', 1750000000, 1750000000)",
+    );
+    raw.execute('PRAGMA user_version = 16');
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 17);
+
+    final version = await upgraded
+        .customSelect('PRAGMA user_version')
+        .get();
+    expect(version.single.read<int>('user_version'), 17);
+    final courses = await upgraded.select(upgraded.courses).get();
+    expect(courses, hasLength(1));
+    expect(courses.single.title, '半迁移课程');
+    expect(
+      await _columns(upgraded, 'settings'),
+      contains('semester_start_date'),
+    );
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('半迁移状态：v15 版本号但 start_time 列已存在时迁移可重复成功（幂等回归）', () async {
+    // v15 库手工加过 start_time（模拟半迁移：列已加但版本号停在 15），
+    // 并写入钟点：v15 -> v16 的 addColumnIfMissing 对已存在列跳过，
+    // 已写入的时刻不被覆盖。
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(15);
+    final raw = schema.rawDatabase;
+    raw.execute('ALTER TABLE tasks ADD COLUMN start_time TEXT NULL');
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['半迁移目标', '2026-08-05', 1750000000, 1750000000],
+    );
+    raw.execute(
+      "INSERT INTO tasks (goal_id, title, planned_date, start_time, created_at, updated_at) "
+      "VALUES (1, ?, ?, '20:30', ?, ?)",
+      ['半迁移任务', '2026-08-06', 1750000000, 1750000000],
+    );
+    raw.execute('PRAGMA user_version = 15');
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 16);
+
+    final version = await upgraded.customSelect('PRAGMA user_version').get();
+    expect(version.single.read<int>('user_version'), 16);
+    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    expect(task.startTime, '20:30'); // 既有列不被清空
+    // 模板侧的新列正常补上。
+    expect(
+      await _columns(upgraded, 'recurrence_templates'),
+      contains('start_time'),
+    );
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('v18 库降级到 v17：清理高版本残留结构，数据保留（回退兼容）', () async {
+    // 模拟「代码回退」：v17（当前）以上版本（如带 AI 功能的 v18+）新增了
     // 我们不认识的结构，本地库却停在该版本。先建 v12 库并写入数据
     // （v12 含 webdav/sync 6 列），再手工加回 AI 残留结构
     // （ai_providers 表 + settings 的 ai_* 列）与 accent_color/reduce_motion
-    // 列，并把 user_version 提到 16。
+    // 列、courses 表与 semester_start_date（v17 新知结构），并把 user_version
+    // 提到 18。
     final verifier = SchemaVerifier(GeneratedHelper());
     final schema = await verifier.schemaAt(12);
     final raw = schema.rawDatabase;
@@ -1145,10 +1416,29 @@ void main() {
       "ALTER TABLE settings ADD COLUMN reduce_motion INTEGER NOT NULL DEFAULT 0 "
       "CHECK (reduce_motion IN (0, 1))",
     );
-    raw.execute('PRAGMA user_version = 16');
+    // v16 认识的两列（小时级排程）在降级后同样保留。
+    raw.execute('ALTER TABLE tasks ADD COLUMN start_time TEXT NULL');
+    raw.execute(
+      "ALTER TABLE recurrence_templates ADD COLUMN start_time TEXT NULL",
+    );
+    // v17 认识的结构（课表 ）在降级后同样保留——只清理「当前代码不认识」
+    // 的东西，把认识的也删掉会误伤用户数据。
+    raw.execute('CREATE TABLE courses ('
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, '
+        'teacher TEXT, location TEXT, weekday INTEGER NOT NULL, '
+        'start_period INTEGER NOT NULL, end_period INTEGER NOT NULL, '
+        'start_week INTEGER NOT NULL, end_week INTEGER NOT NULL, '
+        "week_parity TEXT NOT NULL DEFAULT 'all', category TEXT, "
+        "color TEXT NOT NULL, note TEXT, created_at INTEGER NOT NULL, "
+        'updated_at INTEGER NOT NULL)');
+    raw.execute(
+      'CREATE INDEX courses_weekday_idx ON courses (weekday)',
+    );
+    raw.execute('ALTER TABLE settings ADD COLUMN semester_start_date TEXT');
+    raw.execute('PRAGMA user_version = 18');
 
-    // 真实 AppDatabase（schemaVersion=15）打开 v16 库：onUpgrade 检测到
-    // 降级，清理高版本不认识的结构并让 drift 把版本写回 15。
+    // 真实 AppDatabase（schemaVersion=17）打开 v18 库：onUpgrade 检测到
+    // 降级，清理高版本不认识的结构并让 drift 把版本写回 17。
     final downgraded = AppDatabase(schema.newConnection());
     await downgraded.customSelect('SELECT 1').get();
 
@@ -1156,7 +1446,7 @@ void main() {
     final version = await downgraded
         .customSelect('PRAGMA user_version')
         .get();
-    expect(version.single.read<int>('user_version'), 15);
+    expect(version.single.read<int>('user_version'), 17);
 
     // AI 残留结构已清理。
     final tables = await downgraded
@@ -1176,8 +1466,29 @@ void main() {
     expect(settingColumns, isNot(contains('webdav_sync_enabled')));
     expect(settingColumns, isNot(contains('last_pushed_seq')));
     expect(settingColumns, isNot(contains('last_synced_at')));
-    // accent_color 是 v14 认识的列、reduce_motion 是 v15 认识的列，降级后保留。
+    // accent_color 是 v14 认识的列、reduce_motion 是 v15 认识的列、
+    // start_time 是 v16 认识的列，降级后全部保留。
     expect(settingColumns, containsAll(['accent_color', 'reduce_motion']));
+    expect(await _columns(downgraded, 'tasks'), contains('start_time'));
+    expect(
+      await _columns(downgraded, 'recurrence_templates'),
+      contains('start_time'),
+    );
+    // v17 认识的课表结构与学期基准同样保留。
+    expect(tableNames, contains('courses'));
+    expect(settingColumns, contains('semester_start_date'));
+    expect(
+      await _columns(downgraded, 'courses'),
+      containsAll([
+        'title',
+        'weekday',
+        'start_period',
+        'end_period',
+        'start_week',
+        'end_week',
+        'week_parity',
+      ]),
+    );
 
     // 原数据全部保留。
     final goal = await (downgraded.select(downgraded.goals)

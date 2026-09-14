@@ -6,6 +6,7 @@ import '../../features/goals/data/subject_repository_provider.dart';
 import '../../features/settings/data/settings_repository_provider.dart';
 import '../../features/tasks/data/recurrence_repository_provider.dart';
 import '../../features/tasks/data/task_repository_provider.dart';
+import '../../features/timetable/data/course_repository_provider.dart';
 
 /// 失效回调：只暴露「让某个 provider 失效」的最小能力，与具体 ref 类型解耦。
 /// [Ref.invalidate] 与 [WidgetRef.invalidate] 的 tear-off 均为同一签名，因此
@@ -68,8 +69,12 @@ void invalidatePlanData(void Function(ProviderOrFamily provider) invalidate) {
 /// 全量数据刷新（影响面最广的操作专用：覆盖恢复 / 重置数据）。
 ///
 /// 在 [invalidateAppData] 基础上补齐其余页面/入口的缓存：目标详情、
-/// 科目、归档任务、重复模板、里程碑与设置。覆盖恢复原本在 backup_page
+/// 科目、归档任务、重复模板、里程碑、课表与设置。覆盖恢复原本在 backup_page
 /// 内私有实现，提取后供重置数据页复用，避免两份逐字副本漂移。
+///
+/// 课表（[courseListProvider]）只在这里失效而不进 [invalidateAppData]：
+/// 课程与任务互不影响（课程不参与负载/完成度），每勾一个任务就重查课表
+/// 是无谓开销；而恢复/重置确实会整体替换课程，必须一并失效。
 void invalidateAllAppData(void Function(ProviderOrFamily provider) invalidate) {
   invalidateAppData(invalidate);
   invalidate(goalDetailProvider); // family 无参失效整族（详情页缓存）
@@ -80,5 +85,6 @@ void invalidateAllAppData(void Function(ProviderOrFamily provider) invalidate) {
   invalidate(recurrenceTemplatesProvider); // family 整族（重复任务入口）
   invalidate(recurrenceTemplateProvider); // family 整族（任务条目标注）
   invalidate(milestoneListProvider); // family 整族（里程碑列表/首页卡片）
+  invalidate(courseListProvider); // 课表（FR-10）
   invalidate(settingsProvider);
 }

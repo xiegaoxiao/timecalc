@@ -28,6 +28,12 @@ void main() {
   late DateTime fixedNow;
 
   Future<void> pumpApp(WidgetTester tester) async {
+    // 今天页改版后首屏被头部占满，日历页与今天页共用的任务行落在默认 800×600
+    // 视口之外；视口驱动懒构建下未挂载的 Element 无法被 finder 命中，故给足
+    // 高度（宽度仍取 800，导航形态与各布局断言的前提不变）。
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -159,6 +165,10 @@ void main() {
     await tester.tap(find.text('添加任务'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField).first, '补录任务');
+    // 快速添加表单新增「计划时刻」字段后，800x600 测试视口下「创建」按钮落到
+    // 滚动区之下：先滚动到可见再点（对话框本身限高可滚动，不受影响）。
+    await tester.ensureVisible(find.text('创建'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('创建'));
     await tester.pumpAndSettle();
 

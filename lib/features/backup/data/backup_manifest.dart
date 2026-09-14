@@ -51,6 +51,7 @@ class BackupManifest {
     required this.recurrenceTemplateCount,
     required this.milestoneCount,
     required this.checklistItemCount,
+    required this.courseCount,
   });
 
   final String format;
@@ -68,6 +69,9 @@ class BackupManifest {
   final int milestoneCount;
   final int checklistItemCount;
 
+  /// 课表课程数（FR-10，schema v17）；旧版本备份缺该计数时为 0。
+  final int courseCount;
+
   /// 校验备份文件的格式、版本与类型（恢复前第一步，NFR-2）。
   ///
   /// 不抛异常：返回失败原因文本；通过返回 null。
@@ -81,7 +85,7 @@ class BackupManifest {
     if (exportedAtUtc == null) return '备份时间缺失';
     if (goalCount < 0 || subjectCount < 0 || taskCount < 0 ||
         recurrenceTemplateCount < 0 || milestoneCount < 0 ||
-        checklistItemCount < 0) {
+        checklistItemCount < 0 || courseCount < 0) {
       return '备份计数非法';
     }
     return null;
@@ -103,6 +107,7 @@ class BackupManifest {
         'recurrenceTemplates': recurrenceTemplateCount,
         'milestones': milestoneCount,
         'checklistItems': checklistItemCount,
+        'courses': courseCount,
       },
     };
   }
@@ -136,6 +141,9 @@ class BackupManifest {
           (counts['recurrenceTemplates'] as num?)?.toInt() ?? 0,
       milestoneCount: (counts['milestones'] as num?)?.toInt() ?? 0,
       checklistItemCount: (counts['checklistItems'] as num?)?.toInt() ?? 0,
+      // 旧版本备份无 courses 计数：按 0，与缺失的 courses.json 按空数组
+      // 读取保持一致（见 BackupService._unpack）。
+      courseCount: (counts['courses'] as num?)?.toInt() ?? 0,
     );
   }
 }

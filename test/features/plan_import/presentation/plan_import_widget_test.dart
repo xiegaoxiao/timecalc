@@ -8,30 +8,31 @@ import 'package:timecalc/app.dart';
 import 'package:timecalc/core/database/database.dart';
 import 'package:timecalc/core/database/database_provider.dart';
 import 'package:timecalc/core/providers/clock_provider.dart';
-import 'package:timecalc/features/plan_import/data/plan_json_picker.dart';
+import 'package:timecalc/features/plan_import/data/plan_file_picker.dart';
 
 import '../../../shared/nav_helper.dart';
 
-/// 假 JSON 文件选择器：按序返回内容，null 模拟取消，可抛异常模拟读取失败。
-class FakePlanJsonPicker implements PlanJsonPicker {
-  FakePlanJsonPicker(this.results);
+/// 假计划文件选择器：按序返回内容，null 模拟取消，可抛异常模拟读取失败。
+class FakePlanFilePicker implements PlanFilePicker {
+  FakePlanFilePicker(this.results);
 
   final List<Object?> results; // String? / Exception
   int calls = 0;
 
   @override
-  Future<String?> pickJson() async {
+  Future<PickedPlanFile?> pickPlanFile() async {
     if (calls >= results.length) return null;
     final result = results[calls++];
     if (result is Exception) throw result;
-    return result as String?;
+    final content = result as String?;
+    return content == null ? null : PickedPlanFile(content: content);
   }
 }
 
 /// 完整计划导入用户流程 Widget 测试。
 void main() {
   late AppDatabase db;
-  late FakePlanJsonPicker picker;
+  late FakePlanFilePicker picker;
 
   Future<void> pumpApp(WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1800);
@@ -42,7 +43,7 @@ void main() {
         overrides: [
           databaseProvider.overrideWithValue(db),
           clockProvider.overrideWithValue(() => DateTime(2026, 8, 5, 12)),
-          planJsonPickerProvider.overrideWithValue(picker),
+          planFilePickerProvider.overrideWithValue(picker),
         ],
         child: const TimeCalcApp(),
       ),
@@ -52,7 +53,7 @@ void main() {
 
   setUp(() {
     db = AppDatabase(NativeDatabase.memory());
-    picker = FakePlanJsonPicker([]);
+    picker = FakePlanFilePicker([]);
   });
 
   tearDown(() async {
@@ -147,6 +148,55 @@ void main() {
     expect(unclassified.note, '每周日复盘');
   });
 
+  testWidgets('粘贴 iCalendar（.ics）：每个日程落成带时刻的任务', (tester) async {
+    await pumpApp(tester);
+    await goPlan(tester);
+    await tester.tap(find.byTooltip('导入完整计划'));
+    await tester.pumpAndSettle();
+
+    // 固定时钟 2026-08-05：一个定时日程（08-06 08:30，2 小时）+ 一个全天日程。
+    const ics =
+        'BEGIN:VCALENDAR\r\n'
+        'VERSION:2.0\r\n'
+        'X-WR-CALNAME:手机日历\r\n'
+        'BEGIN:VEVENT\r\n'
+        'SUMMARY:高数：三重积分\r\n'
+        'DTSTART:20260806T083000\r\n'
+        'DTEND:20260806T103000\r\n'
+        'END:VEVENT\r\n'
+        'BEGIN:VEVENT\r\n'
+        'SUMMARY:全天复盘\r\n'
+        'DTSTART;VALUE=DATE:20260807\r\n'
+        'END:VEVENT\r\n'
+        'END:VCALENDAR\r\n';
+
+    await tester.enterText(find.byType(TextField).last, ics);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+
+    // 按内容判别为 iCalendar，预览走同一套 UI（目标名取日历名）。
+    expect(find.text('校验通过：2 个任务'), findsOneWidget);
+    expect(find.text('目标「手机日历」· 截止 2026-08-07'), findsOneWidget);
+    expect(find.textContaining('高数：三重积分 · 2026-08-06 08:30'), findsOneWidget);
+
+    await tester.tap(find.text('导入'));
+    await tester.pumpAndSettle();
+
+    // 落库：时刻与时长来自 DTSTART/DTEND，全天日程只排到天。
+    final timed = (await db.select(db.tasks).get()).firstWhere(
+      (t) => t.title == '高数：三重积分',
+    );
+    expect(timed.plannedDate, '2026-08-06');
+    expect(timed.startTime, '08:30');
+    expect(timed.estimatedMinutes, 120);
+
+    final allDay = (await db.select(db.tasks).get()).firstWhere(
+      (t) => t.title == '全天复盘',
+    );
+    expect(allDay.plannedDate, '2026-08-07');
+    expect(allDay.startTime, isNull);
+  });
+
   testWidgets('校验失败不写入任何数据', (tester) async {
     await pumpApp(tester);
     await goPlan(tester);
@@ -173,7 +223,7 @@ void main() {
   });
 
   testWidgets('选择文件：读取 JSON 填入并自动校验通过', (tester) async {
-    picker = FakePlanJsonPicker([planJson]);
+    picker = FakePlanFilePicker([planJson]);
     await pumpApp(tester);
     await goPlan(tester);
     await tester.tap(find.byTooltip('导入完整计划'));
@@ -190,7 +240,7 @@ void main() {
   });
 
   testWidgets('选择文件：取消选择不动输入框', (tester) async {
-    picker = FakePlanJsonPicker([null]); // 取消。
+    picker = FakePlanFilePicker([null]); // 取消。
     await pumpApp(tester);
     await goPlan(tester);
     await tester.tap(find.byTooltip('导入完整计划'));
@@ -210,7 +260,7 @@ void main() {
   });
 
   testWidgets('选择文件：读取失败提示 SnackBar', (tester) async {
-    picker = FakePlanJsonPicker([Exception('权限不足')]);
+    picker = FakePlanFilePicker([Exception('权限不足')]);
     await pumpApp(tester);
     await goPlan(tester);
     await tester.tap(find.byTooltip('导入完整计划'));
@@ -259,8 +309,7 @@ void main() {
     );
   });
 
-  testWidgets('导入带 minutes 的完整计划后进度页显示剩余工作量（回归：进度全空）',
-      (tester) async {
+  testWidgets('导入带 minutes 的完整计划后进度页显示剩余工作量（回归：进度全空）', (tester) async {
     // 用户实际 JSON 结构：daily_breakdown 对象带时长、daily_must_do 对象
     // 带时长（继承到每天实例）、unclassified 带时长。
     const planWithMinutes = '''

@@ -240,3 +240,88 @@ class AppDateField extends StatelessWidget {
     );
   }
 }
+
+/// 点击触发的时刻选择器输入框（本地墙上时间 `HH:mm`）。
+///
+/// 与 [AppDateField] 同一套视觉；时刻是**可选**的（null = 只排到天），
+/// 因此 [onClear] 非空且已选值时，右侧给出「清除」按钮回到未设置状态。
+class AppTimeField extends StatelessWidget {
+  const AppTimeField({
+    super.key,
+    required this.label,
+    required this.value,
+    this.hint = '未设置（只排到天）',
+    this.prefixIcon = Icons.schedule_outlined,
+    this.onTap,
+    this.onClear,
+    this.enabled = true,
+  });
+
+  final String label;
+
+  /// 已选时刻（`HH:mm`）；null 表示未设置。
+  final String? value;
+
+  final String hint;
+  final IconData prefixIcon;
+  final VoidCallback? onTap;
+
+  /// 清除回调（回到未设置状态）；null 表示不提供清除入口。
+  final VoidCallback? onClear;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final hasValue = value != null && value!.isNotEmpty;
+    final borderColor = scheme.outlineVariant;
+    final textSecondary = scheme.onSurfaceVariant;
+
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+      child: InputDecorator(
+        isEmpty: !hasValue,
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hint,
+          prefixIcon: Padding(
+            padding: const EdgeInsets.only(right: AppTokens.spaceSm),
+            child: Icon(
+              prefixIcon,
+              size: 20,
+              color: hasValue ? scheme.primary : textSecondary,
+            ),
+          ),
+          suffixIcon: hasValue && onClear != null && enabled
+              ? IconButton(
+                  tooltip: '清除时刻',
+                  onPressed: onClear,
+                  icon: const Icon(Icons.close, size: 18),
+                )
+              : null,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: AppTokens.spaceMd,
+            vertical: AppTokens.spaceMd,
+          ),
+          filled: true,
+          fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+            borderSide: BorderSide(color: borderColor, width: 1),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+            borderSide: BorderSide(color: borderColor, width: 1),
+          ),
+        ),
+        child: hasValue
+            ? Text(
+                value!,
+                style: TextStyle(color: scheme.onSurface),
+              )
+            : null,
+      ),
+    );
+  }
+}

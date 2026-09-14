@@ -32,6 +32,19 @@ class MilestoneRepository {
         .getSingleOrNull();
   }
 
+  /// 返回全部里程碑（跨目标，按日期升序）。
+  ///
+  /// 供日历导出（.ics）整表读取：里程碑数量有限，一次取全再写 VEVENT，
+  /// 避免逐目标查询。
+  Future<List<Milestone>> all() {
+    final query = _db.select(_db.milestones)
+      ..orderBy([
+        (m) => OrderingTerm.asc(m.date),
+        (m) => OrderingTerm.asc(m.id),
+      ]);
+    return query.get();
+  }
+
   Future<Milestone> create({
     required int goalId,
     required String title,

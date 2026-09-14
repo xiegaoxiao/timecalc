@@ -78,6 +78,7 @@ class RecurrenceRepository {
     int? subjectId,
     required String title,
     int? estimatedMinutes,
+    String? startTime,
     required RecurrenceRule rule,
     required String startDate,
     String? endDate,
@@ -99,6 +100,7 @@ class RecurrenceRepository {
               ruleJson: rule.ruleJson,
               startDate: startDate,
               endDate: Value(endDate),
+              startTime: Value(startTime),
               generatedThroughDate: generatedThrough,
               createdAt: now,
               updatedAt: now,
@@ -117,6 +119,7 @@ class RecurrenceRepository {
           subjectId: subjectId,
           title: title,
           estimatedMinutes: estimatedMinutes,
+          startTime: startTime,
           templateId: templateId,
           date: date,
         );
@@ -228,6 +231,7 @@ class RecurrenceRepository {
             subjectId: template.subjectId,
             title: template.title,
             estimatedMinutes: template.estimatedMinutes,
+            startTime: template.startTime,
             templateId: template.id,
             date: date,
           );
@@ -265,7 +269,8 @@ class RecurrenceRepository {
   /// 修改重复规则（FR-4.4）。
   ///
   /// 模板的规则、结束日期与基础信息（[title]/[subjectId]/[estimatedMinutes]/
-  /// [startDate]）总是更新（null 表示不修改）。按 [applyTo]：
+  /// [startDate]/[startTime]）总是更新（null 表示不修改；[startTime] 用
+  /// `Value` 包装以支持显式置空）。按 [applyTo]：
   /// - [RecurrenceApplyTo.future]：删除该模板「今天之后未完成」的实例
   ///   （已完成实例保留，不覆盖 FR-4.4），再按新规则重新生成未来实例；
   /// - [RecurrenceApplyTo.template]：仅更新模板规则，已有实例不动。
@@ -279,6 +284,7 @@ class RecurrenceRepository {
     Value<int?>? subjectId,
     Value<int?>? estimatedMinutes,
     String? startDate,
+    Value<String?>? startTime,
   }) async {
     _validatedJson(rule);
     final service = RecurrenceService();
@@ -325,6 +331,7 @@ class RecurrenceRepository {
               estimatedMinutes: estimatedMinutes ?? const Value.absent(),
               startDate:
                   startDate == null ? const Value.absent() : Value(startDate),
+              startTime: startTime ?? const Value.absent(),
               generatedThroughDate: Value(generatedThrough),
               active: const Value(true),
               updatedAt: Value(clock().toUtc()),
@@ -356,6 +363,9 @@ class RecurrenceRepository {
             title: title ?? template.title,
             estimatedMinutes:
                 estimatedMinutes?.value ?? template.estimatedMinutes,
+            startTime: startTime?.present ?? false
+                ? startTime!.value
+                : template.startTime,
             templateId: templateId,
             date: date,
           );
@@ -411,6 +421,7 @@ class RecurrenceRepository {
     int? subjectId,
     required String title,
     int? estimatedMinutes,
+    String? startTime,
     required int templateId,
     required String date,
   }) {
@@ -421,6 +432,7 @@ class RecurrenceRepository {
         subjectId: Value(subjectId),
         title: title,
         plannedDate: date,
+        startTime: Value(startTime),
         estimatedMinutes: Value(estimatedMinutes),
         recurrenceTemplateId: Value(templateId),
         createdAt: now,

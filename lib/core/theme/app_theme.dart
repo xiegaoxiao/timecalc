@@ -82,7 +82,7 @@ abstract final class AppTheme {
           ),
           bodySmall: baseTextTheme.bodySmall?.copyWith(
             color: isDark
-                ? colorScheme.outline
+                ? colorScheme.onSurfaceVariant
                 : AppTokens.neutralTextSecondaryLight,
           ),
         );
@@ -121,7 +121,10 @@ abstract final class AppTheme {
         elevation: 1,
         shadowColor: Colors.black.withValues(alpha: 0.04),
         clipBehavior: Clip.none,
-        color: colorScheme.surface,
+        color: isDark
+            ? colorScheme.surfaceContainerLow
+            : AppTokens.neutralSurfaceLight,
+        surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppTokens.radiusXl),
           side: BorderSide(
@@ -155,7 +158,9 @@ abstract final class AppTheme {
         ),
       ),
       dividerTheme: DividerThemeData(
-        color: isDark ? colorScheme.outlineVariant : AppTokens.neutralBorderLight,
+        color: isDark
+            ? colorScheme.outlineVariant
+            : AppTokens.neutralBorderLight,
         thickness: 1,
         space: 1,
       ),
@@ -196,6 +201,12 @@ abstract final class AppTheme {
       // 底部导航（窄窗保留手机式底栏）：指示器圆角/标签规格统一，
       // 与 NavigationRail（宽窗）保持同一视觉语言。
       navigationBarTheme: NavigationBarThemeData(
+        elevation: 0,
+        backgroundColor: isDark
+            ? colorScheme.surfaceContainerLow
+            : AppTokens.neutralSurfaceLight,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: colorScheme.primaryContainer,
         indicatorShape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppTokens.radiusLg),
         ),

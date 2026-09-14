@@ -15,6 +15,7 @@ import 'package:timecalc/features/goals/data/subject_repository.dart';
 import 'package:timecalc/features/settings/data/settings_repository.dart';
 import 'package:timecalc/features/tasks/data/checklist_item_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
+import 'package:timecalc/features/timetable/data/course_repository.dart';
 
 /// BackupService 内存数据库测试（FR-9.1 / FR-9.2 / FR-9.3，NFR-2）。
 ///
@@ -115,6 +116,163 @@ void main() {
       final restoredItems = await checklist.byTask(restoredTasks.single.id);
       expect(restoredItems.single.title, '背诵并默写');
       expect(restoredItems.single.done, isFalse);
+    });
+
+    test('小时级排程（start_time）随备份导出与恢复保留（schema v16）', () async {
+      final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+      final timed = await tasks.create(
+        goalId: goal.id,
+        title: '背单词',
+        plannedDate: '2026-08-05',
+        startTime: '20:30',
+        estimatedMinutes: 30,
+      );
+      final untimed = await tasks.create(
+        goalId: goal.id,
+        title: '复盘',
+        plannedDate: '2026-08-06',
+      );
+
+      final file = tempFile('backup.timecalc');
+      await backup.exportBackup(file);
+
+      // 清空后覆盖恢复：时刻与「只排到天」的 null 都应原样回来。
+      await db.delete(db.tasks).go();
+      await backup.restoreBackup(file, mode: RestoreMode.overwrite);
+
+      final restored = await tasks.byGoal(goal.id);
+      expect(restored.length, 2);
+      final restoredTimed = restored.firstWhere((t) => t.title == '背单词');
+      final restoredUntimed = restored.firstWhere((t) => t.title == '复盘');
+      expect(restoredTimed.startTime, '20:30');
+      expect(restoredUntimed.startTime, isNull);
+      expect(restoredTimed.id, timed.id); // 覆盖恢复保留原 id
+      expect(restoredUntimed.id, untimed.id);
+    });
+
+    test('课表课程与学期基准随备份导出与覆盖恢复保留（FR-10，schema v17）', () async {
+      final settingsRepo = SettingsRepository(db);
+      await settingsRepo.updateSemesterStartDate('2026-09-07');
+      final courses = CourseRepository(db);
+      final created = await courses.create(
+        title: '算法设计与分析',
+        teacher: '梁军',
+        location: '教A309',
+        category: '学科基础课',
+        weekday: 4,
+        startPeriod: 5,
+        endPeriod: 8,
+        startWeek: 2,
+        endWeek: 8,
+        weekParity: WeekParity.odd,
+        color: '#2F6F9F',
+        note: '以任课教师通知为准',
+      );
+      await courses.create(
+        title: '移动智能',
+        weekday: 1,
+        startPeriod: 5,
+        endPeriod: 8,
+        startWeek: 11,
+        endWeek: 18,
+      );
+
+      final file = tempFile('timetable.timecalc');
+      await backup.exportBackup(file);
+
+      // 清单带课程数，恢复前预览可展示。
+      final manifest = await backup.readBackupManifest(file);
+      expect(manifest.courseCount, 2);
+
+      // 清空后覆盖恢复：课程字段与学期基准原样回来（含 id）。
+      await db.delete(db.courses).go();
+      await settingsRepo.updateSemesterStartDate(null);
+      await backup.restoreBackup(file, mode: RestoreMode.overwrite);
+
+      final restored = await courses.all();
+      expect(restored.map((c) => c.title).toList(), ['移动智能', '算法设计与分析']);
+      final first = restored.firstWhere((c) => c.title == '算法设计与分析');
+      expect(first.id, created.id); // 覆盖恢复保留原 id
+      expect(first.teacher, '梁军');
+      expect(first.location, '教A309');
+      expect(first.category, '学科基础课');
+      expect(first.weekday, 4);
+      expect(first.startPeriod, 5);
+      expect(first.endPeriod, 8);
+      expect(first.startWeek, 2);
+      expect(first.endWeek, 8);
+      expect(first.weekParity, WeekParity.odd);
+      expect(first.color, '#2F6F9F');
+      expect(first.note, '以任课教师通知为准');
+
+      final setting = await db.select(db.settings).getSingle();
+      expect(setting.semesterStartDate, '2026-09-07');
+    });
+
+    test('合并恢复：课程追加到现有课表（同门课可并存，由用户自行取舍）', () async {
+      final courses = CourseRepository(db);
+      await courses.create(
+        title: '原有课程',
+        weekday: 2,
+        startPeriod: 1,
+        endPeriod: 2,
+        startWeek: 1,
+        endWeek: 4,
+      );
+
+      final file = tempFile('timetable-merge.timecalc');
+      await backup.exportBackup(file);
+
+      // 备份后课表被换成另一门课。
+      await courses.deleteAll();
+      await courses.create(
+        title: '新课程',
+        weekday: 3,
+        startPeriod: 3,
+        endPeriod: 4,
+        startWeek: 1,
+        endWeek: 4,
+      );
+
+      await backup.restoreBackup(file, mode: RestoreMode.merge);
+
+      // 追加语义：两门课都在（不做同名去重，避免静默吞掉用户想留的课）。
+      expect(
+        (await courses.all()).map((c) => c.title).toSet(),
+        {'新课程', '原有课程'},
+      );
+    });
+
+    test('旧版本备份（无 courses 数据段与计数）可正常恢复（向后兼容）', () async {
+      await seedBaseData();
+      final file = tempFile('legacy.timecalc');
+      await backup.exportBackup(file);
+
+      // 模拟 v16 备份：删掉 courses.json，并移除 manifest 的 courses 计数。
+      final bytes = await file.readAsBytes();
+      final archive = ZipDecoder().decodeBytes(bytes);
+      final manifestEntry = archive.findFile('manifest.json')!;
+      final manifestJson =
+          String.fromCharCodes(manifestEntry.content as List<int>)
+              .replaceFirst(',"courses":0', '');
+      final legacy = Archive()
+        ..addFile(ArchiveFile.string('manifest.json', manifestJson));
+      for (final entry in archive) {
+        if (entry.name == 'manifest.json') continue;
+        if (entry.name.endsWith('courses.json')) continue;
+        legacy.addFile(
+          ArchiveFile.bytes(entry.name, entry.content as List<int>),
+        );
+      }
+      final legacyFile = tempFile('legacy-v16.timecalc');
+      await legacyFile.writeAsBytes(ZipEncoder().encodeBytes(legacy));
+
+      final manifest = await backup.readBackupManifest(legacyFile);
+      expect(manifest.courseCount, 0);
+      expect(manifest.validate(), isNull);
+
+      await backup.restoreBackup(legacyFile, mode: RestoreMode.merge);
+      expect((await goals.watchAll()).single.title, '考研');
     });
 
     test('导出 → 合并恢复 → 备份数据追加且当前数据保留', () async {

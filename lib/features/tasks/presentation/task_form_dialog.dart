@@ -9,6 +9,7 @@ import '../../../core/providers/clock_provider.dart';
 import '../../../core/providers/app_refresh.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/date_text.dart';
+import '../../../core/utils/time_text.dart';
 import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/app_form_field.dart';
 import '../../../shared/widgets/duration_step_input.dart';
@@ -65,6 +66,9 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
   final _noteController = TextEditingController();
   late DateTime _initialPlannedDate;
   DateTime? _plannedDate;
+
+  /// 计划时刻（本地墙上时间 `HH:mm`）；null = 只排到天（schema v16 可空）。
+  String? _startTime;
   int? _subjectId;
   int? _estimatedMinutes;
   bool _saving = false;
@@ -83,6 +87,7 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
         ? ref.read(clockProvider)()
         : parseLocalDate(task.plannedDate);
     _plannedDate = _initialPlannedDate;
+    _startTime = tryNormalizeTimeOfDay(task?.startTime);
     // 编辑模式沿用任务原科目；创建模式默认归属 defaultSubjectId（科目页入口）。
     _subjectId = task?.subjectId ?? widget.defaultSubjectId;
     _estimatedMinutes = task?.estimatedMinutes;
@@ -134,11 +139,27 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
     }
   }
 
+  /// 选择计划时刻（可选，小时级排程）：确定后落 `HH:mm`，取消不动原值。
+  Future<void> _pickTime() async {
+    final current = tryTimeOfDayMinutes(_startTime) ?? 9 * 60;
+    final picked = await showTimePicker(
+      context: context,
+      helpText: '选择计划时刻（可选）',
+      initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
+    );
+    if (picked == null) return;
+    setState(() {
+      _startTime =
+          '${picked.hour.toString().padLeft(2, '0')}:'
+          '${picked.minute.toString().padLeft(2, '0')}';
+    });
+  }
+
   /// 日期越界提示（不静默失败）：SnackBar 明确告知原因。
   void _showDateError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// 保存守卫：计划日期必须在 [今天, 目标截止日]。
@@ -150,7 +171,8 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
     // 混用会误判「今天早于今天」）。
     final today = DateUtils.dateOnly(ref.read(clockProvider)());
     final planned = _plannedDate!;
-    final dateChanged = planned.isBefore(_initialPlannedDate) ||
+    final dateChanged =
+        planned.isBefore(_initialPlannedDate) ||
         planned.isAfter(_initialPlannedDate);
     if (!dateChanged) return true;
     if (planned.isBefore(today)) {
@@ -189,10 +211,13 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
               id: widget.task!.id,
               title: title,
               // 空备注显式置空（Value(null)）：编辑时清空备注必须落库。
-              note: Value(_noteController.text.trim().isEmpty
-                  ? null
-                  : _noteController.text.trim()),
+              note: Value(
+                _noteController.text.trim().isEmpty
+                    ? null
+                    : _noteController.text.trim(),
+              ),
               plannedDate: dateText,
+              startTime: Value(_startTime),
               estimatedMinutes: Value(minutes),
               subjectId: Value(_subjectId),
             );
@@ -205,6 +230,7 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
                   ? null
                   : _noteController.text.trim(),
               plannedDate: dateText,
+              startTime: _startTime,
               estimatedMinutes: minutes,
             );
           }
@@ -254,6 +280,15 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
             value: DateFormat('yyyy-MM-dd').format(_plannedDate!),
             onTap: _pickDate,
           ),
+          const SizedBox(height: AppTokens.spaceMd),
+
+          // 计划时刻（可选）：小时级排程，排进日历/按时间排序用。
+          AppTimeField(
+            label: '计划时刻（可选）',
+            value: _startTime,
+            onTap: _pickTime,
+            onClear: () => setState(() => _startTime = null),
+          ),
           const SizedBox(height: AppTokens.spaceLg),
 
           // 预估时长
@@ -262,8 +297,7 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
             value: _estimatedMinutes,
             allowEmpty: true,
             showQuickButtons: true,
-            onChanged: (minutes) =>
-                setState(() => _estimatedMinutes = minutes),
+            onChanged: (minutes) => setState(() => _estimatedMinutes = minutes),
             hourFieldKey: const Key('taskHourField'),
             minuteFieldKey: const Key('taskMinuteField'),
           ),
@@ -307,8 +341,7 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               TextButton(
-                onPressed:
-                    _saving ? null : () => Navigator.of(context).pop(),
+                onPressed: _saving ? null : () => Navigator.of(context).pop(),
                 child: const Text('取消'),
               ),
               const SizedBox(width: AppTokens.spaceSm),

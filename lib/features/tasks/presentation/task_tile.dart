@@ -6,6 +6,7 @@ import '../../../core/database/tables.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../core/utils/date_text.dart';
+import '../../../core/utils/time_text.dart';
 import '../../../services/defer_service.dart';
 import '../../../services/duration_format.dart';
 import '../../../shared/widgets/completion_checkbox.dart';
@@ -190,13 +191,22 @@ class _TaskTileState extends ConsumerState<TaskTile> {
             .firstOrNull;
 
     // 副标题元信息 chips（2026-08-16 视觉升级）：目标/科目/计划日期/时长
-    // 由「· 拼接长文本」改为小 chip，替代 Material 默认的密集文字感。
+    // 由「· 拼接长文本」改为小 chip，替代 Material 默认的密集文字感；
+    // 计划时刻（schema v16）作为独立 chip 展示：列表已按日期分组时
+    // （今日页/日历日面板，showPlannedDate=false）只显示「20:00」，
+    // 跨日期的列表（目标任务页）则与日期合并为「2026-08-05 20:00」。
+    final startTime = tryNormalizeTimeOfDay(widget.task.startTime);
+    final plannedDateText = widget.showPlannedDate
+        ? formatLocalDate(parseLocalDate(widget.task.plannedDate))
+        : null;
     final metaChips = <Widget>[
       if (widget.goalTitle != null) _MetaChip(label: widget.goalTitle!),
-      if (widget.showPlannedDate)
-        _MetaChip(
-          label: formatLocalDate(parseLocalDate(widget.task.plannedDate)),
-        ),
+      if (plannedDateText != null && startTime != null)
+        _MetaChip(label: '$plannedDateText $startTime')
+      else if (plannedDateText != null)
+        _MetaChip(label: plannedDateText)
+      else if (startTime != null)
+        _MetaChip(label: startTime),
       if (subjectName != null) _MetaChip(label: subjectName),
       if (widget.task.estimatedMinutes != null)
         _MetaChip(label: DurationFormat.minutes(widget.task.estimatedMinutes!)),

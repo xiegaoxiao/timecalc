@@ -114,6 +114,16 @@ class SettingsRepository {
     ));
   }
 
+  /// 更新教学周基准：第 1 周周一（FR-10 课表，schema v17）。
+  ///
+  /// [date] 为 `yyyy-MM-dd` 文本；传 null 表示清除（课表页退回「全部课程」
+  /// 视图并提示重新设置）。
+  Future<void> updateSemesterStartDate(String? date) {
+    return _update(SettingsCompanion(
+      semesterStartDate: Value(date),
+    ));
+  }
+
   Future<void> _update(SettingsCompanion companion) {
     return _db.transaction(() async {
       // 更新前确保默认行存在（极端场景：从未调用过 get 直接更新）。
