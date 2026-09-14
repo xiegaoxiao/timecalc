@@ -5,17 +5,17 @@
 **把长期目标，拆成今天就能执行的事。**
 
 本地优先的个人目标与截止日期管理工具（Windows 桌面）。
-目标倒计时 · 今日驾驶舱 · 计划日历 · 学习日负载 · 重复任务（含艾宾浩斯间隔复习）· 进度统计 · 备份与恢复。
+目标倒计时 · 今日驾驶舱 · 计划日历 · 课表（.ics 导入）· 学习日负载 · 重复任务（含艾宾浩斯间隔复习）· 进度统计 · 备份与恢复。
 
-[下载 v1.10.0](https://github.com/xiegaoxiao/timecalc/releases) ·
+[下载 v1.18.0](https://github.com/xiegaoxiao/timecalc/releases) ·
 [更新日志](CHANGELOG.md) ·
 [产品文档](docs/requirements.md)
 
-[![Release](https://img.shields.io/badge/version-1.10.0-2ea44f)](https://github.com/xiegaoxiao/timecalc/releases)
+[![Release](https://img.shields.io/badge/version-1.18.0-2ea44f)](https://github.com/xiegaoxiao/timecalc/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue)]()
 [![Framework](https://img.shields.io/badge/framework-Flutter-02569B)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-529%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-746%20passing-brightgreen)]()
 [![Privacy](https://img.shields.io/badge/privacy-local--first-important)]()
 [![Stars](https://img.shields.io/github/stars/xiegaoxiao/timecalc?color=yellow)](https://github.com/xiegaoxiao/timecalc/stargazers)
 
@@ -40,8 +40,10 @@ TimeCalc 把长期目标换算成每天可执行的任务量，并用一张「�
 | --- | --- |
 | 🎯 **目标与里程碑** | 截止日倒计时、阶段里程碑（勾选完成）、截止日/学习日双向视角 |
 | ✅ **今天驾驶舱** | 目标进度条、今日概览仪表盘、逾期任务集中处理、快捷延期到下一可用日 |
-| 📅 **计划日历** | 月历负载热区、按日排程、拖拽改期、历史日期补录 |
+| 📅 **计划日历** | 月历负载热区、按日排程（可精确到小时 `HH:mm`）、拖拽改期、历史日期补录 |
+| 🏫 **课表** | 一学期课程的教学周网格（节次跨行、撞课并排、今天高亮），周次/单双周筛选，`.ics` / JSON 一键导入 |
 | 🔁 **重复任务** | 每天 / 每周指定星期 / 每隔 N 天 / 间隔序列（艾宾浩斯 1,2,4,7,15,30），可扩展规则引擎 |
+| 🗓️ **日历互通（.ics）** | 计划导出为 iCalendar 导入手机 / Google / Outlook 日历；反向把外部日历导入成任务（保留钟点） |
 | ⏱️ **负载与计划风险** | 剩余时长、学习日、建议日均一键算清；超载即预警 |
 | 📊 **进度统计** | 燃尽趋势、26 周完成热力图、任务耗时图（fl_chart） |
 | 💾 **数据安全** | 一键备份 / 覆盖恢复（自动安全副本）、每日自动备份（本地目录，保留最近 7 份） |
@@ -54,7 +56,7 @@ TimeCalc 把长期目标换算成每天可执行的任务量，并用一张「�
 ### 免安装便携版（推荐）
 
 1. 前往 [Releases 页面](https://github.com/xiegaoxiao/timecalc/releases) 下载最新版：
-   `timecalc-v1.10.0-windows-x64.zip`
+   `timecalc-v1.18.0-windows-x64.zip`
 2. 解压到任意目录，运行 `timecalc.exe` 即可，无需安装。
 
 ### 从源码构建
@@ -74,21 +76,24 @@ bash tool/release.sh
 
 ## 📖 快速上手
 
-应用共四个主页面：
+应用共六个主页面（桌面宽窗为左侧 200px 侧栏，窄窗回退底部导航）：
 
 - **今天** —— 打开首页即见「今天该做什么」：目标进度、今日任务、逾期提醒；
 - **计划** —— 按月排程：创建目标后，用「批量添加 / 重复任务」一次性铺好未来几周；
+- **课表** —— 一学期的固定作息：导入课表文件后按教学周看课，撞课并排、今天高亮；
+- **目标** —— 目标列表与详情（里程碑、科目、任务）；
 - **进度** —— 回答「走得怎么样」：燃尽趋势、完成热力图、任务耗时；
 - **设置** —— 关闭行为、外观主题、备份恢复、归档任务。
 
 建议路径：**创建目标 → 设置计划偏好（每日可用时长/每周可用日）→ 排任务 → 看负载预警 → 按节奏执行。**
+开学时另加一步：**课表页导入本学期课表（.ics/JSON）→ 设置开学第 1 周周一 → 按周查看上课安排。**
 
 ## 🛠️ 技术栈
 
 | 层 | 选型 |
 | --- | --- |
 | UI 框架 | Flutter (Windows desktop) |
-| 本地数据库 | SQLite + [drift](https://drift.simonbinder.eu/)（schema 化迁移，v12） |
+| 本地数据库 | SQLite + [drift](https://drift.simonbinder.eu/)（schema 化迁移，v17） |
 | 状态管理 | Riverpod（全局数据共享，跨页无感刷新） |
 | 路由 | GoRouter |
 | 图表 | fl_chart（燃尽 / 热力图 / 耗时图） |
@@ -103,7 +108,7 @@ bash tool/release.sh
 
 ## 📚 项目状态
 
-- **v1.10.0 已发布**（2026-08-09）：热力图全灰网格与点击查看、完整导入预估时长、任务变更全量刷新收敛。
+- **v1.18.0 已发布**（2026-09-14）：课表（FR-10，教学周网格 + `.ics`/JSON 导入）、小时级排程与日历互通（`.ics`）、今天页改版。
 - 里程碑演进（M1~M13）与完整变更记录见 [CHANGELOG.md](CHANGELOG.md) 与 [里程碑记录](docs/milestone-records/)。
 
 ## ⭐ Star History
