@@ -39,3 +39,9 @@ final unfinishedBeforeProvider =
     FutureProvider.family<List<Task>, String>((ref, date) {
   return ref.watch(taskRepositoryProvider).unfinishedBefore(date);
 });
+
+/// 目标下已归档任务（历史记录，JSON 导入替换时保留）。
+final archivedTaskListProvider =
+    FutureProvider.family<List<Task>, int>((ref, goalId) {
+  return ref.watch(taskRepositoryProvider).archivedByGoal(goalId);
+});

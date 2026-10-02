@@ -111,7 +111,7 @@ class GoalRepository {
     });
   }
 
-  /// 删除目标及其全部科目与任务（FR-1 验收：删除目标前明确提示将同时删除其任务）。
+  /// 删除目标及其全部科目、任务与重复模板（FR-1 验收：删除目标前明确提示将同时删除其任务）。
   ///
   /// 跨多表删除在单个事务内完成（NFR-2）：中途失败时回滚，不留下半删除数据。
   Future<void> deleteWithCascade(int goalId) {
@@ -129,6 +129,10 @@ class GoalRepository {
       await (_db.delete(_db.tasks)..where((t) => t.goalId.equals(goalId))).go();
       await (_db.delete(_db.subjects)
             ..where((s) => s.goalId.equals(goalId)))
+          .go();
+      // 重复任务模板随目标级联删除，防止孤儿模板（FR-4）。
+      await (_db.delete(_db.recurrenceTemplates)
+            ..where((t) => t.goalId.equals(goalId)))
           .go();
       await (_db.delete(_db.goals)..where((g) => g.id.equals(goalId))).go();
     });

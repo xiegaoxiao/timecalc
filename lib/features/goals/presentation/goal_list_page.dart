@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../services/countdown_service.dart';
+import '../../tasks/data/task_repository_provider.dart';
 import '../data/goal_repository_provider.dart';
 import 'goal_form_dialog.dart';
 
@@ -214,15 +215,15 @@ class _GoalCard extends ConsumerWidget {
         await GoalFormDialog.show(context, goal: goal);
       case 'complete':
         await repo.update(id: goal.id, status: 'completed', completedAt: DateTime.now().toUtc());
-        ref.invalidate(goalListProvider);
+        _refreshGoalRelated(ref);
         messenger.showSnackBar(SnackBar(content: Text('「${goal.title}」已标记为完成')));
       case 'abandon':
         await repo.update(id: goal.id, status: 'abandoned');
-        ref.invalidate(goalListProvider);
+        _refreshGoalRelated(ref);
         messenger.showSnackBar(SnackBar(content: Text('「${goal.title}」已标记为放弃')));
       case 'archive':
         await repo.update(id: goal.id, status: 'archived');
-        ref.invalidate(goalListProvider);
+        _refreshGoalRelated(ref);
         messenger.showSnackBar(SnackBar(content: Text('「${goal.title}」已归档')));
       case 'delete':
         await _confirmDelete(context, ref);
@@ -254,12 +255,25 @@ class _GoalCard extends ConsumerWidget {
 
     final repo = ref.read(goalRepositoryProvider);
     await repo.deleteWithCascade(goal.id);
-    ref.invalidate(goalListProvider);
+    _refreshGoalRelated(ref);
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('「${goal.title}」及其任务已删除')),
       );
     }
+  }
+
+  /// 目标变更/删除后统一刷新：目标状态影响今天页倒计时卡，任务的级联删除
+  /// 影响今天页/日历/详情的历史任务缓存（family 级 invalidate 覆盖全部实例），
+  /// 保证跨页数据一致（FR-3 验收）。
+  void _refreshGoalRelated(WidgetRef ref) {
+    ref.invalidate(goalListProvider);
+    ref.invalidate(goalDetailProvider);
+    ref.invalidate(taskListProvider);
+    ref.invalidate(tasksByDateProvider);
+    ref.invalidate(tasksByMonthProvider);
+    ref.invalidate(unfinishedBeforeProvider);
+    ref.invalidate(archivedTaskListProvider);
   }
 
   static DateTime _parseDate(String yyyyMMdd) {

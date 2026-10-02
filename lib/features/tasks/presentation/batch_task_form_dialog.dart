@@ -4,9 +4,10 @@ import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/providers/clock_provider.dart';
+import '../../../services/duration_format.dart';
+import '../../../shared/widgets/duration_step_input.dart';
 import '../data/last_minutes_provider.dart';
 import '../data/task_repository_provider.dart';
-import '../domain/duration_validator.dart';
 
 /// 批量添加任务对话框：多行输入，一次创建多个任务（单事务）。
 ///
@@ -49,12 +50,12 @@ class BatchTaskFormDialog extends ConsumerStatefulWidget {
 class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
   final _formKey = GlobalKey<FormState>();
   final _titlesController = TextEditingController();
-  final _minutesController = TextEditingController();
   final _intervalController = TextEditingController(text: '1');
   DateTime _startDate = DateTime.now();
   bool _useInterval = false;
   int _intervalDays = 1;
   int? _subjectId;
+  int? _estimatedMinutes;
   bool _saving = false;
 
   List<String> get _lines => _titlesController.text
@@ -69,16 +70,12 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
     _subjectId = widget.defaultSubjectId;
     // 起始日期默认取注入时钟的今天，测试可固定时间。
     _startDate = ref.read(clockProvider)();
-    final lastMinutes = ref.read(lastMinutesProvider);
-    if (lastMinutes != null) {
-      _minutesController.text = '$lastMinutes';
-    }
+    _estimatedMinutes = ref.read(lastMinutesProvider);
   }
 
   @override
   void dispose() {
     _titlesController.dispose();
-    _minutesController.dispose();
     _intervalController.dispose();
     super.dispose();
   }
@@ -99,8 +96,8 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final lines = _lines;
-    final minutesText = _minutesController.text.trim();
-    final minutes = minutesText.isEmpty ? null : int.parse(minutesText);
+    // 0 分钟视为未设置（预估时长合法范围为 1～1440，FR-3 验收）。
+    final minutes = _estimatedMinutes == 0 ? null : _estimatedMinutes;
 
     setState(() => _saving = true);
     try {
@@ -126,7 +123,9 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
   @override
   Widget build(BuildContext context) {
     final lines = _lines;
-    final totalMinutes = (lines.length * (_minutesController.text.trim().isEmpty ? 0 : int.parse(_minutesController.text.trim())));
+    final totalMinutes = _estimatedMinutes == null
+        ? 0
+        : lines.length * _estimatedMinutes!;
 
     return AlertDialog(
       title: const Text('批量添加任务'),
@@ -226,18 +225,14 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
                 ],
               ),
               const SizedBox(height: 12),
-              TextFormField(
-                controller: _minutesController,
-                decoration: const InputDecoration(
-                  labelText: '预估时长（分钟，可选）',
-                  hintText: '如真题 180 分钟',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) return null;
-                  return DurationValidator.validate(value);
-                },
+              DurationStepInput(
+                label: '预估时长',
+                value: _estimatedMinutes,
+                allowEmpty: true,
+                onChanged: (minutes) =>
+                    setState(() => _estimatedMinutes = minutes),
+                hourFieldKey: const Key('batchHourField'),
+                minuteFieldKey: const Key('batchMinuteField'),
               ),
               const SizedBox(height: 12),
               // 实时预览：生成数量与日期范围（不写库，用户确认后单事务创建）。
@@ -246,7 +241,7 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
                     ? '输入标题后将在此预览'
                     : '将创建 ${lines.length} 个任务'
                         '${_useInterval ? '，自 ${DateFormat('yyyy-MM-dd').format(_startDate)} 起每 $_intervalDays 天一个' : '，日期 ${DateFormat('yyyy-MM-dd').format(_startDate)}'}'
-                        '${totalMinutes > 0 ? '，共 $totalMinutes 分钟' : ''}',
+                        '${totalMinutes > 0 ? '，共 ${DurationFormat.minutes(totalMinutes)}' : ''}',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.primary,
                     ),

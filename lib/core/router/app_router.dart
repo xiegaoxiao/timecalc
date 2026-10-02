@@ -6,6 +6,7 @@ import '../../features/goals/presentation/goal_detail_page.dart';
 import '../../features/plan/presentation/plan_page.dart';
 import '../../features/progress/presentation/progress_page.dart';
 import '../../features/settings/presentation/settings_page.dart';
+import '../../features/tasks/data/recurrence_repository_provider.dart';
 import '../../features/tasks/presentation/subject_task_page.dart';
 import '../../features/today/presentation/today_page.dart';
 
@@ -79,13 +80,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 });
 
 /// 主导航 Shell：底部导航承载四个一级入口。
-class AppShell extends StatelessWidget {
+///
+/// 首帧触发重复任务滚动生成（FR-4.3：应用打开即补齐未来 30 天窗口内
+/// 缺失实例）；无 active 模板时为空操作。
+class AppShell extends ConsumerWidget {
   const AppShell({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // watch 触发一次滚动生成；结果不用于渲染。
+    ref.watch(recurrenceBootstrapProvider);
     return Scaffold(
       body: navigationShell,
       bottomNavigationBar: NavigationBar(
