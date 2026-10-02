@@ -89,7 +89,10 @@ class TaskTile extends ConsumerWidget {
   }
 
   Future<void> _handleAction(
-      BuildContext context, WidgetRef ref, String action) async {
+    BuildContext context,
+    WidgetRef ref,
+    String action,
+  ) async {
     switch (action) {
       case 'edit':
         await _edit(context, ref);
@@ -115,11 +118,18 @@ class TaskTile extends ConsumerWidget {
     onChanged();
   }
 
-  Future<void> _deferToNextAvailable(BuildContext context, WidgetRef ref) async {
+  Future<void> _deferToNextAvailable(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
     final settings = await ref.read(settingsProvider.future);
-    final today = ref.read(clockProvider)();
+    final now = ref.read(clockProvider)();
+    final today = DateTime(now.year, now.month, now.day);
+    final plannedDate = _parseDate(task.plannedDate);
+    // 未来任务从原计划日期之后延期；今日及积压任务从今天之后延期。
+    final baseDate = plannedDate.isAfter(today) ? plannedDate : today;
     final next = _defer.nextAvailableDate(
-      today: today,
+      today: baseDate,
       availableWeekdays: SettingsRepository.decodeWeekdays(
         settings.availableWeekdays,
       ),
@@ -130,12 +140,19 @@ class TaskTile extends ConsumerWidget {
   }
 
   Future<void> _deferPickDate(BuildContext context, WidgetRef ref) async {
-    final now = DateTime.now();
+    final now = ref.read(clockProvider)();
+    final plannedDate = _parseDate(task.plannedDate);
+    final firstDate = DateTime(now.year - 1);
+    final lastDate = DateTime(now.year + 10);
+    final afterPlannedYear = DateTime(plannedDate.year + 1);
     final picked = await showDatePicker(
       context: context,
-      initialDate: _parseDate(task.plannedDate),
-      firstDate: DateTime(now.year - 1),
-      lastDate: DateTime(now.year + 10),
+      initialDate: plannedDate,
+      currentDate: now,
+      firstDate: plannedDate.isBefore(firstDate) ? plannedDate : firstDate,
+      lastDate: afterPlannedYear.isAfter(lastDate)
+          ? afterPlannedYear
+          : lastDate,
       helpText: '选择延期日期',
     );
     if (picked == null) return;
@@ -170,6 +187,10 @@ class TaskTile extends ConsumerWidget {
 
   static DateTime _parseDate(String yyyyMMdd) {
     final parts = yyyyMMdd.split('-');
-    return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+    return DateTime(
+      int.parse(parts[0]),
+      int.parse(parts[1]),
+      int.parse(parts[2]),
+    );
   }
 }

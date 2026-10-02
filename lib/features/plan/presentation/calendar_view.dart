@@ -260,18 +260,22 @@ class _MonthGrid extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         for (var row = 0; row < totalCells ~/ 7; row++) ...[
-          Row(
-            children: [
-              for (var col = 0; col < 7; col++) ...[
-                Expanded(
-                  child: _buildCell(
-                    context,
-                    scheme,
-                    day: row * 7 + col + 1 - leadingBlanks,
+          // 每周按最高单元格的内容排版，随系统字体缩放增高并保持对齐。
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var col = 0; col < 7; col++) ...[
+                  Expanded(
+                    child: _buildCell(
+                      context,
+                      scheme,
+                      day: row * 7 + col + 1 - leadingBlanks,
+                    ),
                   ),
-                ),
+                ],
               ],
-            ],
+            ),
           ),
           const SizedBox(height: 4),
         ],
@@ -301,7 +305,7 @@ class _MonthGrid extends StatelessWidget {
       onTap: () => onSelect(dateStr),
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        height: 80,
+        constraints: const BoxConstraints(minHeight: 80),
         decoration: BoxDecoration(
           color: background,
           borderRadius: BorderRadius.circular(8),

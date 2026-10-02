@@ -10,60 +10,84 @@ class TaskRepository {
   final AppDatabase _db;
 
   /// 返回目标下的全部任务，按计划日期、创建时间排序。
-  Future<List<Task>> byGoal(int goalId) {
-    final query = _db.select(_db.tasks)
+  Future<List<Task>> byGoal(int goalId) => _byGoalQuery(goalId).get();
+
+  /// 持续观察目标任务，使其他页面的修改也能同步到目标详情。
+  Stream<List<Task>> watchByGoal(int goalId) => _byGoalQuery(goalId).watch();
+
+  SimpleSelectStatement<$TasksTable, Task> _byGoalQuery(int goalId) {
+    return _db.select(_db.tasks)
       ..where((t) => t.goalId.equals(goalId))
       ..orderBy([
         (t) => OrderingTerm.asc(t.plannedDate),
         (t) => OrderingTerm.asc(t.sortOrder),
         (t) => OrderingTerm.asc(t.id),
       ]);
-    return query.get();
   }
 
   Future<Task?> byId(int id) {
-    return (_db.select(_db.tasks)..where((t) => t.id.equals(id)))
-        .getSingleOrNull();
+    return (_db.select(
+      _db.tasks,
+    )..where((t) => t.id.equals(id))).getSingleOrNull();
   }
 
   /// 返回计划日期为 [date]（yyyy-MM-dd）的全部任务（跨目标，供今日页使用）。
-  Future<List<Task>> byDate(String date) {
-    final query = _db.select(_db.tasks)
+  Future<List<Task>> byDate(String date) => _byDateQuery(date).get();
+
+  Stream<List<Task>> watchByDate(String date) => _byDateQuery(date).watch();
+
+  SimpleSelectStatement<$TasksTable, Task> _byDateQuery(String date) {
+    return _db.select(_db.tasks)
       ..where((t) => t.plannedDate.equals(date))
       ..orderBy([
         (t) => OrderingTerm.asc(t.goalId),
         (t) => OrderingTerm.asc(t.sortOrder),
         (t) => OrderingTerm.asc(t.id),
       ]);
-    return query.get();
   }
 
   /// 返回计划日期在 [start]～[end]（含，yyyy-MM-dd，字典序比较）的全部任务，
   /// 供日历月视图聚合使用。
-  Future<List<Task>> byDateRange(String start, String end) {
-    final query = _db.select(_db.tasks)
+  Future<List<Task>> byDateRange(String start, String end) =>
+      _byDateRangeQuery(start, end).get();
+
+  Stream<List<Task>> watchByDateRange(String start, String end) =>
+      _byDateRangeQuery(start, end).watch();
+
+  SimpleSelectStatement<$TasksTable, Task> _byDateRangeQuery(
+    String start,
+    String end,
+  ) {
+    return _db.select(_db.tasks)
       ..where((t) => t.plannedDate.isBetweenValues(start, end))
       ..orderBy([
         (t) => OrderingTerm.asc(t.plannedDate),
         (t) => OrderingTerm.asc(t.goalId),
         (t) => OrderingTerm.asc(t.id),
       ]);
-    return query.get();
   }
 
   /// 返回计划日期早于 [date]（yyyy-MM-dd）且未完成的任务（FR-3.7）。
   ///
   /// 用于次日首次打开时集中提示昨日及以前未完成任务的延期/保留选择。
-  Future<List<Task>> unfinishedBefore(String date) {
-    final query = _db.select(_db.tasks)
-      ..where((t) => t.plannedDate.isSmallerThanValue(date) &
-          t.status.equals(TaskStatus.todo))
+  Future<List<Task>> unfinishedBefore(String date) =>
+      _unfinishedBeforeQuery(date).get();
+
+  Stream<List<Task>> watchUnfinishedBefore(String date) =>
+      _unfinishedBeforeQuery(date).watch();
+
+  SimpleSelectStatement<$TasksTable, Task> _unfinishedBeforeQuery(String date) {
+    return _db.select(_db.tasks)
+      ..where(
+        (t) =>
+            t.plannedDate.isSmallerThanValue(date) &
+            t.status.equals(TaskStatus.todo),
+      )
       ..orderBy([
         (t) => OrderingTerm.asc(t.plannedDate),
         (t) => OrderingTerm.asc(t.goalId),
         (t) => OrderingTerm.asc(t.id),
       ]);
-    return query.get();
   }
 
   /// 创建任务。plannedDate 为本地日历日期文本（yyyy-MM-dd）。

@@ -1,5 +1,6 @@
 // TimeCalc 应用骨架冒烟测试。
 
+import 'package:drift/drift.dart' show DatabaseConnection;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,7 +12,10 @@ import 'package:timecalc/core/database/database_provider.dart';
 void main() {
   testWidgets('应用启动并展示主导航（骨架冒烟）', (tester) async {
     // 使用内存数据库，避免在测试环境初始化真实文件库与插件。
-    final db = AppDatabase(NativeDatabase.memory());
+    final db = AppDatabase(DatabaseConnection(
+      NativeDatabase.memory(),
+      closeStreamsSynchronously: true,
+    ));
     addTearDown(db.close);
 
     await tester.pumpWidget(
