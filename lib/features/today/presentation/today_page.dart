@@ -6,40 +6,342 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../services/countdown_service.dart';
+import '../../../services/defer_service.dart';
+import '../../../services/load_service.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../../goals/presentation/goal_form_dialog.dart';
+import '../../settings/data/settings_repository.dart';
+import '../../settings/data/settings_repository_provider.dart';
+import '../../tasks/data/task_repository_provider.dart';
+import '../../tasks/presentation/quick_task_form_dialog.dart';
+import '../../tasks/presentation/task_tile.dart';
 
-/// 今天页：目标倒计时卡片（FR-1.2/FR-1.3）。
+/// 今天页：目标倒计时 + 今日任务闭环（M2）。
 ///
-/// 首页先回答「今天做什么」：展示进行中的目标与截止倒计时。
-/// 今日任务闭环（FR-3）在 M2 交付。
-class TodayPage extends ConsumerWidget {
+/// 结构（自上而下）：
+/// 1. 进行中目标的倒计时卡片（FR-1.2/FR-1.3）；
+/// 2. 今日负载概览（FR-3.5：超可用时长显示「超出 X 分钟」）；
+/// 3. FR-3.7 横幅：昨日及更早未完成任务集中确认（不自动改计划）；
+/// 4. 今日任务列表（完成/编辑/延期/删除）与快速添加。
+/// 今日日期取自 [clockProvider]，全程可测试注入。
+class TodayPage extends ConsumerStatefulWidget {
   const TodayPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TodayPage> createState() => _TodayPageState();
+}
+
+class _TodayPageState extends ConsumerState<TodayPage> {
+  static const _defer = DeferService();
+  static const _load = LoadService();
+
+  /// FR-3.7 横幅的会话级关闭（「保留原日期」），不写库。
+  bool _bannerDismissed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final today = ref.watch(clockProvider)();
+    final todayStr = DateFormat('yyyy-MM-dd').format(today);
+
     final goalsAsync = ref.watch(goalListProvider);
+    final settingsAsync = ref.watch(settingsProvider);
+    final tasksAsync = ref.watch(tasksByDateProvider(todayStr));
+    final unfinishedAsync = ref.watch(unfinishedBeforeProvider(todayStr));
+
     return Scaffold(
       appBar: AppBar(title: const Text('今天')),
       body: goalsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(child: Text('加载失败：$error')),
-        data: (goals) {
-          final active = goals
-              .where((g) =>
-                  g.status != 'completed' &&
-                  g.status != 'abandoned' &&
-                  g.status != 'archived')
-              .toList();
-          if (active.isEmpty) {
-            return _EmptyView(hasAnyGoal: goals.isNotEmpty);
-          }
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: active.length,
-            itemBuilder: (context, index) => _CountdownCard(goal: active[index]),
-          );
-        },
+        data: (goals) => settingsAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, _) => Center(child: Text('加载失败：$error')),
+          data: (settings) => tasksAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, _) => Center(child: Text('加载失败：$error')),
+            data: (tasks) => unfinishedAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => Center(child: Text('加载失败：$error')),
+              data: (unfinished) => _buildBody(
+                goals: goals,
+                settings: settings,
+                today: today,
+                todayTasks: tasks,
+                unfinished: unfinished,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody({
+    required List<Goal> goals,
+    required Setting settings,
+    required DateTime today,
+    required List<Task> todayTasks,
+    required List<Task> unfinished,
+  }) {
+    final todayStr = DateFormat('yyyy-MM-dd').format(today);
+    final activeGoals = goals
+        .where((g) =>
+            g.status != 'completed' &&
+            g.status != 'abandoned' &&
+            g.status != 'archived')
+        .toList();
+
+    // 数据变更后的统一刷新（今日列表、未完成任务横幅、倒计时卡）。
+    void onChanged() {
+      ref.invalidate(tasksByDateProvider(todayStr));
+      ref.invalidate(unfinishedBeforeProvider(todayStr));
+      ref.invalidate(goalListProvider);
+    }
+
+    // 空态：无进行中目标且今日无任务。
+    if (activeGoals.isEmpty && todayTasks.isEmpty) {
+      return _EmptyView(
+        hasAnyGoal: goals.isNotEmpty,
+        onCreateGoal: _createGoal,
+      );
+    }
+
+    final goalsById = {for (final g in goals) g.id: g};
+    final availableMinutes = settings.dailyAvailableMinutes;
+    final load = _load.dayLoad(todayTasks);
+    final over = _load.overMinutes(
+      load: load,
+      available: availableMinutes,
+    );
+    final weekdays =
+        SettingsRepository.decodeWeekdays(settings.availableWeekdays);
+    final addGoals = activeGoals.isNotEmpty ? activeGoals : goals;
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        if (activeGoals.isNotEmpty) ...[
+          for (final goal in activeGoals)
+            _CountdownCard(goal: goal),
+          const SizedBox(height: 8),
+        ],
+        if (todayTasks.isNotEmpty) ...[
+          _LoadOverviewCard(
+            load: load,
+            available: availableMinutes,
+            over: over,
+          ),
+          const SizedBox(height: 8),
+        ],
+        if (unfinished.isNotEmpty && !_bannerDismissed) ...[
+          _UnfinishedBanner(
+            count: unfinished.length,
+            onDeferNext: () async {
+              final next = _defer.nextAvailableDate(
+                today: today,
+                availableWeekdays: weekdays,
+              );
+              await ref
+                  .read(taskRepositoryProvider)
+                  .deferMany(unfinished.map((t) => t.id).toList(), next);
+              onChanged();
+            },
+            onDeferPickDate: () async {
+              final now = DateTime.now();
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: today,
+                firstDate: DateTime(now.year - 1),
+                lastDate: DateTime(now.year + 10),
+                helpText: '选择延期日期',
+              );
+              if (picked == null) return;
+              await ref.read(taskRepositoryProvider).deferMany(
+                    unfinished.map((t) => t.id).toList(),
+                    DateFormat('yyyy-MM-dd').format(picked),
+                  );
+              onChanged();
+            },
+            onKeepOriginal: () => setState(() => _bannerDismissed = true),
+          ),
+          const SizedBox(height: 8),
+        ],
+        Row(
+          children: [
+            Text('今日任务', style: Theme.of(context).textTheme.titleMedium),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: addGoals.isEmpty
+                  ? null
+                  : () async {
+                      await QuickTaskFormDialog.show(
+                        context,
+                        date: today,
+                        goals: addGoals,
+                      );
+                      onChanged();
+                    },
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('添加任务'),
+            ),
+          ],
+        ),
+        if (todayTasks.isEmpty)
+          _TodayEmptyView(onAddTask: addGoals.isEmpty ? null : () {
+            QuickTaskFormDialog.show(context, date: today, goals: addGoals);
+            onChanged();
+          })
+        else
+          for (final task in todayTasks)
+            TaskTile(
+              task: task,
+              goalTitle: goalsById[task.goalId]?.title,
+              onChanged: onChanged,
+            ),
+      ],
+    );
+  }
+
+  Future<void> _createGoal() async {
+    final createdId = await GoalFormDialog.show(context);
+    if (createdId != null && mounted) {
+      ref.invalidate(goalListProvider);
+      context.push('/goals/$createdId');
+    }
+  }
+}
+
+/// 今日负载概览（FR-3.5）。
+///
+/// 展示当日未完成任务预估时长与可用时长；超出时显示「超出 X 分钟」
+/// 文案与警告图标（状态不只依赖颜色表达）。
+class _LoadOverviewCard extends StatelessWidget {
+  const _LoadOverviewCard({
+    required this.load,
+    required this.available,
+    required this.over,
+  });
+
+  final int load;
+  final int available;
+  final int over;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      child: ListTile(
+        leading: Icon(over > 0 ? Icons.warning_amber_rounded : Icons.balance),
+        title: Text('今日 $load 分钟 · 可用 $available 分钟'),
+        subtitle: over > 0
+            ? Text(
+                '超出 $over 分钟，请调整任务或可用时间',
+                style: TextStyle(color: scheme.error),
+              )
+            : null,
+        trailing: over > 0
+            ? Icon(Icons.error_outline, color: scheme.error)
+            : null,
+      ),
+    );
+  }
+}
+
+/// FR-3.7 次日未完成任务集中确认横幅。
+///
+/// 不自动改变原计划（FR-3.7）：由用户选择延期（下一可用日/指定日期）
+/// 或保留原日期（仅本会话关闭横幅）。
+class _UnfinishedBanner extends StatelessWidget {
+  const _UnfinishedBanner({
+    required this.count,
+    required this.onDeferNext,
+    required this.onDeferPickDate,
+    required this.onKeepOriginal,
+  });
+
+  final int count;
+  final VoidCallback onDeferNext;
+  final VoidCallback onDeferPickDate;
+  final VoidCallback onKeepOriginal;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      color: scheme.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.event_busy, color: scheme.onErrorContainer),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '昨日及更早有 $count 个未完成任务',
+                    style: TextStyle(
+                      color: scheme.onErrorContainer,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '原计划不会被自动更改，请选择处理方式',
+              style: TextStyle(color: scheme.onErrorContainer),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: [
+                FilledButton.tonal(
+                  onPressed: onDeferNext,
+                  child: const Text('延期至下一可用日'),
+                ),
+                OutlinedButton(
+                  onPressed: onDeferPickDate,
+                  child: const Text('选择日期…'),
+                ),
+                TextButton(
+                  onPressed: onKeepOriginal,
+                  child: const Text('保留原日期'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 今日无任务空态（PRD §8：提供与页面相关的首个操作，非纯说明页）。
+class _TodayEmptyView extends StatelessWidget {
+  const _TodayEmptyView({required this.onAddTask});
+
+  final VoidCallback? onAddTask;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 32),
+      child: Column(
+        children: [
+          const Icon(Icons.event_available, size: 48),
+          const SizedBox(height: 8),
+          const Text('今天没有安排'),
+          const SizedBox(height: 12),
+          if (onAddTask != null)
+            FilledButton.icon(
+              onPressed: onAddTask,
+              icon: const Icon(Icons.add),
+              label: const Text('添加任务'),
+            ),
+        ],
       ),
     );
   }
@@ -96,7 +398,6 @@ class _CountdownCard extends ConsumerWidget {
           ],
         ),
         isThreeLine: true,
-        // push 压入导航栈，详情页 AppBar 自动出现返回箭头。
         onTap: () => context.push('/goals/${goal.id}'),
       ),
     );
@@ -109,16 +410,10 @@ class _CountdownCard extends ConsumerWidget {
 }
 
 class _EmptyView extends StatelessWidget {
-  const _EmptyView({required this.hasAnyGoal});
+  const _EmptyView({required this.hasAnyGoal, required this.onCreateGoal});
 
   final bool hasAnyGoal;
-
-  Future<void> _createGoal(BuildContext context) async {
-    final createdId = await GoalFormDialog.show(context);
-    if (createdId != null && context.mounted) {
-      context.push('/goals/$createdId');
-    }
-  }
+  final Future<void> Function() onCreateGoal;
 
   @override
   Widget build(BuildContext context) {
@@ -128,13 +423,13 @@ class _EmptyView extends StatelessWidget {
         children: [
           const Icon(Icons.today_outlined, size: 64),
           const SizedBox(height: 12),
-          const Text('今天没有进行中的目标'),
+          const Text('今天没有安排'),
           const SizedBox(height: 4),
           Text(hasAnyGoal ? '所有目标已结束或归档' : '创建一个目标，开始倒计时'),
           const SizedBox(height: 16),
           if (!hasAnyGoal)
             FilledButton.icon(
-              onPressed: () => _createGoal(context),
+              onPressed: onCreateGoal,
               icon: const Icon(Icons.add),
               label: const Text('创建目标'),
             ),
