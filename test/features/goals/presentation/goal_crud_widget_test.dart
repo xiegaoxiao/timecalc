@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show DatabaseConnection;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -31,7 +32,10 @@ void main() {
   }
 
   setUp(() {
-    db = AppDatabase(NativeDatabase.memory());
+    db = AppDatabase(DatabaseConnection(
+      NativeDatabase.memory(),
+      closeStreamsSynchronously: true,
+    ));
     repository = GoalRepository(db);
     fixedNow = DateTime(2026, 8, 5, 12);
   });
@@ -58,9 +62,13 @@ void main() {
     await tester.enterText(find.byType(TextFormField).first, '考研');
     await tester.pumpAndSettle();
 
-    // 填写截止日期：日期选择器默认显示当月（2026-08），选择 20 日。
+    // 日期选择器使用系统当月，断言与实际选择的月份一致。
     await tester.tap(find.text('请选择日期'));
     await tester.pumpAndSettle();
+    final initialDate = tester.widget<DatePickerDialog>(
+      find.byType(DatePickerDialog),
+    ).initialDate!;
+    final selectedDeadline = DateTime(initialDate.year, initialDate.month, 20);
     await tester.tap(find.text('20'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('确定'));
@@ -72,7 +80,10 @@ void main() {
     // 创建成功后自动进入目标详情页（引导继续配置），标题与截止日期可见。
     expect(find.text('目标详情'), findsOneWidget);
     expect(find.text('考研'), findsOneWidget);
-    expect(find.textContaining('截止 2026-08-20'), findsOneWidget);
+    expect(
+      find.textContaining('截止 ${selectedDeadline.toIso8601String().substring(0, 10)}'),
+      findsOneWidget,
+    );
     // 详情页有返回键，可回到计划页。
     expect(find.byType(BackButton), findsOneWidget);
   });
