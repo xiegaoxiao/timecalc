@@ -6,7 +6,10 @@ import '../../../core/providers/clock_provider.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../shared/widgets/app_error_view.dart';
-import '../../../shared/widgets/chart_empty_state.dart';
+import '../../../shared/widgets/clash_hero.dart';
+import '../../../shared/widgets/clash_tones.dart';
+import '../../../shared/widgets/clash_widgets.dart';
+import '../../../shared/widgets/hoverable_card.dart';
 import '../../../shared/widgets/page_skeletons.dart';
 import '../../settings/data/settings_repository_provider.dart';
 import '../data/course_repository_provider.dart';
@@ -25,10 +28,15 @@ const double _minDayColumnWidth = 96;
 /// 课表页（FR-10）：一学期课程的教学周网格。
 ///
 /// 结构（自上而下）：
-/// 1. 头部：导入/添加 + 教学周切换（上一周/下一周/回到本周）+ 更多菜单；
-/// 2. 学期基准提示（未设置时）：教学周换算需要「第 1 周周一」这个锚点；
-/// 3. 网格：12 节 × 7 天，课程卡片按节次跨行、按冲突分列；
-/// 4. 本周摘要：门数与节数。
+/// 1. 工具区：导入/添加 + 更多菜单（主题默认按钮）；
+/// 2. 撞色周次头区（`ClashHero`，冷色）：上一周/下一周 + 周次药丸 +
+///    本周（暖色实心）/单双周指示；
+/// 3. 副标题行：教学周日期范围 + 学期基准 + 本周摘要；
+/// 4. 网格（白卡面板）：`ClassPeriods.count` 节 × 7 天，课程卡片按节次跨行、按冲突分列。
+///
+/// 撞色分工：**课程色**沿用既有调色板（`course_palette`/`course_color`），
+/// 只作科目辨识色（左侧竖条 + 淡色底纹）；页面容器与状态色走撞色语言
+/// （今日 = 暖，课表区块/当日列 = 冷）。
 ///
 /// 数据是**外部给定的固定作息**，与「今天」页的任务闭环互不干扰：
 /// 课程不参与负载、不计完成度，因此本页只读课表、不勾选完成。
@@ -94,7 +102,13 @@ class _TimetablePageState extends ConsumerState<TimetablePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _Header(
+            _ToolBar(
+              onImport: _import,
+              onAdd: _addCourse,
+              onClear: courses.isEmpty ? null : _clearAll,
+            ),
+            const SizedBox(height: AppTokens.spaceMd),
+            _WeekHeader(
               shownWeek: shownWeek,
               isCurrentWeek: isCurrentWeek,
               onPrev: shownWeek == null
@@ -105,9 +119,6 @@ class _TimetablePageState extends ConsumerState<TimetablePage> {
                   : () => setState(() => _selectedWeek = shownWeek + 1),
               onBackToCurrentWeek: () =>
                   setState(() => _selectedWeek = null),
-              onImport: _import,
-              onAdd: _addCourse,
-              onClear: courses.isEmpty ? null : _clearAll,
             ),
             const SizedBox(height: AppTokens.spaceSm),
             _SubHeader(
@@ -123,30 +134,41 @@ class _TimetablePageState extends ConsumerState<TimetablePage> {
               // 全空课表：给出与页面相关的首个操作（导入优先，手动添加兜底）。
               SizedBox(
                 width: double.infinity,
-                child: ChartEmptyState(
+                child: ClashEmptyState(
                   icon: Icons.calendar_view_week_outlined,
                   title: '还没有课程',
-                  caption: '导入课表文件（.ics / .json），或手动添加一门课',
-                  actionLabel: '导入课表',
-                  onAction: _import,
+                  message: '导入课表文件（.ics / .json），或手动添加一门课',
+                  tone: ClashTone.cool,
+                  action: FilledButton.icon(
+                    onPressed: _import,
+                    icon: const Icon(Icons.upload_file_outlined, size: 18),
+                    label: const Text('导入课表'),
+                  ),
                 ),
               )
             else if (visible.isEmpty)
               SizedBox(
                 width: double.infinity,
-                child: ChartEmptyState(
+                child: ClashEmptyState(
                   icon: Icons.beach_access_outlined,
                   title: '第 $shownWeek 教学周没有课',
-                  caption: '换一周看看，或检查课程的起止周设置',
+                  message: '换一周看看，或检查课程的起止周设置',
+                  tone: ClashTone.cool,
                 ),
               )
             else
-              _TimetableGrid(
-                courses: visible,
-                semesterStart: semesterStart,
-                shownWeek: shownWeek,
-                todayWeekday: isCurrentWeek ? today.weekday : null,
-                onTapCourse: (course) => _openCourse(course),
+              // 网格浮在白卡上（契约：白卡浮于暖奶油底，撞色块浮于白卡）。
+              HoverableCard(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppTokens.spaceMd),
+                  child: _TimetableGrid(
+                    courses: visible,
+                    semesterStart: semesterStart,
+                    shownWeek: shownWeek,
+                    todayWeekday: isCurrentWeek ? today.weekday : null,
+                    onTapCourse: (course) => _openCourse(course),
+                  ),
+                ),
               ),
           ],
         ),
@@ -278,24 +300,17 @@ class _TimetablePageState extends ConsumerState<TimetablePage> {
   }
 }
 
-/// 页面头部：导入/添加 + 教学周切换 + 更多菜单。
-class _Header extends StatelessWidget {
-  const _Header({
-    required this.shownWeek,
-    required this.isCurrentWeek,
-    required this.onPrev,
-    required this.onNext,
-    required this.onBackToCurrentWeek,
+/// 顶部工具区：导入课表 / 添加课程 / 更多菜单。
+///
+/// 按钮统一用主题默认样式（`filledButton` 暖实心 + `outlinedButton` 冷描边），
+/// 不包 `styleFrom` 覆盖颜色——撞色由主题层统一供给（契约 §4）。
+class _ToolBar extends StatelessWidget {
+  const _ToolBar({
     required this.onImport,
     required this.onAdd,
     required this.onClear,
   });
 
-  final int? shownWeek;
-  final bool isCurrentWeek;
-  final VoidCallback? onPrev;
-  final VoidCallback? onNext;
-  final VoidCallback onBackToCurrentWeek;
   final VoidCallback onImport;
   final VoidCallback onAdd;
   final VoidCallback? onClear;
@@ -304,7 +319,7 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        FilledButton.tonalIcon(
+        FilledButton.icon(
           onPressed: onImport,
           icon: const Icon(Icons.upload_file_outlined, size: 18),
           label: const Text('导入课表'),
@@ -316,35 +331,6 @@ class _Header extends StatelessWidget {
           label: const Text('添加课程'),
         ),
         const Spacer(),
-        if (shownWeek != null) ...[
-          IconButton(
-            tooltip: '上一周',
-            onPressed: onPrev,
-            icon: const Icon(Icons.chevron_left),
-          ),
-          Text(
-            '第 $shownWeek 周',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          IconButton(
-            tooltip: '下一周',
-            onPressed: onNext,
-            icon: const Icon(Icons.chevron_right),
-          ),
-          // 当前周不必显示「回到本周」；用占位保持按钮区宽度稳定，避免
-          // 翻周时右侧控件左右跳动。
-          if (isCurrentWeek)
-            const SizedBox(width: 88)
-          else
-            TextButton(
-              onPressed: onBackToCurrentWeek,
-              child: const Text('回到本周'),
-            ),
-        ] else
-          Text(
-            '全部课程',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
         PopupMenuButton<String>(
           tooltip: '更多',
           onSelected: (value) {
@@ -359,6 +345,117 @@ class _Header extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// 撞色周次头区：教学周切换 + 本周/单双周指示。
+///
+/// 撞色分工：课表属「数据 / 时间表」→ hero 用**冷**；「看的是不是本周」是
+/// 主动作信息 → 当前周用**暖色实心药丸**，非当前周退化为可点的中性药丸，
+/// 冷暖对冲形成结构性区分，而不是同色深浅。
+///
+/// 注意：hero 渐变上的文字/图标不能用主题前景色（深色主题下是深字压深底），
+/// 一律取该撞色的 [ClashTones.onFill]；中性药丸浅色模式走默认 soft（不透明浅底
+/// + 撞色深字），深色模式改用半透明白底 + 白字（浅底在暗渐变上看不出块形）。
+/// 当前周指示保持 `filled` 暖实心（唯一的实心药丸，落在渐变冷端做冷暖对冲）。
+class _WeekHeader extends StatelessWidget {
+  const _WeekHeader({
+    required this.shownWeek,
+    required this.isCurrentWeek,
+    required this.onPrev,
+    required this.onNext,
+    required this.onBackToCurrentWeek,
+  });
+
+  final int? shownWeek;
+  final bool isCurrentWeek;
+  final VoidCallback? onPrev;
+  final VoidCallback? onNext;
+  final VoidCallback onBackToCurrentWeek;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final onHero = ClashTones.of(context, ClashTone.cool).onFill;
+    // 浅色模式：不传 → 中性药丸走默认 soft（不透明浅青底 + 深青字 11.15:1，
+    // 块形对该模式下的深色渐变 ≥6:1），已是最优。
+    // 深色模式：渐变与浅底药丸同为暗色，块形对比只剩 0.7~1.2:1 → 换成半透明白底
+    // + 白字（文字仍 ≥5:1，且药丸边界可见）。两处都只取 token，无硬编码色。
+    final pillForeground = isDark ? onHero : null;
+    final pillBackground =
+        isDark ? ClashTones.tint(onHero, alpha: 0.22) : null;
+    final week = shownWeek;
+
+    return ClashHero(
+      tone: ClashTone.cool,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.spaceLg,
+        vertical: AppTokens.spaceMd,
+      ),
+      child: Row(
+        children: [
+          if (week == null)
+            // 未设学期基准：无法按教学周筛选，退化为全部课程（仍是冷色中性药丸）。
+            ClashChip(
+              label: '全部课程',
+              tone: ClashTone.cool,
+              variant: ClashChipVariant.soft,
+              icon: Icons.view_week_outlined,
+              foreground: pillForeground,
+              background: pillBackground,
+            )
+          else ...[
+            IconButton(
+              tooltip: '上一周',
+              onPressed: onPrev,
+              color: onHero,
+              icon: const Icon(Icons.chevron_left),
+            ),
+            ClashChip(
+              label: '第 $week 周',
+              tone: ClashTone.cool,
+              variant: ClashChipVariant.soft,
+              foreground: pillForeground,
+              background: pillBackground,
+            ),
+            IconButton(
+              tooltip: '下一周',
+              onPressed: onNext,
+              color: onHero,
+              icon: const Icon(Icons.chevron_right),
+            ),
+            const SizedBox(width: AppTokens.spaceMd),
+            // 单双周指示：周次奇偶决定课程是否排课，是课表的结构性信息。
+            ClashChip(
+              label: week.isOdd ? '单周' : '双周',
+              tone: ClashTone.cool,
+              variant: ClashChipVariant.soft,
+              dense: true,
+              foreground: pillForeground,
+              background: pillBackground,
+            ),
+          ],
+          const Spacer(),
+          if (isCurrentWeek)
+            const ClashChip(
+              label: '本周',
+              tone: ClashTone.warm,
+              variant: ClashChipVariant.filled,
+              icon: Icons.today_outlined,
+            )
+          else if (week != null)
+            ClashChip(
+              label: '回到本周',
+              tone: ClashTone.cool,
+              variant: ClashChipVariant.soft,
+              icon: Icons.history,
+              foreground: pillForeground,
+              background: pillBackground,
+              onTap: onBackToCurrentWeek,
+            ),
+        ],
+      ),
     );
   }
 }
@@ -383,7 +480,6 @@ class _SubHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final start = semesterStart;
     final week = shownWeek;
     final dateRange = (start == null || week == null)
@@ -413,7 +509,7 @@ class _SubHeader extends StatelessWidget {
             start == null
                 ? '设置开学日期'
                 : '学期：${formatLocalDate(mondayOf(start))} 起',
-            style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+            style: const TextStyle(fontSize: 12),
           ),
         ),
       ],
@@ -447,8 +543,6 @@ class _TimetableGrid extends StatelessWidget {
   /// 「今天」的星期（1~7）；仅在展示当前教学周时非 null。
   final int? todayWeekday;
   final ValueChanged<Course> onTapCourse;
-
-  static const int _periodCount = 12;
 
   @override
   Widget build(BuildContext context) {
@@ -502,6 +596,7 @@ class _TimetableGrid extends StatelessWidget {
 
   Widget _buildDayHeader(BuildContext context, double columnWidth) {
     final scheme = Theme.of(context).colorScheme;
+    final warm = ClashTones.of(context, ClashTone.warm);
     final start = semesterStart;
     final week = shownWeek;
     return Row(
@@ -519,8 +614,9 @@ class _TimetableGrid extends StatelessWidget {
                     fontWeight: todayWeekday == day
                         ? FontWeight.w700
                         : FontWeight.w600,
+                    // 今日 = 暖（契约 §1）；ink 是压底文字的安全取色。
                     color: todayWeekday == day
-                        ? scheme.primary
+                        ? warm.ink
                         : scheme.onSurfaceVariant,
                   ),
                 ),
@@ -531,7 +627,7 @@ class _TimetableGrid extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 11,
                       color: todayWeekday == day
-                          ? scheme.primary
+                          ? warm.ink
                           : scheme.onSurfaceVariant,
                     ),
                   ),
@@ -549,7 +645,7 @@ class _TimetableGrid extends StatelessWidget {
       width: _labelColumnWidth,
       child: Column(
         children: [
-          for (var period = 1; period <= _periodCount; period++)
+          for (var period = 1; period <= ClassPeriods.count; period++)
             SizedBox(
               height: _rowHeight,
               child: Padding(
@@ -601,16 +697,18 @@ class _DayColumn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final cool = ClashTones.of(context, ClashTone.cool);
     final lanes = _assignLanes(courses);
     final laneCount = lanes.isEmpty ? 1 : lanes.length;
     final laneWidth = columnWidth / laneCount;
 
     return SizedBox(
-      height: _rowHeight * _TimetableGrid._periodCount,
+      height: _rowHeight * ClassPeriods.count,
       child: Stack(
         children: [
           // 行分隔线（网格骨架）：课程未占满时也能看清节次位置。
-          for (var period = 0; period < _TimetableGrid._periodCount; period++)
+          // 当日列铺冷藏青淡底（冷 = 课表/日历）。
+          for (var period = 0; period < ClassPeriods.count; period++)
             Positioned(
               left: 0,
               right: 0,
@@ -618,9 +716,7 @@ class _DayColumn extends StatelessWidget {
               child: Container(
                 height: _rowHeight,
                 decoration: BoxDecoration(
-                  color: isToday
-                      ? scheme.primary.withValues(alpha: 0.04)
-                      : null,
+                  color: isToday ? ClashTones.tint(cool.ink, alpha: 0.08) : null,
                   border: Border(
                     bottom: BorderSide(
                       color: scheme.outlineVariant.withValues(alpha: 0.5),
@@ -677,7 +773,13 @@ class _DayColumn extends StatelessWidget {
   }
 }
 
-/// 课程卡片：标题 + 可容纳的地点/教师副行（按可用高度决定展示几行）。
+/// 课程卡片：课程色竖条 + 标题 + 可容纳的地点/教师副行（按可用高度决定展示几行）。
+///
+/// 撞色分工：**课程色只作辨识色**（左侧 3px 竖条 + 淡色底纹，沿用
+/// `course_palette`/`course_color`，不并入撞色——否则会丢掉课表的科目辨识度），
+/// 卡片**容器**统一走卡语言（[AppTokens.radiusLg] 圆角 + 暖调细边框 +
+/// [AppTokens.shadowCard]），卡片内文字一律用主题前景色
+/// （`onSurface` / `onSurfaceVariant`），因此深浅色模式下对比度都不依赖课程色。
 class _CourseBlock extends StatelessWidget {
   const _CourseBlock({required this.course, required this.onTap});
 
@@ -686,17 +788,20 @@ class _CourseBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final brightness = Theme.of(context).brightness;
-    final color = courseColorOf(course.color);
-    final titleStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final accent = courseColorOf(course.color);
+    final titleStyle = theme.textTheme.bodySmall?.copyWith(
           fontSize: 11.5,
           fontWeight: FontWeight.w600,
           height: 1.2,
+          color: scheme.onSurface,
         );
-    final subStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+    final subStyle = theme.textTheme.bodySmall?.copyWith(
           fontSize: 10,
           height: 1.2,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          color: scheme.onSurfaceVariant,
         );
 
     final span = course.endPeriod - course.startPeriod + 1;
@@ -713,40 +818,52 @@ class _CourseBlock extends StatelessWidget {
       label: '${course.title}，${weekdayLabel(course.weekday) ?? ''} '
           '${ClassPeriods.rangeLabel(course.startPeriod, course.endPeriod)}'
           '${course.location == null ? '' : '，${course.location}'}',
-      child: Material(
-        color: courseTint(color, brightness),
-        borderRadius: BorderRadius.circular(AppTokens.radiusSm),
+      child: Container(
+        decoration: BoxDecoration(
+          // 课程色淡底纹：保留既有调色板的科目辨识度。
+          color: courseTint(accent, theme.brightness),
+          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+          // 暖调细边框：与主题卡片同一语言（不写死颜色）。
+          border: Border.all(color: scheme.outlineVariant),
+          boxShadow: AppTokens.shadowCard(isDark),
+        ),
         clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Container(
-            decoration: BoxDecoration(
-              border: Border(
-                left: BorderSide(color: color, width: 3),
-              ),
-              borderRadius: BorderRadius.circular(AppTokens.radiusSm),
-            ),
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppTokens.spaceXs + 2,
-              vertical: AppTokens.spaceXs,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onTap,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  course.title,
-                  style: titleStyle,
-                  maxLines: span >= 2 ? 2 : 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (subtitle.isNotEmpty)
-                  Text(
-                    subtitle,
-                    style: subStyle,
-                    maxLines: maxSubLines,
-                    overflow: TextOverflow.ellipsis,
+                // 课程色竖条：科目辨识色在卡片上的唯一实心出现点。
+                Container(width: 3, color: accent),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppTokens.spaceXs + 2,
+                      vertical: AppTokens.spaceXs,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          course.title,
+                          style: titleStyle,
+                          maxLines: span >= 2 ? 2 : 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (subtitle.isNotEmpty)
+                          Text(
+                            subtitle,
+                            style: subStyle,
+                            maxLines: maxSubLines,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
                   ),
+                ),
               ],
             ),
           ),

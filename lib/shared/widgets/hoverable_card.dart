@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers/motion_provider.dart';
 import '../../core/theme/app_tokens.dart';
+import 'clash_tones.dart';
 
 /// 可点卡片 hover 反馈容器（2026-08-20 动效改造）。
 ///
@@ -22,7 +23,6 @@ class HoverableCard extends ConsumerStatefulWidget {
     this.decoration,
     this.hoverDecoration,
     this.hoverBorderColor,
-    this.hoverShadowOpacity = 0.10,
     this.hoverElevate = true,
   });
 
@@ -43,9 +43,6 @@ class HoverableCard extends ConsumerStatefulWidget {
   /// hover 边框色（未传 [hoverDecoration] 时生效，默认主色 35% 透明度）。
   final Color? hoverBorderColor;
 
-  /// hover 阴影强度（未传 [hoverDecoration] 时生效）。
-  final double hoverShadowOpacity;
-
   /// hover 是否微上浮 2px（桌面观感）。
   final bool hoverElevate;
 
@@ -63,38 +60,27 @@ class _HoverableCardState extends ConsumerState<HoverableCard> {
         widget.borderRadius ?? BorderRadius.circular(AppTokens.radiusXl);
     return widget.decoration ??
         BoxDecoration(
-          color: scheme.surface,
+          color: scheme.surfaceContainerLow,
           borderRadius: radius,
           border: Border.all(
             color: isDark
-                ? scheme.outlineVariant.withValues(alpha: 0.4)
+                ? AppTokens.neutralBorderDark
                 : AppTokens.neutralBorderLight,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
+          boxShadow: AppTokens.shadowCard(isDark),
         );
   }
 
   BoxDecoration _hoverDecoration(BuildContext context, BoxDecoration base) {
     if (widget.hoverDecoration != null) return widget.hoverDecoration!;
-    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // hover 边框用撞色主色（浅色下深橙、深色下亮橙，均满足图形 3:1）。
+    final accent = ClashTones.of(context, ClashTone.warm);
     return base.copyWith(
       border: Border.all(
-        color:
-            widget.hoverBorderColor ?? scheme.primary.withValues(alpha: 0.35),
+        color: widget.hoverBorderColor ?? accent.ink.withValues(alpha: 0.55),
       ),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withValues(alpha: widget.hoverShadowOpacity),
-          blurRadius: 16,
-          offset: const Offset(0, 6),
-        ),
-      ],
+      boxShadow: AppTokens.shadowCardHover(isDark),
     );
   }
 

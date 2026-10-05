@@ -59,6 +59,9 @@ logs/
 *.swp
 *~
 
+# 本地工具状态（代理/研究工具的会话产物，不属于项目）
+.dsh-study/
+
 # Local tooling state
 .zcode/
 .reasonix/

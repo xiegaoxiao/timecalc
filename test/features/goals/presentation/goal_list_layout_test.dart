@@ -18,10 +18,10 @@ import '../../../shared/nav_helper.dart';
 ///
 /// 固定时钟 2026-08-05。验证：
 /// - 区块头「我的目标 / 新建目标」+ 顶部统计胶囊（进行中/已完成/全部）；
-/// - 单目标通栏大卡（占满内容宽度，消除孤卡小角）；
-/// - 大号完成度 %、彩色进度条、统计块（已完成 x/y / 学习时长 / 剩余时间）；
+/// - 单目标限制宽度，保留可读的概览；
+/// - 单一进度条、完成比例及已投入 / 待投入统计；
 /// - 无任务时 `0%` 与 `--` 占位（区分「没计划」与「0 完成」）；
-/// - 多目标通栏单列卡片流。
+/// - 多目标宽窗双列，窄窗单列。
 void main() {
   late AppDatabase db;
   late GoalRepository goals;
@@ -73,7 +73,7 @@ void main() {
     expect(find.byTooltip('创建目标'), findsOneWidget);
   });
 
-  testWidgets('单目标：通栏大卡占满内容宽度，展示进度/统计/查看详情', (tester) async {
+  testWidgets('单目标：限制卡片宽度，展示单一进度及学习统计', (tester) async {
     final goal = await goals.create(
       title: '考研数学',
       description: '零基础冲 140+',
@@ -99,7 +99,7 @@ void main() {
 
     // 通栏：单目标卡片宽度应接近内容区宽度（约 690，双列时仅约 338）。
     final cardSize = tester.getSize(goalCardFinder());
-    expect(cardSize.width, greaterThan(500));
+    expect(cardSize.width, inInclusiveRange(450, 600));
 
     // 大号完成度数字（视觉焦点）+ 进度条。
     expect(find.text('50%'), findsOneWidget);
@@ -116,24 +116,21 @@ void main() {
 
     // 统计块（标题 + 数值结构）：已完成 / 学习时长 / 剩余时间。
     // 「已完成」出现两处：顶部统计胶囊标签 + 卡片统计块标题。
-    expect(find.text('已完成'), findsNWidgets(2));
-    expect(find.text('1 / 2'), findsOneWidget);
-    expect(find.text('学习时长'), findsOneWidget);
-    expect(find.text('剩余时间'), findsOneWidget);
+    expect(find.text('已完成'), findsOneWidget);
+    expect(find.text('已完成 1 / 2 项任务'), findsOneWidget);
+    expect(find.text('已投入'), findsOneWidget);
+    expect(find.text('待投入'), findsOneWidget);
     // 学习时长与剩余时间均为 1 小时（2 任务各 60 分钟，1 个完成）。
     expect(find.text('1 小时'), findsNWidgets(2));
 
     // 截止区间（创建日 → 截止日）+ 倒计时徽标。
-    expect(find.textContaining('→ 2026.12.20'), findsOneWidget);
+    expect(find.text('截止 2026.12.20'), findsOneWidget);
     expect(find.text('剩余 137 天'), findsOneWidget);
 
     // 「查看详情」主操作（v1.17 起 TextButton.icon：icon 为文字、label 为箭头，
     // 不再拼成单文本「查看详情 →」）。
     expect(
-      find.descendant(
-        of: goalCardFinder(),
-        matching: find.text('查看详情'),
-      ),
+      find.descendant(of: goalCardFinder(), matching: find.text('查看详情')),
       findsOneWidget,
     );
 
@@ -151,12 +148,12 @@ void main() {
 
     // 无任务：完成度 0% 灰色占位，统计块用 `--`（同今日页口径）。
     expect(find.text('0%'), findsOneWidget);
-    expect(find.text('-- / --'), findsOneWidget); // 已完成
+    expect(find.text('尚未安排任务'), findsOneWidget); // 已完成
     expect(find.text('--'), findsNWidgets(2)); // 学习时长 / 剩余时间
   });
 
-  testWidgets('多目标：通栏单列卡片流（每卡占满内容宽度）', (tester) async {
-    // 2026-08 改版：不再按视口宽度自适应双列，一律通栏单列，信息更完整。
+  testWidgets('多目标：宽窗口双列，缩窄后单列且无溢出', (tester) async {
+    // 宽窗双列；缩窄后单列，卡片高度仍随内容增长。
     tester.view.physicalSize = const Size(1400, 900);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -170,14 +167,27 @@ void main() {
     expect(find.text('考研数学'), findsOneWidget);
     expect(find.text('Java 后端'), findsOneWidget);
 
-    // 两张卡各自通栏：中心 x 坐标几乎相同（单列叠放），均接近内容区中线。
+    // 两张卡并排且顶部对齐。
     final cards = goalCardFinder();
     expect(cards, findsNWidgets(2));
     final firstX = tester.getCenter(cards.at(0)).dx;
     final secondX = tester.getCenter(cards.at(1)).dx;
-    expect((firstX - secondX).abs(), lessThan(10));
+    expect((firstX - secondX).abs(), greaterThan(300));
+    expect(
+      (tester.getTopLeft(cards.at(0)).dy - tester.getTopLeft(cards.at(1)).dy)
+          .abs(),
+      lessThan(1),
+    );
     final width = tester.getSize(cards.at(0)).width;
-    expect(width, greaterThan(500));
+    expect(width, inInclusiveRange(400, 600));
+    tester.view.physicalSize = const Size(700, 900);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(
+      (tester.getCenter(cards.at(0)).dx - tester.getCenter(cards.at(1)).dx)
+          .abs(),
+      lessThan(1),
+    );
   });
 
   testWidgets('系统放大字号（textScaler 2.0）：卡片按内容自适应高度，不溢出（回归）', (tester) async {

@@ -12,6 +12,8 @@ import '../../../core/utils/date_text.dart';
 import '../../../core/utils/time_text.dart';
 import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/app_form_field.dart';
+import '../../../shared/widgets/app_time_picker.dart';
+import '../../../shared/widgets/clash_tones.dart';
 import '../../../shared/widgets/duration_step_input.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../data/task_repository_provider.dart';
@@ -142,7 +144,7 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
   /// 选择计划时刻（可选，小时级排程）：确定后落 `HH:mm`，取消不动原值。
   Future<void> _pickTime() async {
     final current = tryTimeOfDayMinutes(_startTime) ?? 9 * 60;
-    final picked = await showTimePicker(
+    final picked = await showAppTimePicker(
       context: context,
       helpText: '选择计划时刻（可选）',
       initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
@@ -238,7 +240,7 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
       );
       if (!ok) return;
       // 跨页刷新（FR-3 验收）：创建/编辑影响今日页（列表与「目标剩余」）、
-      // 进度页（剩余工作量/燃尽/耗时图）、日历与逾期横幅，走全量集合。
+      // 进度页（剩余工作量/燃尽）、日历与逾期横幅，走全量集合。
       invalidateAppData(ref.invalidate);
       if (mounted) Navigator.of(context).pop(true);
     } finally {
@@ -312,9 +314,11 @@ class _TaskFormDialogState extends ConsumerState<TaskFormDialog> {
                 prefixIcon: Icon(
                   Icons.book_outlined,
                   size: 20,
+                  // 撞色 v2：已选科目走冷色 ink（对照/分类语义），未选用
+                  // 主题次级文字色——不再写死浅色模式的 token。
                   color: _subjectId != null
-                      ? Theme.of(context).colorScheme.primary
-                      : AppTokens.neutralTextSecondaryLight,
+                      ? ClashTones.of(context, ClashTone.cool).ink
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
                 scheme: Theme.of(context).colorScheme,
               ),

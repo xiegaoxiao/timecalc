@@ -46,20 +46,22 @@ Future<void> dropColumnIfExists(
   );
 }
 
-/// 回退兼容：清理高版本残留结构（AI 供应商表、settings 的 ai_* 列与
-/// WebDAV/同步 6 列）。
+/// 回退兼容：清理高版本残留结构（AI 供应商表、settings 的 ai_* 列、
+/// WebDAV/同步 6 列与 tasks.schedule_locked）。
 ///
-/// 代码从带 AI 功能（schema v14）或带 WebDAV 同步（schema v12）回退后，
-/// 本地数据库仍停留在更高版本。drift 的 step-by-step 迁移只支持升级；
-/// 这里在 onUpgrade 检测到降级时删除目标版本不认识的残留结构
-/// （ai_providers 表 + settings 的 5 个 ai_* 列 + 6 个 webdav/sync 列），
-/// 随后让 drift 把 user_version 写回当前版本。原数据
-/// （目标/任务/科目/模板/设置）全部保留，且各操作幂等（表/列不存在时跳过）。
+/// 代码从带 AI 功能（schema v14）、带 WebDAV 同步（schema v12）或带智能重排
+/// 排期锁定（schema v18，2026-10 回退）的更高版本回退后，本地数据库仍停留
+/// 在更高版本。drift 的 step-by-step 迁移只支持升级；这里在 onUpgrade 检测到
+/// 降级时删除目标版本不认识的残留结构（ai_providers 表 + settings 的 5 个
+/// ai_* 列 + 6 个 webdav/sync 列 + tasks 的 schedule_locked 列），随后让 drift
+/// 把 user_version 写回当前版本。原数据（目标/任务/科目/模板/设置）全部保留，
+/// 且各操作幂等（表/列不存在时跳过）。
 ///
 /// 注意：只清理「当前代码不认识」的结构。当前版本（v17）认识
-/// reduce_motion（v15）、tasks/recurrence_templates 的 start_time（v16）
-/// 与 courses 表 / settings.semester_start_date（v17），故不在此删除
-/// （降级到 v17 时这些结构保留）。
+/// reduce_motion（v15）、tasks/recurrence_templates 的 start_time（v16）、
+/// courses 表与 settings.semester_start_date（v17），故不在此删除（降级到
+/// v17 时这些结构保留）；tasks.schedule_locked 是 v18 增补、v17 代码不认识，
+/// 因此在清理之列（与 AI/WebDAV 残留同语义）。
 Future<void> downgradeCleanup(Migrator m) async {
   final db = m.database;
   // v13 -> v14 新增的 AI 供应商表（可能不存在，IF NOT EXISTS 语义由
@@ -87,9 +89,12 @@ Future<void> downgradeCleanup(Migrator m) async {
   ]) {
     await dropColumnIfExists(m, 'settings', column);
   }
+  // v18（2026-10 移除智能重排）新增到 tasks 的排期锁定列：v18 库降级到 v17
+  // 时清理（与上面的 AI/WebDAV 残留同语义，列不存在时跳过，幂等）。
+  await dropColumnIfExists(m, 'tasks', 'schedule_locked');
 }
 
-/// TimeCalc 本地数据库（schema v16）。
+/// TimeCalc 本地数据库（schema v17）。
 ///
 /// v1：目标/科目/任务三张表。
 /// v2：Tasks 增加 original_planned_date；新增 Settings 计划偏好表（M2）。

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/theme/app_tokens.dart';
 import 'batch_task_form_dialog.dart';
 import 'recurrence_task_dialog.dart';
 import 'task_form_dialog.dart';
@@ -35,7 +36,9 @@ class TaskSectionActions extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        TextButton.icon(
+        // 主动作（撞色 v2）：暖色实心（主题 filledButton 默认暖色）——
+        // 「添加任务」是任务区最高频动作，必须在操作组里视觉最重。
+        FilledButton.icon(
           onPressed: () => TaskFormDialog.show(
             context,
             goalId: goalId,
@@ -45,6 +48,8 @@ class TaskSectionActions extends StatelessWidget {
           icon: const Icon(Icons.add, size: 18),
           label: const Text('添加任务'),
         ),
+        const SizedBox(width: AppTokens.spaceXs),
+        // 次要动作：冷色文字按钮（主题 textButton 默认冷色）。
         TextButton.icon(
           onPressed: () => BatchTaskFormDialog.show(
             context,

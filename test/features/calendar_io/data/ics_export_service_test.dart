@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -101,7 +102,9 @@ void main() {
   test('归档任务不进日历', () async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
     await tasks.create(goalId: goal.id, title: '已完成', plannedDate: '2026-08-06');
-    await tasks.archiveAllActive(goal.id);
+    // 归档生产路径在 importPlan 内按完成状态分流，测试直接写库造数。
+    await (db.update(db.tasks)..where((t) => t.goalId.equals(goal.id)))
+        .write(TasksCompanion(archivedAt: Value(DateTime.utc(2026, 8, 5))));
 
     final file = File('${tempDir.path}${Platform.pathSeparator}out.ics');
     final service = IcsExportService(

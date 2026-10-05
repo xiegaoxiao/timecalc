@@ -33,11 +33,6 @@ void main() {
       expect(mondayOfWeek(week1Monday, 0), DateTime(2026, 9, 7));
       expect(mondayOfWeek(week1Monday, -3), DateTime(2026, 9, 7));
     });
-
-    test('lastDayOfWeek 为当周周日', () {
-      expect(lastDayOfWeek(week1Monday, 1), DateTime(2026, 9, 13));
-      expect(lastDayOfWeek(week1Monday, 2), DateTime(2026, 9, 20));
-    });
   });
 
   group('教学周号', () {
@@ -60,8 +55,6 @@ void main() {
     test('早于第 1 周的日期返回 null（未开学）', () {
       expect(teachingWeekOf(week1Monday, DateTime(2026, 9, 6)), isNull);
       expect(teachingWeekOf(week1Monday, DateTime(2026, 8, 31)), isNull);
-      expect(isBeforeSemester(week1Monday, DateTime(2026, 9, 6)), isTrue);
-      expect(isBeforeSemester(week1Monday, DateTime(2026, 9, 7)), isFalse);
     });
 
     test('传入的基准不是周一时同样按所在周归一', () {

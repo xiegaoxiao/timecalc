@@ -158,7 +158,7 @@ void main() {
     expect(goal.title, '迁移目标');
     expect(goal.deadlineDate, '2026-08-05');
 
-    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    final task = await _readTask(upgraded, 1);
     expect(task.title, '迁移任务');
     expect(task.plannedDate, '2026-08-05');
     expect(task.originalPlannedDate, isNull);
@@ -198,7 +198,7 @@ void main() {
     final upgraded = AppDatabase(schema.newConnection());
     await verifier.migrateAndValidate(upgraded, 6);
 
-    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    final task = await _readTask(upgraded, 1);
     expect(task.title, 'v2 任务');
     expect(task.plannedDate, '2026-08-06');
     expect(task.originalPlannedDate, '2026-08-05');
@@ -269,7 +269,7 @@ void main() {
     final upgraded = AppDatabase(schema.newConnection());
     await verifier.migrateAndValidate(upgraded, 6);
 
-    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    final task = await _readTask(upgraded, 1);
     expect(task.title, 'v3 任务');
     expect(task.recurrenceTemplateId, isNull);
 
@@ -307,7 +307,7 @@ void main() {
     await verifier.migrateAndValidate(upgraded, 6);
 
     // 任务与模板数据保留；新墓碑列默认 null。
-    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    final task = await _readTask(upgraded, 1);
     expect(task.title, 'v4 任务');
 
     final template = await upgraded.select(upgraded.recurrenceTemplates).getSingle();
@@ -387,7 +387,7 @@ void main() {
     // 迁移成功且数据保留；既有 v5 列未被重建破坏，v6 新列正确补上。
     final goal = await (upgraded.select(upgraded.goals)..where((g) => g.id.equals(1))).getSingle();
     expect(goal.title, '半迁移目标');
-    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    final task = await _readTask(upgraded, 1);
     expect(task.title, '半迁移任务');
     final template = await upgraded.select(upgraded.recurrenceTemplates).getSingle();
     expect(template.title, '半迁移模板');
@@ -496,7 +496,7 @@ void main() {
 
     final goal = await (upgraded.select(upgraded.goals)..where((g) => g.id.equals(1))).getSingle();
     expect(goal.title, '迁移目标');
-    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    final task = await _readTask(upgraded, 1);
     expect(task.title, '迁移任务');
 
     final tables = await upgraded.customSelect(
@@ -557,7 +557,7 @@ void main() {
     await verifier.migrateAndValidate(upgraded, 8);
 
     // v7 数据保留。
-    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    final task = await _readTask(upgraded, 1);
     expect(task.title, 'v7 任务');
 
     // v8 新表存在且可写入（含外键关联任务）。
@@ -603,7 +603,7 @@ void main() {
     final upgraded = AppDatabase(schema.newConnection());
     await verifier.migrateAndValidate(upgraded, 8);
 
-    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    final task = await _readTask(upgraded, 1);
     expect(task.title, '迁移任务');
 
     final tables = await upgraded.customSelect(
@@ -701,7 +701,7 @@ void main() {
     final upgraded = AppDatabase(schema.newConnection());
     await verifier.migrateAndValidate(upgraded, 9);
 
-    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    final task = await _readTask(upgraded, 1);
     expect(task.title, '迁移任务');
 
     final tables = await upgraded.customSelect(
@@ -791,7 +791,7 @@ void main() {
     final upgraded = AppDatabase(schema.newConnection());
     await verifier.migrateAndValidate(upgraded, 10);
 
-    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    final task = await _readTask(upgraded, 1);
     expect(task.title, '迁移任务');
 
     final tables = await upgraded.customSelect(
@@ -865,7 +865,7 @@ void main() {
     final upgraded = AppDatabase(schema.newConnection());
     await verifier.migrateAndValidate(upgraded, 11);
 
-    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    final task = await _readTask(upgraded, 1);
     expect(task.title, '迁移任务');
 
     final tables = await upgraded.customSelect(
@@ -991,7 +991,7 @@ void main() {
     final upgraded = AppDatabase(schema.newConnection());
     await verifier.migrateAndValidate(upgraded, 12);
 
-    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    final task = await _readTask(upgraded, 1);
     expect(task.title, '迁移任务');
 
     final tables = await upgraded.customSelect(
@@ -1139,7 +1139,7 @@ void main() {
     expect(goal.title, 'v15 目标');
 
     // 新列存在且既有行默认为 null（= 原按天语义，无需回填）。
-    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    final task = await _readTask(upgraded, 1);
     expect(task.title, 'v15 任务');
     expect(task.plannedDate, '2026-08-06');
     expect(task.estimatedMinutes, 90);
@@ -1177,7 +1177,7 @@ void main() {
     final upgraded = AppDatabase(schema.newConnection());
     await verifier.migrateAndValidate(upgraded, 16);
 
-    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    final task = await _readTask(upgraded, 1);
     expect(task.title, '迁移任务');
     expect(task.startTime, isNull); // 旧数据只排到天
 
@@ -1220,7 +1220,7 @@ void main() {
     // v16 数据保留（含小时级排程列的内容）。
     final goal = await (upgraded.select(upgraded.goals)..where((g) => g.id.equals(1))).getSingle();
     expect(goal.title, 'v16 目标');
-    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    final task = await _readTask(upgraded, 1);
     expect(task.title, 'v16 任务');
     expect(task.startTime, '20:30');
 
@@ -1362,7 +1362,7 @@ void main() {
 
     final version = await upgraded.customSelect('PRAGMA user_version').get();
     expect(version.single.read<int>('user_version'), 16);
-    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    final task = await _readTask(upgraded, 1);
     expect(task.startTime, '20:30'); // 既有列不被清空
     // 模板侧的新列正常补上。
     expect(
@@ -1374,13 +1374,14 @@ void main() {
     schema.close();
   });
 
-  test('v18 库降级到 v17：清理高版本残留结构，数据保留（回退兼容）', () async {
-    // 模拟「代码回退」：v17（当前）以上版本（如带 AI 功能的 v18+）新增了
-    // 我们不认识的结构，本地库却停在该版本。先建 v12 库并写入数据
+  test('v19 库降级到 v17：清理高版本残留结构（含 schedule_locked），数据保留（回退兼容）', () async {
+    // 模拟「代码回退」：v17（当前）以上版本（如带排期锁定的 v18、带 AI 功能的
+    // v19）新增了我们不认识的结构，本地库却停在该版本。先建 v12 库并写入数据
     // （v12 含 webdav/sync 6 列），再手工加回 AI 残留结构
     // （ai_providers 表 + settings 的 ai_* 列）与 accent_color/reduce_motion
-    // 列、courses 表与 semester_start_date（v17 新知结构），并把 user_version
-    // 提到 18。
+    // 列、courses 表与 semester_start_date（v17 认识，降级保留）、
+    // schedule_locked（v18 增补、v17 不认识，降级清理），并把 user_version
+    // 提到 19。
     final verifier = SchemaVerifier(GeneratedHelper());
     final schema = await verifier.schemaAt(12);
     final raw = schema.rawDatabase;
@@ -1435,9 +1436,17 @@ void main() {
       'CREATE INDEX courses_weekday_idx ON courses (weekday)',
     );
     raw.execute('ALTER TABLE settings ADD COLUMN semester_start_date TEXT');
-    raw.execute('PRAGMA user_version = 18');
+    // v18 增补的结构（排期锁定）v17 不认识，降级时会被清理（幂等）。
+    raw.execute(
+      'ALTER TABLE tasks ADD COLUMN schedule_locked INTEGER NOT NULL DEFAULT 0 '
+      'CHECK (schedule_locked IN (0, 1))',
+    );
+    raw.execute(
+      'UPDATE tasks SET schedule_locked = 1 WHERE id = 1',
+    );
+    raw.execute('PRAGMA user_version = 19');
 
-    // 真实 AppDatabase（schemaVersion=17）打开 v18 库：onUpgrade 检测到
+    // 真实 AppDatabase（schemaVersion=17）打开 v19 库：onUpgrade 检测到
     // 降级，清理高版本不认识的结构并让 drift 把版本写回 17。
     final downgraded = AppDatabase(schema.newConnection());
     await downgraded.customSelect('SELECT 1').get();
@@ -1489,6 +1498,11 @@ void main() {
         'week_parity',
       ]),
     );
+    // v18 增补的排期锁定已不属于当前 v17 代码，降级时清理。
+    expect(
+      await _columns(downgraded, 'tasks'),
+      isNot(contains('schedule_locked')),
+    );
 
     // 原数据全部保留。
     final goal = await (downgraded.select(downgraded.goals)
@@ -1532,7 +1546,12 @@ void main() {
     expect(goal.title, 'v12 目标');
     final setting = await upgraded.select(upgraded.settings).getSingle();
     expect(setting.dailyAvailableMinutes, 120);
-    expect(setting.accentColor, 'green'); // v14 列默认值
+    // v14 补列用的是**历史 schema step** 的默认值 green（见 migration.dart 中
+    // `$customConstraints: 'NOT NULL DEFAULT \'green\''`）：迁移步骤是历史产物，
+    // 不得改写，因此老库升级上来仍是 green（legacy 值），由外观页的 legacy 显示
+    // 归一呈现。v2.0 撞色重构只改了 tables.dart 的**当前**默认值，
+    // 只影响全新安装/新增行（见 settings_repository_test 的 clash 断言）。
+    expect(setting.accentColor, 'green');
 
     // v13：WebDAV/同步 6 列全部删除。
     final columns = await _columns(upgraded, 'settings');
@@ -1574,7 +1593,7 @@ void main() {
     final upgraded = AppDatabase(schema.newConnection());
     await verifier.migrateAndValidate(upgraded, 15);
 
-    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    final task = await _readTask(upgraded, 1);
     expect(task.title, '迁移任务');
 
     final tables = await upgraded.customSelect(
@@ -1624,7 +1643,8 @@ void main() {
     expect(goal.title, 'v13 目标');
     final setting = await upgraded.select(upgraded.settings).getSingle();
     expect(setting.themeMode, 'dark');
-    // v14：新增 accent_color，旧行走 DB 默认值 green。
+    // v14：新增 accent_color，旧行走**历史 schema step** 的 DB 默认值 green
+    // （迁移步骤不改写，故老库升级上来保持 legacy 值；新装默认见 tables.dart）。
     expect(setting.accentColor, 'green');
     // v15：新增 reduce_motion，旧行默认 false（减少动画关闭）。
     expect(setting.reduceMotion, isFalse);
@@ -1693,6 +1713,114 @@ void main() {
     await upgraded.close();
     schema.close();
   });
+
+  test('schema v1 -> v17：迁移成功保留数据（完整链路）', () async {
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(1);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['迁移目标', '2026-08-05', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO tasks (goal_id, title, planned_date, created_at, updated_at) '
+      'VALUES (1, ?, ?, ?, ?)',
+      ['迁移任务', '2026-08-05', 1750000000, 1750000000],
+    );
+
+    final upgraded = AppDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(upgraded, 17);
+
+    final task = await (upgraded.select(upgraded.tasks)..where((t) => t.id.equals(1))).getSingle();
+    expect(task.title, '迁移任务');
+    // v16 新增的 start_time 在完整链路上默认值正确。
+    expect(task.startTime, isNull);
+
+    final tables = await upgraded.customSelect(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+    ).get();
+    final names = tables.map((row) => row.read<String>('name')).toSet();
+    expect(
+      names,
+      containsAll([
+        'settings',
+        'recurrence_templates',
+        'milestones',
+        'checklist_items',
+        'courses',
+      ]),
+    );
+    expect(await _columns(upgraded, 'settings'), contains('semester_start_date'));
+
+    await upgraded.close();
+    schema.close();
+  });
+
+  test('v18 库降级到 v17：schedule_locked 被清理、业务数据保留、可重复打开（幂等）', () async {
+    // 模拟「已升级到 v18 的本地库 + 代码回退到 v17」：v17 结构手工加回
+    // schedule_locked（v18 增补列，含一条已锁定行），user_version 记为 18。
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(17);
+    final raw = schema.rawDatabase;
+    raw.execute(
+      'ALTER TABLE tasks ADD COLUMN schedule_locked INTEGER NOT NULL DEFAULT 0 '
+      'CHECK (schedule_locked IN (0, 1))',
+    );
+    raw.execute(
+      'INSERT INTO goals (title, deadline_date, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['降级保留目标', '2026-12-31', 1750000000, 1750000000],
+    );
+    raw.execute(
+      'INSERT INTO tasks (goal_id, title, planned_date, start_time, '
+      'schedule_locked, created_at, updated_at) '
+      'VALUES (1, ?, ?, ?, 1, ?, ?)',
+      ['降级保留任务', '2026-09-20', '20:30', 1750000000, 1750000000],
+    );
+    raw.execute('PRAGMA user_version = 18');
+
+    // 打开触发 onUpgrade(from=18, to=17)：清理 v17 不认识的 schedule_locked。
+    final downgraded = AppDatabase(schema.newConnection());
+    await downgraded.customSelect('SELECT 1').get();
+
+    final version = await downgraded.customSelect('PRAGMA user_version').get();
+    expect(version.single.read<int>('user_version'), 17);
+    expect(
+      await _columns(downgraded, 'tasks'),
+      isNot(contains('schedule_locked')),
+    );
+
+    // 业务数据与 v16/v17 认识的列全部保留。
+    final goal = await (downgraded.select(downgraded.goals)
+          ..where((g) => g.id.equals(1)))
+        .getSingle();
+    expect(goal.title, '降级保留目标');
+    final task = await (downgraded.select(downgraded.tasks)
+          ..where((t) => t.id.equals(1)))
+        .getSingle();
+    expect(task.title, '降级保留任务');
+    expect(task.plannedDate, '2026-09-20');
+    expect(task.startTime, '20:30');
+    await downgraded.close();
+
+    // 幂等：再次打开（此时已是 v17，不再触发降级清理）不报错，数据不变。
+    final reopened = AppDatabase(schema.newConnection());
+    await reopened.customSelect('SELECT 1').get();
+    expect(
+      await (reopened.select(reopened.tasks)..where((t) => t.id.equals(1)))
+          .getSingle()
+          .then((t) => t.title),
+      '降级保留任务',
+    );
+    expect(
+      await _columns(reopened, 'tasks'),
+      isNot(contains('schedule_locked')),
+    );
+
+    await reopened.close();
+    schema.close();
+  });
 }
 
 /// 打开时即抛错的迁移策略（验证 onUpgrade 失败回滚与数据保全）。
@@ -1713,4 +1841,34 @@ Future<Set<String>> _columns(AppDatabase db, String table) async {
     'PRAGMA table_info($table)',
   ).get();
   return rows.map((row) => row.read<String>('name')).toSet();
+}
+
+/// 原始读取任务行（中间版本断言数据保留时使用）。
+///
+/// 迁移测试常把库停在中间版本（如 v6）再断言数据保留，此时表的列集与当前
+/// schema 不一致（如 v16 之前没有 start_time），drift 生成的 typed 映射可能
+/// 读不到期望的列。因此中间版本的读取一律走原始 SQL（与既有「用原始 SQL
+/// 读取 settings」同款做法），只取断言需要的字段。
+Future<_RawTask> _readTask(AppDatabase db, int id) async {
+  final row = await db
+      .customSelect(
+        'SELECT * FROM tasks WHERE id = ?',
+        variables: [Variable.withInt(id)],
+      )
+      .getSingle();
+  return _RawTask(row.data);
+}
+
+class _RawTask {
+  const _RawTask(this._data);
+
+  final Map<String, Object?> _data;
+
+  String get title => _data['title']! as String;
+  String get plannedDate => _data['planned_date']! as String;
+  String? get originalPlannedDate => _data['original_planned_date'] as String?;
+  String? get startTime => _data['start_time'] as String?;
+  int? get estimatedMinutes => _data['estimated_minutes'] as int?;
+  Object? get archivedAt => _data['archived_at'];
+  Object? get recurrenceTemplateId => _data['recurrence_template_id'];
 }

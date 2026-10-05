@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 
-/// 语义色 token（M13）：警告/成功/信息三组，浅深两套。
+/// 语义色 token（M13；v2.0 撞色重构后重新验证）。
 ///
-/// 背景：进度/时间管理工具里「错误」与「警告」此前共用 scheme.error 红色，
+/// 背景：进度/时间管理工具里「错误」与「警告」若共用 scheme.error 红色，
 /// 过载（超出可用时长）与逾期/失败无法靠颜色区分。这里为各语义提供
 /// 独立的 文字色 + 容器色 两组，供页面直接取用；语义文案仍有文字与图标
 /// 承载（NFR-4：不只依赖颜色）。
 ///
-/// 取值满足 WCAG 2.1 AA（文字级 ≥4.5:1，容器/文字对也 ≥4.5:1），
-/// 由 contrast_test 循环固化。
+/// **v2.0 变更**：底色由冷灰换成暖奶油（[AppTokens.neutralBgLight]），
+/// 语义色在整个注册表的 5 套撞色方案 × 明暗两态下重新验证 ≥4.5:1
+/// （由 `contrast_test` 逐条固化）。语义色**不随撞色方案变化**：危险/
+/// 警告/成功/信息属于通用约定，若跟着撞色走会与主色的情绪表达打架。
 @immutable
 class AppSemanticColors extends ThemeExtension<AppSemanticColors> {
   const AppSemanticColors({
@@ -68,17 +70,17 @@ class AppSemanticColors extends ThemeExtension<AppSemanticColors> {
   }
 
   static AppSemanticColors light() => const AppSemanticColors(
-    // 深琥珀：浅色表面（#F6F6F6）上 5.7:1。
+    // 深琥珀：暖奶油底（#FDF6F0）上 5.81:1。
     warning: Color(0xFF8F5200),
     onWarning: Color(0xFFFFFFFF),
     warningContainer: Color(0xFFFFDEA6),
     onWarningContainer: Color(0xFF4A2F00),
-    // 深绿：浅色表面上 4.75:1。
+    // 深绿：暖奶油底上 4.79:1。
     success: Color(0xFF2E7D32),
     onSuccess: Color(0xFFFFFFFF),
     successContainer: Color(0xFFA5D6A7),
     onSuccessContainer: Color(0xFF0D3310),
-    // 深蓝：浅色表面上 5.32:1。
+    // 深蓝：暖奶油底上 5.37:1。
     info: Color(0xFF1565C0),
     onInfo: Color(0xFFFFFFFF),
     infoContainer: Color(0xFFBBDEFB),
@@ -86,17 +88,17 @@ class AppSemanticColors extends ThemeExtension<AppSemanticColors> {
   );
 
   static AppSemanticColors dark() => const AppSemanticColors(
-    // 亮琥珀：深色表面上 9.9:1。
+    // 亮琥珀：深暖底（#17120F）上 10.48:1。
     warning: Color(0xFFF5B84C),
     onWarning: Color(0xFF4A2F00),
     warningContainer: Color(0xFF6B4A00),
     onWarningContainer: Color(0xFFFFDEA6),
-    // 亮绿。
+    // 亮绿：9.24:1。
     success: Color(0xFF81C784),
     onSuccess: Color(0xFF0D3310),
     successContainer: Color(0xFF2E5A31),
     onSuccessContainer: Color(0xFFA5D6A7),
-    // 亮蓝。
+    // 亮蓝：10.62:1。
     info: Color(0xFF90CAF9),
     onInfo: Color(0xFF0C2E56),
     infoContainer: Color(0xFF244F7E),

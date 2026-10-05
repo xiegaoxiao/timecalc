@@ -167,9 +167,9 @@ void main() {
     await tester.enterText(find.byType(TextFormField).first, '补录任务');
     // 快速添加表单新增「计划时刻」字段后，800x600 测试视口下「创建」按钮落到
     // 滚动区之下：先滚动到可见再点（对话框本身限高可滚动，不受影响）。
-    await tester.ensureVisible(find.text('创建'));
+    await tester.ensureVisible(find.text('创建任务'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('创建'));
+    await tester.tap(find.text('创建任务'));
     await tester.pumpAndSettle();
 
     expect(find.text('补录任务'), findsOneWidget);

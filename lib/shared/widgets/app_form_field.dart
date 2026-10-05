@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_tokens.dart';
+import 'clash_tones.dart';
 
 /// 统一表单输入框装饰器。
 ///
@@ -58,9 +59,12 @@ class AppFormField extends StatelessWidget {
 
   /// 获取统一的 InputDecoration 样式。
   ///
-  /// 颜色全部取自 [ColorScheme]（随主题明暗切换）：
-  /// 填充用 `surfaceContainerHighest`、边框用 `outlineVariant`、
+  /// 颜色全部取自 [ColorScheme] / [AppTokens]（随主题明暗切换）：
+  /// 填充用浅色表面、边框用 `outlineVariant`、
   /// 文字用 `onSurfaceVariant`、错误用 `error`。
+  ///
+  /// **聚焦态用冷藏青描边**（撞色语言：暖色主动作 / 冷色聚焦与对照），
+  /// 与 `inputDecorationTheme.focusedBorder` 的冷色语义一致。
   static InputDecoration defaultDecoration({
     String? label,
     String? hint,
@@ -73,11 +77,17 @@ class AppFormField extends StatelessWidget {
     bool enabled = true,
     ColorScheme? scheme,
   }) {
-    final baseFill = scheme?.surfaceContainerHighest ?? const Color(0xFFF8F9FA);
+    final baseFill = scheme == null
+        ? AppTokens.neutralSurfaceLight
+        : (scheme.brightness == Brightness.dark
+              ? scheme.surfaceContainerLow
+              : scheme.surfaceContainerLowest);
     final borderColor = scheme?.outlineVariant ?? AppTokens.neutralBorderLight;
-    final textSecondary = scheme?.onSurfaceVariant ??
-        AppTokens.neutralTextSecondaryLight;
-    final errorColor = scheme?.error ?? const Color(0xFFDC2626);
+    final textSecondary =
+        scheme?.onSurfaceVariant ?? AppTokens.neutralTextSecondaryLight;
+    // 聚焦描边（冷色）：与主题 inputDecorationTheme.focusedBorder 同一语义。
+    final focusColor = scheme?.secondary ?? AppTokens.clashCool;
+    final errorColor = scheme?.error;
 
     return InputDecoration(
       labelText: label,
@@ -87,13 +97,17 @@ class AppFormField extends StatelessWidget {
       counterText: counterText,
       prefixIcon: prefixIcon,
       suffixIcon: suffixIcon,
-      contentPadding: contentPadding ??
+      contentPadding:
+          contentPadding ??
           const EdgeInsets.symmetric(
             horizontal: AppTokens.spaceMd,
             vertical: AppTokens.spaceMd,
           ),
       filled: true,
-      fillColor: baseFill.withValues(alpha: enabled ? 0.6 : 0.3),
+      fillColor: enabled ? baseFill : scheme?.surfaceContainerLow,
+      enabled: enabled,
+      floatingLabelBehavior: FloatingLabelBehavior.always,
+      alignLabelWithHint: true,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppTokens.radiusMd),
         borderSide: BorderSide(color: borderColor, width: 1),
@@ -104,19 +118,20 @@ class AppFormField extends StatelessWidget {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-        borderSide: BorderSide(
-          color: scheme?.primary ?? const Color(0xFF3F6C51),
-          width: 1.5,
-        ),
+        borderSide: BorderSide(color: focusColor, width: 1.5),
       ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-        borderSide: BorderSide(color: errorColor, width: 1),
-      ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-        borderSide: BorderSide(color: errorColor, width: 1.5),
-      ),
+      errorBorder: errorColor == null
+          ? null
+          : OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+              borderSide: BorderSide(color: errorColor, width: 1),
+            ),
+      focusedErrorBorder: errorColor == null
+          ? null
+          : OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+              borderSide: BorderSide(color: errorColor, width: 1.5),
+            ),
       disabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppTokens.radiusMd),
         borderSide: BorderSide(
@@ -127,7 +142,7 @@ class AppFormField extends StatelessWidget {
       labelStyle: TextStyle(
         color: enabled ? textSecondary : borderColor.withValues(alpha: 0.7),
       ),
-      hintStyle: TextStyle(color: textSecondary.withValues(alpha: 0.6)),
+      hintStyle: TextStyle(color: textSecondary.withValues(alpha: 0.8)),
       counterStyle: TextStyle(fontSize: 12, color: textSecondary),
     );
   }
@@ -192,50 +207,30 @@ class AppDateField extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final hasValue = value != null && value!.isNotEmpty;
-    final borderColor = scheme.outlineVariant;
     final textSecondary = scheme.onSurfaceVariant;
+    // 已选值的图标走撞色冷色 ink（压在卡片上的图标色），不写死 primary。
+    final accent = ClashTones.of(context, ClashTone.cool).ink;
 
     return InkWell(
       onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(AppTokens.radiusMd),
       child: InputDecorator(
         isEmpty: !hasValue,
-        decoration: InputDecoration(
-          labelText: label,
-          prefixIcon: Padding(
-            padding: const EdgeInsets.only(right: AppTokens.spaceSm),
-            child: Icon(
-              prefixIcon,
-              size: 20,
-              color: hasValue ? scheme.primary : textSecondary,
-            ),
-          ),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: AppTokens.spaceMd,
-            vertical: AppTokens.spaceMd,
-          ),
-          filled: true,
-          fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-            borderSide: BorderSide(color: borderColor, width: 1),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-            borderSide: BorderSide(color: borderColor, width: 1),
-          ),
-          errorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-            borderSide: BorderSide(color: scheme.error, width: 1),
-          ),
+        decoration: AppFormField.defaultDecoration(
+          label: label,
+          scheme: scheme,
+          enabled: enabled,
           errorText: errorText,
+          prefixIcon: Icon(
+            prefixIcon,
+            size: 20,
+            color: hasValue ? accent : textSecondary,
+          ),
+          suffixIcon: const Icon(Icons.expand_more, size: 20),
         ),
         child: hasValue
-            ? Text(
-                value!,
-                style: TextStyle(color: scheme.onSurface),
-              )
-            : null,
+            ? Text(value!, style: TextStyle(color: scheme.onSurface))
+            : Text(hint, style: TextStyle(color: textSecondary)),
       ),
     );
   }
@@ -274,24 +269,22 @@ class AppTimeField extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final hasValue = value != null && value!.isNotEmpty;
-    final borderColor = scheme.outlineVariant;
     final textSecondary = scheme.onSurfaceVariant;
+    final accent = ClashTones.of(context, ClashTone.cool).ink;
 
     return InkWell(
       onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(AppTokens.radiusMd),
       child: InputDecorator(
         isEmpty: !hasValue,
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: hint,
-          prefixIcon: Padding(
-            padding: const EdgeInsets.only(right: AppTokens.spaceSm),
-            child: Icon(
-              prefixIcon,
-              size: 20,
-              color: hasValue ? scheme.primary : textSecondary,
-            ),
+        decoration: AppFormField.defaultDecoration(
+          label: label,
+          scheme: scheme,
+          enabled: enabled,
+          prefixIcon: Icon(
+            prefixIcon,
+            size: 20,
+            color: hasValue ? accent : textSecondary,
           ),
           suffixIcon: hasValue && onClear != null && enabled
               ? IconButton(
@@ -299,28 +292,11 @@ class AppTimeField extends StatelessWidget {
                   onPressed: onClear,
                   icon: const Icon(Icons.close, size: 18),
                 )
-              : null,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: AppTokens.spaceMd,
-            vertical: AppTokens.spaceMd,
-          ),
-          filled: true,
-          fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-            borderSide: BorderSide(color: borderColor, width: 1),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-            borderSide: BorderSide(color: borderColor, width: 1),
-          ),
+              : const Icon(Icons.expand_more, size: 20),
         ),
         child: hasValue
-            ? Text(
-                value!,
-                style: TextStyle(color: scheme.onSurface),
-              )
-            : null,
+            ? Text(value!, style: TextStyle(color: scheme.onSurface))
+            : Text(hint, style: TextStyle(color: textSecondary)),
       ),
     );
   }

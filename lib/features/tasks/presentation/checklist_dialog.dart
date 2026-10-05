@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
+import '../../../core/theme/app_tokens.dart';
+import '../../../shared/widgets/clash_tones.dart';
 import '../data/checklist_item_repository_provider.dart';
 
 /// 完成任务前的二次确认（FR-4.1）。
@@ -141,7 +143,12 @@ class _ChecklistDialogState extends ConsumerState<ChecklistDialog> {
             onPressed: () => Navigator.of(context).pop(false),
             child: const Text('取消'),
           ),
+          // 危险动作（撞色 v2）：删除走 ClashTone.danger 实心。
           FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: ClashTones.of(context, ClashTone.danger).fill,
+              foregroundColor: ClashTones.of(context, ClashTone.danger).onFill,
+            ),
             onPressed: () => Navigator.of(context).pop(true),
             child: const Text('删除'),
           ),
@@ -171,8 +178,31 @@ class _ChecklistDialogState extends ConsumerState<ChecklistDialog> {
   @override
   Widget build(BuildContext context) {
     final itemsAsync = ref.watch(checklistItemsProvider(widget.task.id));
+    // 撞色 v2：检查项＝清单/勾选语义，取冷色（数据/对照）；标题区仍保持
+    // AlertDialog（清单测试与背景路由隔离依赖该类型），只在标题左侧加
+    // 撞色图标底，文案字符串保持不变。
+    final cool = ClashTones.of(context, ClashTone.cool);
     return AlertDialog(
-      title: Text('检查项 · ${widget.task.title}'),
+      title: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: cool.soft,
+              borderRadius: BorderRadius.circular(AppTokens.radiusSm),
+            ),
+            child: Icon(Icons.checklist_rtl, size: 18, color: cool.onSoft),
+          ),
+          const SizedBox(width: AppTokens.spaceSm),
+          Expanded(
+            child: Text(
+              '检查项 · ${widget.task.title}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
       constraints: const BoxConstraints(maxWidth: 480, maxHeight: 560),
       content: SizedBox(
         width: double.maxFinite,
@@ -263,7 +293,14 @@ class _ChecklistDialogState extends ConsumerState<ChecklistDialog> {
                             ),
                             IconButton(
                               tooltip: '删除',
-                              icon: const Icon(Icons.delete_outline, size: 18),
+                              icon: Icon(
+                                Icons.delete_outline,
+                                size: 18,
+                                color: ClashTones.of(
+                                  context,
+                                  ClashTone.danger,
+                                ).ink,
+                              ),
                               onPressed: () => _deleteItem(item),
                             ),
                           ],

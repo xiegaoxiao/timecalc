@@ -21,7 +21,7 @@ void main() {
       sortOrder: 0,
       createdAt: DateTime.utc(2026, 1, 1),
       updatedAt: DateTime.utc(2026, 1, 1),
-    );
+  );
   }
 
   Task done(String date, {int? minutes, int id = 0, int goalId = 1, DateTime? completedAt}) {
@@ -36,7 +36,7 @@ void main() {
       sortOrder: 0,
       createdAt: DateTime.utc(2026, 1, 1),
       updatedAt: DateTime.utc(2026, 1, 1),
-    );
+  );
   }
 
   group('completedCountsByLocalDate（FR-7.2 按完成日期）', () {
@@ -68,7 +68,7 @@ void main() {
           sortOrder: 0,
           createdAt: DateTime.utc(2026, 1, 1),
           updatedAt: DateTime.utc(2026, 1, 1),
-        ),
+      ),
       ]);
       expect(counts, isEmpty);
     });
@@ -79,47 +79,6 @@ void main() {
         done('2026-01-02', completedAt: DateTime(2026, 1, 2)),
       ]);
       expect(counts['2026-01-02'], 2);
-    });
-  });
-
-  group('completedCountsByMonth（年视图按完成月份）', () {
-    test('跨月归组：按 completedAt 本地日期归月计数', () {
-      final counts = service.completedCountsByMonth([
-        done('2026-01-05', completedAt: DateTime(2026, 1, 5, 8)),
-        done('2026-01-31', completedAt: DateTime(2026, 1, 31, 23)),
-        done('2026-02-01', completedAt: DateTime(2026, 2, 1, 0)),
-        todo('2026-01-05', minutes: 30),
-      ]);
-      expect(counts['2026-01'], 2);
-      expect(counts['2026-02'], 1);
-      expect(counts['2026-03'], isNull);
-      expect(counts.length, 2);
-    });
-
-    test('跨年边界：1 月与 12 月不混淆', () {
-      final counts = service.completedCountsByMonth([
-        done('2025-12-31', completedAt: DateTime(2025, 12, 31, 23, 59)),
-        done('2026-01-01', completedAt: DateTime(2026, 1, 1, 0, 1)),
-      ]);
-      expect(counts['2025-12'], 1);
-      expect(counts['2026-01'], 1);
-    });
-
-    test('completedAt 为 null 的任务不计入', () {
-      final counts = service.completedCountsByMonth([
-        Task(
-          id: 9,
-          goalId: 1,
-          title: '无完成时间',
-          plannedDate: '2026-01-02',
-          status: 'done',
-          completedAt: null,
-          sortOrder: 0,
-          createdAt: DateTime.utc(2026, 1, 1),
-          updatedAt: DateTime.utc(2026, 1, 1),
-        ),
-      ]);
-      expect(counts, isEmpty);
     });
   });
 
@@ -167,98 +126,6 @@ void main() {
       expect(StatisticsService.heatLevel(9), 3);
       expect(StatisticsService.heatLevel(10), 4);
       expect(StatisticsService.heatLevel(99), 4);
-    });
-  });
-
-  group('minutesLevel（甘特图时长分桶）', () {
-    test('五档分桶边界（分钟）', () {
-      expect(StatisticsService.minutesLevel(0), 0);
-      expect(StatisticsService.minutesLevel(1), 1);
-      expect(StatisticsService.minutesLevel(59), 1);
-      expect(StatisticsService.minutesLevel(60), 2);
-      expect(StatisticsService.minutesLevel(119), 2);
-      expect(StatisticsService.minutesLevel(120), 3);
-      expect(StatisticsService.minutesLevel(299), 3);
-      expect(StatisticsService.minutesLevel(300), 4);
-      expect(StatisticsService.minutesLevel(999), 4);
-    });
-  });
-
-  group('goalGanttData（甘特图周聚合：计划 + 完成）', () {
-    test('按目标分组：未完成按计划日期归周，已完成按完成日期归周', () {
-      final weekStarts = StatisticsService.ganttWeekStarts(
-        DateTime(2026, 8, 5), // 周三
-        pastWeeks: 1,
-        futureWeeks: 1,
-      );
-      // 窗口共 3 周：[上周一, 本周一(08-03), 下周一(08-10)]。
-      final lastStart = weekStarts[1]; // 2026-08-03
-      final prevStart = lastStart.subtract(const Duration(days: 7));
-
-      final data = service.goalGanttData(
-        todoTasks: [
-          todo('2026-08-12', minutes: 120, id: 1, goalId: 1), // 下周计划
-        ],
-        completedTasks: [
-          done(
-            '2026-07-29',
-            minutes: 90,
-            id: 2,
-            goalId: 1,
-            completedAt: prevStart.add(const Duration(hours: 10)),
-          ),
-          done(
-            '2026-08-04',
-            minutes: 60,
-            id: 3,
-            goalId: 2,
-            completedAt: lastStart.add(const Duration(hours: 10)),
-          ),
-        ],
-        weekStarts: weekStarts,
-      );
-
-      // 目标 1：上周完成 90 + 下周计划 120。
-      expect(data[1]!.planned[2], 120);
-      expect(data[1]!.completed[0], 90);
-      // 目标 2：本周完成 60。
-      expect(data[2]!.completed[1], 60);
-    });
-
-    test('无预估时长 / completedAt 为空的任务不计入', () {
-      final weekStarts = StatisticsService.ganttWeekStarts(DateTime(2026, 8, 5));
-      final data = service.goalGanttData(
-        todoTasks: [
-          todo('2026-08-06', id: 1), // 无预估时长
-        ],
-        completedTasks: [
-          Task(
-            id: 2,
-            goalId: 1,
-            title: '无完成时间',
-            plannedDate: '2026-08-04',
-            status: 'done',
-            completedAt: null,
-            estimatedMinutes: 60,
-            sortOrder: 0,
-            createdAt: DateTime.utc(2026, 1, 1),
-            updatedAt: DateTime.utc(2026, 1, 1),
-          ),
-        ],
-        weekStarts: weekStarts,
-      );
-      expect(data, isEmpty);
-    });
-
-    test('ganttWeekStarts：过去 12 + 当前 + 未来 13 周，当前周居中', () {
-      final starts = StatisticsService.ganttWeekStarts(DateTime(2026, 8, 5));
-      expect(starts, hasLength(26));
-      // 2026-08-05 是周三 → 本周一为 2026-08-03。
-      expect(starts[12], DateTime(2026, 8, 3)); // 当前周
-      expect(starts[0], DateTime(2026, 5, 11)); // 12 周前
-      expect(starts[25], DateTime(2026, 11, 2)); // 13 周后
-      // 逐周递增 7 天。
-      expect(starts[1].difference(starts[0]), const Duration(days: 7));
     });
   });
 
@@ -372,51 +239,6 @@ void main() {
       for (final point in points) {
         expect(point.remaining, 120);
       }
-    });
-  });
-
-  group('goalGanttData 性能（NFR-1）', () {
-    // 10,000 条任务（5k 计划 + 5k 完成）聚合到 26 周窗口，验证周定位
-    // 不再是逐周线性扫描（回归防护：_weekIndexOf 曾对每个任务扫 26 周）。
-    // 预算 500ms 与 calendar_performance_test 的 NFR-1 口径一致，给 CI
-    // 满载运行留余量（新实现单测约 0ms；旧逐周扫描在 10k 任务下 3-4s）。
-    test('10,000 条任务：周聚合 ≤ 500ms', () {
-      final weekStarts = StatisticsService.ganttWeekStarts(DateTime(2026, 8, 5));
-      final todoTasks = <Task>[];
-      final completedTasks = <Task>[];
-      for (var i = 0; i < 5000; i++) {
-        todoTasks.add(todo('2026-08-12', minutes: 60, id: i, goalId: i % 10));
-      }
-      for (var i = 0; i < 5000; i++) {
-        completedTasks.add(
-          done(
-            '2026-07-20',
-            minutes: 30,
-            id: 10000 + i,
-            goalId: i % 10,
-            completedAt: DateTime(2026, 7, 20, 8),
-          ),
-        );
-      }
-
-      final stopwatch = Stopwatch()..start();
-      final data = service.goalGanttData(
-        todoTasks: todoTasks,
-        completedTasks: completedTasks,
-        weekStarts: weekStarts,
-      );
-      stopwatch.stop();
-
-      expect(data.length, 10); // 10 个目标各有数据
-      expect(
-        data.values.every((r) => r.planned.any((m) => m > 0)),
-        isTrue,
-      );
-      expect(
-        stopwatch.elapsedMilliseconds,
-        lessThan(500),
-        reason: '10k 任务周聚合应 ≤500ms（旧版逐周扫描易超时，NFR-1）',
-      );
     });
   });
 }

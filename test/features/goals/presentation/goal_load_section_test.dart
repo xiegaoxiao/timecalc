@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -323,8 +324,10 @@ void main() {
       plannedDate: '2026-08-06',
       estimatedMinutes: 60,
     );
-    // 归档全部任务（模拟 JSON 导入替换）。
-    await tasks.archiveAllActive(goal.id);
+    // 归档全部任务（模拟 JSON 导入替换）：归档生产路径在 importPlan 内按
+    // 完成状态分流，测试直接写库造数。
+    await (db.update(db.tasks)..where((t) => t.goalId.equals(goal.id)))
+        .write(TasksCompanion(archivedAt: Value(DateTime.utc(2026, 8, 5))));
     expect((await tasks.archivedByGoal(goal.id)), isNotEmpty);
 
     await pumpApp(tester);

@@ -152,9 +152,9 @@ void main() {
     expect(settings.themeMode, 'dark');
   });
 
-  test('默认主题色系为绿色（2026-08-16 色系解耦，schema v14）', () async {
+  test('默认主题色系为撞色方案 clash（v2.0 撞色重构，暖橙 × 冷藏青）', () async {
     final settings = await repo.get();
-    expect(settings.accentColor, 'green');
+    expect(settings.accentColor, 'clash');
   });
 
   test('更新主题色系为蓝色并持久化', () async {

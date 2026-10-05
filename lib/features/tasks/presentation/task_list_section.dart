@@ -3,10 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/database/tables.dart';
 import '../../../core/errors/app_guard.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/date_text.dart';
+import '../../../shared/widgets/clash_tones.dart';
+import '../../../shared/widgets/clash_widgets.dart';
 import '../../../shared/widgets/progressive_rows.dart';
-import '../../../shared/widgets/section_header.dart';
 import '../data/recurrence_repository_provider.dart';
 import 'recurrence_task_dialog.dart';
 import 'task_section_actions.dart';
@@ -43,6 +46,7 @@ class TaskListSection extends ConsumerStatefulWidget {
     this.currentTasks,
     this.previewLimit,
     this.onViewAll,
+    this.tone,
   });
 
   final int goalId;
@@ -69,6 +73,13 @@ class TaskListSection extends ConsumerStatefulWidget {
 
   /// 点击「查看全部 N 个任务」行的回调（如跳转目标全部任务页）。
   final VoidCallback? onViewAll;
+
+  /// 本区块的撞色归属（撞色 v2，可选，向后兼容）。
+  ///
+  /// 为 null 时按任务状态自动推断：全部已完成 → [ClashTone.cool]（冷＝
+  /// 已完成/统计），否则 [ClashTone.warm]（暖＝待办主体）。里程碑/重复类
+  /// 区块的宿主可显式传 [ClashTone.citrus]（点缀）。
+  final ClashTone? tone;
 
   @override
   ConsumerState<TaskListSection> createState() => _TaskListSectionState();
@@ -126,8 +137,13 @@ class _TaskListSectionState extends ConsumerState<TaskListSection> {
         if (widget.tasks.isEmpty)
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              child: Text(widget.emptyText),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: ClashEmptyState(
+                icon: Icons.inbox_outlined,
+                title: widget.emptyText,
+                tone: _tone,
+                compact: true,
+              ),
             ),
           )
         else
@@ -200,12 +216,15 @@ class _TaskListSectionState extends ConsumerState<TaskListSection> {
   }
 
   Widget _header(BuildContext context) {
-    // 区块头统一 SectionHeader（2026-08-16 视觉升级）：与全应用同语言。
+    // 区块头统一撞色区块头（撞色 v2）：撞色竖条 + 撞色图标底 + 计数徽标，
+    // 待办分组=暖、已完成分组=冷、里程碑/重复=点缀（宿主可显式传 tone）。
     // 操作组（添加任务/批量添加/更多操作）复用 TaskSectionActions
     // （2026-08-18 提取：详情页/科目页折叠头部行同样展示该操作组）。
-    return SectionHeader(
+    return ClashSectionHeader(
       icon: Icons.checklist,
       title: widget.title!,
+      tone: _tone,
+      count: widget.tasks.length,
       trailing: widget.showAddButton
           ? TaskSectionActions(
               goalId: widget.goalId,
@@ -217,11 +236,20 @@ class _TaskListSectionState extends ConsumerState<TaskListSection> {
     );
   }
 
+  /// 本区块撞色归属：显式 [TaskListSection.tone] 优先，否则按任务状态推断
+  /// （全部完成=冷，其余=暖）。
+  ClashTone get _tone =>
+      widget.tone ??
+      (widget.tasks.isNotEmpty &&
+              widget.tasks.every((t) => t.status == TaskStatus.done)
+          ? ClashTone.cool
+          : ClashTone.warm);
+
   Widget _description(BuildContext context) {
     return Text(
       widget.description!,
       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.outline,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
     );
   }
@@ -239,12 +267,14 @@ class _TaskListSectionState extends ConsumerState<TaskListSection> {
     final plan = rows[index];
     if (plan.isViewAll) {
       // 预览截断的「查看全部」入口行（2026-08-18）：任务多时列表只展示
-      // 前 N 条，点此行去全量目的地（如目标全部任务页）。
+      // 前 N 条，点此行去全量目的地（如目标全部任务页）。撞色 v2：图标走
+      // 冷色 ink（全量浏览＝数据/对照语义），文案保持不变。
+      final cool = ClashTones.of(context, ClashTone.cool);
       return ListTile(
         onTap: widget.onViewAll,
-        leading: const Icon(Icons.visibility_outlined, size: 20),
+        leading: Icon(Icons.visibility_outlined, size: 20, color: cool.ink),
         title: Text('查看全部 ${plan.viewAllCount} 个任务'),
-        trailing: const Icon(Icons.chevron_right),
+        trailing: Icon(Icons.chevron_right, color: cool.ink),
       );
     }
     if (plan.isHeader) {
@@ -393,16 +423,27 @@ class RecurrenceGroupTile extends ConsumerWidget {
 
     // 单卡分组行（2026-08-16 视觉升级）：组头不再自包 Card，作为宿主
     // 单张任务卡内的一行（与单任务行同形态，行间分隔线由宿主提供）。
+    // 撞色 v2：重复/循环语义取点缀色（citrus）图标底 + 药丸，副标题文案
+    // （区间 · N 个任务 · 已停止）保持原样以便读屏与测试定位。
+    final citrus = ClashTones.of(context, ClashTone.citrus);
     return ListTile(
       onTap: onToggle,
-      leading: const Tooltip(
+      leading: Tooltip(
         message: '重复任务',
-        child: Icon(Icons.autorenew, size: 20),
+        child: Container(
+          padding: const EdgeInsets.all(AppTokens.spaceSm),
+          decoration: BoxDecoration(
+            color: citrus.soft,
+            borderRadius: BorderRadius.circular(AppTokens.radiusSm),
+          ),
+          child: Icon(Icons.autorenew, size: 20, color: citrus.onSoft),
+        ),
       ),
       title: Text(
         title,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontWeight: FontWeight.w600),
       ),
       subtitle: Text(
         '${DateFormat('yyyy-MM-dd').format(first)} ~ '
@@ -425,6 +466,7 @@ class RecurrenceGroupTile extends ConsumerWidget {
           ),
           PopupMenuButton<String>(
             tooltip: '任务操作',
+            iconColor: Theme.of(context).colorScheme.onSurfaceVariant,
             onSelected: (action) => _handleAction(context, ref, action),
             itemBuilder: (_) => [
               const PopupMenuItem(
@@ -487,7 +529,18 @@ class RecurrenceGroupTile extends ConsumerWidget {
                 onPressed: () => Navigator.of(context).pop(false),
                 child: const Text('取消'),
               ),
+              // 危险动作（撞色 v2）：批量删除整个重复模板走 ClashTone.danger。
               FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: ClashTones.of(
+                    context,
+                    ClashTone.danger,
+                  ).fill,
+                  foregroundColor: ClashTones.of(
+                    context,
+                    ClashTone.danger,
+                  ).onFill,
+                ),
                 onPressed: () => Navigator.of(context).pop(true),
                 child: const Text('删除'),
               ),

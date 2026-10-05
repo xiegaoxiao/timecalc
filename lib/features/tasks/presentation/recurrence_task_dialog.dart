@@ -10,7 +10,10 @@ import '../../../core/providers/app_refresh.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../core/utils/time_text.dart';
 import '../../../services/recurrence_service.dart';
+import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/app_form_field.dart';
+import '../../../shared/widgets/app_time_picker.dart';
+import '../../../shared/widgets/clash_tones.dart';
 import '../../../shared/widgets/duration_step_input.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../data/recurrence_repository.dart';
@@ -221,7 +224,7 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
   /// 选择实例的计划时刻（可选，小时级排程）：确定后落 `HH:mm`，取消不动原值。
   Future<void> _pickTime() async {
     final current = tryTimeOfDayMinutes(_startTime) ?? 20 * 60;
-    final picked = await showTimePicker(
+    final picked = await showAppTimePicker(
       context: context,
       helpText: '选择计划时刻（可选）',
       initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
@@ -395,16 +398,18 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
   @override
   Widget build(BuildContext context) {
     final handler = _handler;
-    return AlertDialog(
-      title: Text(_isEdit ? '编辑重复任务' : '重复任务'),
-      constraints: const BoxConstraints(maxWidth: 560, maxHeight: 640),
-      content: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+    // 撞色 v2：与其他任务对话框统一为 AppDialog（撞色图标标题区 +
+    // 暖色实心主按钮 + 冷色取消），规则类型/参数/日期字段逻辑不变。
+    return AppDialog(
+      title: _isEdit ? '编辑重复任务' : '重复任务',
+      titleIcon: Icons.autorenew,
+      maxWidth: 560,
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
               TextFormField(
                 controller: _titleController,
                 autofocus: true,
@@ -496,12 +501,13 @@ class _RecurrenceTaskDialogState extends ConsumerState<RecurrenceTaskDialog> {
               else
                 Text(
                   _previewDates().join('、'),
+                  // 撞色 v2：未来发生日是「数据/对照」信息 → 冷色 ink；
+                  // 深色模式下不能再拿 scheme.primary（填充色）当文字色。
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
+                    color: ClashTones.of(context, ClashTone.cool).ink,
                   ),
                 ),
-            ],
-          ),
+        ],
         ),
       ),
       actions: [
@@ -679,7 +685,8 @@ class _DateField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    // 撞色 v2：日期已选值走冷色 ink（与 AppDateField 同语言）。
+    final coolInk = ClashTones.of(context, ClashTone.cool).ink;
     return InkWell(
       onTap: onTap,
       child: InputDecorator(
@@ -690,7 +697,7 @@ class _DateField extends StatelessWidget {
         ),
         child: Text(
           DateFormat('yyyy-MM-dd').format(date),
-          style: highlight ? TextStyle(color: scheme.primary) : null,
+          style: highlight ? TextStyle(color: coolInk) : null,
         ),
       ),
     );

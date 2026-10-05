@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -13,14 +12,6 @@ import '../data/course_repository_provider.dart';
 import '../domain/class_period.dart';
 import '../domain/course_week.dart';
 import '../domain/timetable_import_parser.dart';
-
-/// 大文件后台解析的 isolate 入口（与完整计划导入同款大文件策略）。
-///
-/// `compute` 要求入口为顶层函数，且返回值可跨 isolate 传递：解析器是纯
-/// Dart、[TimetableImportResult] 是纯数据类，满足条件。
-TimetableImportResult _parseTimetableInIsolate(String source) {
-  return const TimetableImportParser().parse(source);
-}
 
 /// 课表导入对话框（FR-10）。
 ///
@@ -53,9 +44,6 @@ class TimetableImportDialog extends ConsumerStatefulWidget {
 
 class _TimetableImportDialogState extends ConsumerState<TimetableImportDialog> {
   static const _parser = TimetableImportParser();
-
-  /// 大文件解析阈值（字节）：超过后丢到后台 isolate，避免阻塞 UI。
-  static const int _isolateThreshold = 256 * 1024;
 
   final _contentController = TextEditingController();
 
@@ -110,9 +98,6 @@ class _TimetableImportDialogState extends ConsumerState<TimetableImportDialog> {
 
   Future<TimetableImportResult?> _parse(String source) async {
     if (source.trim().isEmpty) return null;
-    if (source.length >= _isolateThreshold) {
-      return compute(_parseTimetableInIsolate, source);
-    }
     return _parser.parse(source);
   }
 

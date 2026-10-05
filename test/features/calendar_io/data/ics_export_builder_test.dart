@@ -37,7 +37,7 @@ void main() {
       originalPlannedDate: null,
       archivedAt: archivedAt,
       recurrenceTemplateId: null,
-    );
+  );
   }
 
   Milestone milestone({required int id, String title = '里程碑'}) {

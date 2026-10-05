@@ -7,16 +7,16 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:timecalc/features/backup/data/auto_backup_service.dart';
 import 'package:timecalc/features/backup/data/auto_backup_service_provider.dart';
-import 'package:timecalc/features/backup/data/backup_folder_picker.dart';
+import 'package:timecalc/features/backup/data/backup_file_picker.dart';
 import 'package:timecalc/features/backup/data/backup_service.dart';
 import 'package:timecalc/features/backup/presentation/backup_page.dart';
 import 'package:timecalc/core/database/database.dart';
 import 'package:timecalc/core/database/database_provider.dart';
 import 'package:timecalc/features/settings/data/settings_repository.dart';
 
-/// 假目录选择器。
-class FakeBackupFolderPicker implements BackupFolderPicker {
-  FakeBackupFolderPicker(this.paths);
+/// 假选择器：只实现本页测试用到的「选择目录」，保存/打开返回取消。
+class FakeBackupPicker implements BackupFilePicker {
+  FakeBackupPicker(this.paths);
 
   final List<String?> paths;
   int calls = 0;
@@ -26,6 +26,12 @@ class FakeBackupFolderPicker implements BackupFolderPicker {
     if (calls >= paths.length) return null;
     return paths[calls++];
   }
+
+  @override
+  Future<File?> saveBackupFile() async => null;
+
+  @override
+  Future<File?> openBackupFile() async => null;
 }
 
 /// BackupPage widget 测试（M8 FR-9.4；M11 自动备份并入本页）。
@@ -39,7 +45,7 @@ void main() {
   late AppDatabase db;
   late SettingsRepository settings;
   late BackupService backup;
-  late FakeBackupFolderPicker picker;
+  late FakeBackupPicker picker;
 
   Future<void> pumpPage(WidgetTester tester) async {
     // 页面较长（自动备份区 + 手动区），放大视口避免按钮落在默认
@@ -51,7 +57,7 @@ void main() {
       ProviderScope(
         overrides: [
           databaseProvider.overrideWithValue(db),
-          backupFolderPickerProvider.overrideWithValue(picker),
+          backupFilePickerProvider.overrideWithValue(picker),
           autoBackupServiceProvider.overrideWithValue(
             AutoBackupService(
               settingsRepository: settings,
@@ -69,7 +75,7 @@ void main() {
     db = AppDatabase(NativeDatabase.memory());
     settings = SettingsRepository(db);
     backup = BackupService(db);
-    picker = FakeBackupFolderPicker(['C:\\Backups']);
+    picker = FakeBackupPicker(['C:\\Backups']);
   });
 
   tearDown(() async {

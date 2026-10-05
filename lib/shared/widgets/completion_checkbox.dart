@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'clash_tones.dart';
+
 /// 统一的圆形完成复选框（Things 式圆环勾选，带弹跳与对勾动画）。
 ///
 /// 今天页任务与目标详情/里程碑页共用，保证「完成勾选」在各场景视觉与
@@ -72,8 +74,11 @@ class _CompletionCheckboxState extends State<CompletionCheckbox>
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final activeColor = widget.value ? scheme.primary : Colors.transparent;
-    final borderColor = widget.value ? scheme.primary : scheme.outline;
+    // 选中态走撞色主色（暖）：填充用 fill、对勾用 onFill，深色模式下
+    // 由 [ClashTones] 保证白字对比度（不在组件内写死色值）。
+    final warm = ClashTones.of(context, ClashTone.warm);
+    final activeColor = widget.value ? warm.fill : Colors.transparent;
+    final borderColor = widget.value ? warm.fill : scheme.outline;
 
     return Semantics(
       checked: widget.value,
@@ -108,7 +113,7 @@ class _CompletionCheckboxState extends State<CompletionCheckbox>
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: scheme.primary.withValues(
+                      color: warm.fill.withValues(
                         alpha: widget.value ? 0.25 : 0,
                       ),
                       blurRadius: widget.value ? 6 : 0,
@@ -120,7 +125,7 @@ class _CompletionCheckboxState extends State<CompletionCheckbox>
                   opacity: widget.value ? 1.0 : 0.0,
                   duration: const Duration(milliseconds: 140),
                   curve: Curves.easeOut,
-                  child: const Icon(Icons.check, size: 14, color: Colors.white),
+                  child: Icon(Icons.check, size: 14, color: warm.onFill),
                 ),
               ),
             ),

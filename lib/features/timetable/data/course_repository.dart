@@ -173,14 +173,6 @@ class CourseRepository {
     });
   }
 
-  /// 课程总数（课表页摘要与「清空」确认文案）。
-  Future<int> count() async {
-    final row = await _db
-        .customSelect('SELECT COUNT(*) AS n FROM courses')
-        .getSingle();
-    return row.read<int>('n');
-  }
-
   static int _clamp(int value, int min, int max) {
     if (value < min) return min;
     if (value > max) return max;

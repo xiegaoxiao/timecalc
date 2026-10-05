@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../../shared/widgets/clash_tones.dart';
 import '../theme/app_tokens.dart';
 
 /// 自定义标题栏高度（48px）。
@@ -136,32 +137,57 @@ class _CustomTitleBarState extends State<CustomTitleBar> with WindowListener {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final warm = ClashTones.of(context, ClashTone.warm);
+    final danger = ClashTones.of(context, ClashTone.danger);
     return Material(
-      // 标题栏背景贴合页面底色：浅色用更冷的浅灰（#F9FAFC），
-      // 深色用 M3 surface；底部 1px hairline 分隔「窗口外壳」与内容区。
-      color: isDark ? scheme.surface : const Color(0xFFF9FAFC),
+      // 撞色改造：标题栏背景取 `scheme.surface`（浅色=暖奶油 #FDF6F0，
+      // 深色=暖近黑），与页面底色同源，让外壳与内容连成一片暖底；
+      // 底部 1px hairline 用 outlineVariant 分隔「窗口外壳」与内容区。
+      color: scheme.surface,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: isDark
-                  ? scheme.outlineVariant.withValues(alpha: 0.4)
-                  : AppTokens.neutralBorderLight,
-            ),
-          ),
+          border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
         ),
         child: SizedBox(
           height: kTitleBarHeight,
           child: Row(
           children: [
-            const SizedBox(width: 16),
-            Icon(Icons.access_time_rounded, size: 22, color: scheme.primary),
-            const SizedBox(width: 8),
-            const Text(
+            const SizedBox(width: AppTokens.spaceLg),
+            // 品牌小方块：撞色渐变（暖×冷）+ 白色时钟图标，与侧栏品牌区
+            // 同源，是撞色语言在「窗口外壳」上的最小表达。
+            Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                gradient: ClashGradient.clash(context),
+                borderRadius: BorderRadius.circular(AppTokens.radiusSm),
+              ),
+              child: Icon(
+                Icons.access_time_rounded,
+                size: 13,
+                color: warm.onFill,
+              ),
+            ),
+            const SizedBox(width: AppTokens.spaceSm),
+            Text(
               'TimeCalc',
               // v1.17 精修：14px w500，比 15px w600 更收敛，不抢内容。
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: scheme.onSurface,
+              ),
+            ),
+            // 细分隔线：品牌标识与拖动区的分界，用冷色渐变（暖 Logo ×
+            // 冷分隔）点出撞色关系（纯装饰，不承载信息）。
+            Container(
+              width: 2,
+              height: 14,
+              margin: const EdgeInsets.only(left: AppTokens.spaceMd),
+              decoration: BoxDecoration(
+                gradient: ClashGradient.header(context, tone: ClashTone.cool),
+                borderRadius: BorderRadius.circular(1),
+              ),
             ),
             // 拖动区：双击最大化，右键系统窗口菜单，左键拖拽移动窗口。
             Expanded(
@@ -188,9 +214,10 @@ class _CustomTitleBarState extends State<CustomTitleBar> with WindowListener {
             _WindowButton(
               icon: Icons.close_rounded,
               tooltip: '关闭',
-              // v1.17 精修：hover 变强调色（主色）+ 白图标，与全局主色统一。
-              hoverColor: scheme.primary,
-              hoverForeground: Colors.white,
+              // 撞色改造：hover 用**危险色（红）**而非主色——桌面软件
+              // 「关闭」的正确语义；主色留给品牌与主动作。
+              hoverColor: danger.fill,
+              hoverForeground: danger.onFill,
               onTap: _close,
             ),
           ],
@@ -202,8 +229,7 @@ class _CustomTitleBarState extends State<CustomTitleBar> with WindowListener {
 }
 
 /// 标题栏窗口控制按钮：46×48 命中区（贴近系统按钮规格），hover 显示
-/// 标题栏窗口控制按钮：46×48 命中区（贴近系统按钮规格），hover 显示
-/// 底色，关闭钮 hover 变强调色。
+/// 底色，关闭钮 hover 变危险色（撞色语言：危险＝红）。
 class _WindowButton extends StatefulWidget {
   const _WindowButton({
     required this.icon,
@@ -233,11 +259,9 @@ class _WindowButtonState extends State<_WindowButton> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    // v1.17 精修：空闲图标色统一为中性灰 #667085（浅色模式），比 M3
-    // onSurfaceVariant 更收敛，不抢内容；深色模式仍用 onSurfaceVariant。
-    final idleForeground =
-        isDark ? scheme.onSurfaceVariant : const Color(0xFF667085);
+    // 撞色改造：空闲图标色统一走 `scheme.onSurfaceVariant`（暖中灰），
+    // 不再写死 #667085——保证跟随主题与撞色方案。
+    final idleForeground = scheme.onSurfaceVariant;
     final foreground = _hovered
         ? (widget.hoverForeground ?? scheme.onSurfaceVariant)
         : idleForeground;

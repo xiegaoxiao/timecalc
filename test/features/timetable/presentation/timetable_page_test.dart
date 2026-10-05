@@ -254,7 +254,7 @@ void main() {
 
       // 课程落库并渲染在第 2 周网格上。
       expect(find.text('算法设计与分析'), findsOneWidget);
-      expect(await courses.count(), 1);
+      expect(await courses.all(), hasLength(1));
       // 学期基准由文件写入设置。
       final setting = await settings.get();
       expect(setting.semesterStartDate, '2026-09-07');
@@ -280,7 +280,7 @@ void main() {
         find.widgetWithText(FilledButton, '导入'),
       );
       expect(importButton.onPressed, isNull);
-      expect(await courses.count(), 0);
+      expect(await courses.all(), isEmpty);
     });
 
     testWidgets('替换/追加选择影响写入结果文案', (tester) async {
@@ -308,7 +308,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // 追加后两门课都在。
-      expect(await courses.count(), 2);
+      expect(await courses.all(), hasLength(2));
       expect(find.text('原有课程'), findsOneWidget);
       expect(find.text('新课'), findsOneWidget);
     });
@@ -331,7 +331,7 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, '清空'));
       await tester.pumpAndSettle();
 
-      expect(await courses.count(), 0);
+      expect(await courses.all(), isEmpty);
       expect(find.text('还没有课程'), findsOneWidget);
       // 学期基准不被清空（只影响课程）。
       final setting = await settings.get();
@@ -374,7 +374,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('请输入课程名'), findsOneWidget);
-      expect(await courses.count(), 0);
+      expect(await courses.all(), isEmpty);
       // 表单未关闭，用户可继续输入。
       expect(find.text('添加课程'), findsWidgets);
     });

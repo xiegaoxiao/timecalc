@@ -37,10 +37,6 @@ DateTime mondayOfWeek(DateTime semesterStart, int week) {
   return addLocalDays(anchor, offset * 7);
 }
 
-/// 教学周总区间：从第 1 周周一到第 [totalWeeks] 周周日。
-DateTime lastDayOfWeek(DateTime semesterStart, int week) =>
-    addLocalDays(mondayOfWeek(semesterStart, week), 6);
-
 /// [date] 落在学期第几教学周；早于第 1 周返回 null（假期/上学期日期）。
 ///
 /// 「周」以周一为界，故用「相差天数 ÷ 7」向上取整的等价写法：同一周内的
@@ -52,10 +48,6 @@ int? teachingWeekOf(DateTime semesterStart, DateTime date) {
   if (diffDays < 0) return null;
   return diffDays ~/ 7 + 1;
 }
-
-/// [date] 是否为学期第 1 周之前（尚未开学）。
-bool isBeforeSemester(DateTime semesterStart, DateTime date) =>
-    teachingWeekOf(semesterStart, date) == null;
 
 /// 单双周是否匹配第 [week] 教学周。
 ///

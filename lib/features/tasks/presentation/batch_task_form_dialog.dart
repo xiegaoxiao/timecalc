@@ -12,6 +12,8 @@ import '../../../core/utils/time_text.dart';
 import '../../../services/duration_format.dart';
 import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/app_form_field.dart';
+import '../../../shared/widgets/app_time_picker.dart';
+import '../../../shared/widgets/clash_tones.dart';
 import '../../../shared/widgets/duration_step_input.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../data/last_minutes_provider.dart';
@@ -98,7 +100,7 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
   /// 选择本批任务的统一计划时刻（可选，小时级排程）。
   Future<void> _pickTime() async {
     final current = tryTimeOfDayMinutes(_startTime) ?? 9 * 60;
-    final picked = await showTimePicker(
+    final picked = await showAppTimePicker(
       context: context,
       helpText: '选择计划时刻（可选，本批共用）',
       initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
@@ -219,7 +221,7 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
         ref.read(lastMinutesProvider.notifier).state = minutes;
       }
       // 跨页刷新（FR-3 验收）：批量新增影响今日页（列表与「目标剩余」）、
-      // 进度页（剩余工作量/耗时图）、日历与逾期横幅，走全量集合。
+      // 进度页（剩余工作量）、日历与逾期横幅，走全量集合。
       invalidateAppData(ref.invalidate);
       if (mounted) Navigator.of(context).pop();
     } finally {
@@ -269,9 +271,10 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
                 prefixIcon: Icon(
                   Icons.book_outlined,
                   size: 20,
+                  // 撞色 v2：已选科目走冷色 ink，未选用主题次级文字色。
                   color: _subjectId != null
-                      ? Theme.of(context).colorScheme.primary
-                      : AppTokens.neutralTextSecondaryLight,
+                      ? ClashTones.of(context, ClashTone.cool).ink
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
                 scheme: Theme.of(context).colorScheme,
               ),
@@ -285,19 +288,19 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
             const SizedBox(height: AppTokens.spaceMd),
           ],
 
-          // 日期安排标题
+          // 日期安排标题（撞色 v2：日程/日期＝冷色语义）。
           Row(
             children: [
               Icon(
                 Icons.calendar_today_outlined,
                 size: 16,
-                color: AppTokens.neutralTextSecondaryLight,
+                color: ClashTones.of(context, ClashTone.cool).ink,
               ),
               const SizedBox(width: AppTokens.spaceSm),
               Text(
                 '日期安排',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppTokens.neutralTextSecondaryLight,
+                  color: ClashTones.of(context, ClashTone.cool).ink,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -392,13 +395,11 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
           ),
           const SizedBox(height: AppTokens.spaceMd),
 
-          // 实时预览
+          // 实时预览（撞色 v2：暖色浅底块 + onSoft 文字，代替主色 5% 淡底）
           Container(
             padding: const EdgeInsets.all(AppTokens.spaceMd),
             decoration: BoxDecoration(
-              color: Theme.of(
-                context,
-              ).colorScheme.primary.withValues(alpha: 0.05),
+              color: ClashTones.of(context, ClashTone.warm).soft,
               borderRadius: BorderRadius.circular(AppTokens.radiusMd),
             ),
             child: Text(
@@ -408,7 +409,7 @@ class _BatchTaskFormDialogState extends ConsumerState<BatchTaskFormDialog> {
                         '${_useInterval ? '，自 ${DateFormat('yyyy-MM-dd').format(_startDate)} 起每 $intervalDays 天一个' : '，日期 ${DateFormat('yyyy-MM-dd').format(_startDate)}'}'
                         '${totalMinutes > 0 ? '，共 ${DurationFormat.minutes(totalMinutes)}' : ''}',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.primary,
+                color: ClashTones.of(context, ClashTone.warm).onSoft,
               ),
             ),
           ),

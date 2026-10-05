@@ -1,5 +1,4 @@
 import 'package:drift/native.dart';
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -361,19 +360,16 @@ void main() {
     await tester.pumpAndSettle();
 
     // 切到进度页：剩余工作量趋势应有数据（180+90 = 270 分钟；重复模板
-    // 实例另计 30×7，均在窗口内），任务耗时图应有计划段。
+    // 实例另计 30×7，均在窗口内）。
     await tapNavDestination(tester, '进度');
 
     // 空态不再出现。
     expect(find.text('还没有可展示的剩余工作量数据'), findsNothing);
-    expect(find.text('还没有带预估时长的任务安排'), findsNothing);
     // 燃尽卡「当前剩余」= 180+90+30×7 = 480 分钟 = 8 小时。
     final burnCard = find.widgetWithText(Card, '剩余工作量趋势');
     expect(
       find.descendant(of: burnCard, matching: find.text('8 小时')),
       findsWidgets,
     );
-    // 任务耗时图已渲染堆叠条。
-    expect(find.byType(BarChart), findsOneWidget);
   });
 }

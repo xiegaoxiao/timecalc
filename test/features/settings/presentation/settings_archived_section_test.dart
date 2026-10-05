@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,7 +14,7 @@ import 'package:timecalc/features/tasks/data/task_repository.dart';
 /// 设置页「已归档任务」子页 Widget 测试。
 ///
 /// 替换导入时归档保留的已完成旧任务，在设置页「已归档任务」菜单项进入的
-/// 独立子页中平铺回看/恢复。
+/// 独立子页中平铺回看/恢复（批量删除已移除，只保留列表 + 单条「恢复」）。
 void main() {
   late AppDatabase db;
   late GoalRepository goals;
@@ -41,24 +42,6 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// 建一个目标并归档 [count] 个已完成任务，返回任务 id。
-  Future<List<int>> seedArchived(int count) async {
-    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
-    final ids = <int>[];
-    for (var i = 0; i < count; i++) {
-      final t = await tasks.create(
-        goalId: goal.id,
-        title: '旧任务$i',
-        plannedDate: '2026-08-01',
-        estimatedMinutes: 60,
-      );
-      await tasks.setDone(t.id, true);
-      ids.add(t.id);
-    }
-    await tasks.archiveAllActive(goal.id);
-    return ids;
-  }
-
   setUp(() {
     db = AppDatabase(NativeDatabase.memory());
     goals = GoalRepository(db);
@@ -79,7 +62,7 @@ void main() {
       estimatedMinutes: 60,
     );
     await tasks.setDone(done.id, true);
-    await tasks.archiveAllActive(goal.id);
+    await _archiveGoal(db, goal.id, fixedNow);
 
     await pumpApp(tester);
     await openArchivedPage(tester);
@@ -99,7 +82,7 @@ void main() {
       estimatedMinutes: 60,
     );
     await tasks.setDone(done.id, true);
-    await tasks.archiveAllActive(goal.id);
+    await _archiveGoal(db, goal.id, fixedNow);
 
     await pumpApp(tester);
     await openArchivedPage(tester);
@@ -124,116 +107,39 @@ void main() {
     expect(find.text('恢复'), findsNothing);
   });
 
-  testWidgets('选择模式全选后一键删除：确认后归档清空回到空态', (tester) async {
-    await seedArchived(2);
+  testWidgets('子页只保留列表与单条恢复：不再有批量删除入口', (tester) async {
+    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
+    for (var i = 0; i < 2; i++) {
+      final t = await tasks.create(
+        goalId: goal.id,
+        title: '旧任务$i',
+        plannedDate: '2026-08-01',
+        estimatedMinutes: 60,
+      );
+      await tasks.setDone(t.id, true);
+    }
+    await _archiveGoal(db, goal.id, fixedNow);
 
     await pumpApp(tester);
     await openArchivedPage(tester);
 
-    // 进入选择模式：每行出现勾选框。
-    await tester.tap(find.byTooltip('批量删除'));
-    await tester.pumpAndSettle();
-    expect(find.byType(Checkbox), findsNWidgets(2));
-    expect(find.text('已选 0 项'), findsOneWidget);
-
-    // 全选：计数更新。
-    await tester.tap(find.text('全选'));
-    await tester.pumpAndSettle();
-    expect(find.text('已选 2 项'), findsOneWidget);
-
-    // 删除 → 确认对话框 → 确认。
-    await tester.tap(find.byIcon(Icons.delete_outline));
-    await tester.pumpAndSettle();
-    expect(find.text('删除所选 2 项归档任务？'), findsOneWidget);
-    await tester.tap(find.widgetWithText(FilledButton, '删除'));
-    await tester.pumpAndSettle();
-
-    // 归档已清空：空态展示、数据库确认。
-    expect(find.text('暂无归档任务'), findsOneWidget);
-    expect(find.text('恢复'), findsNothing);
-    expect(await tasks.allArchived(), isEmpty);
-    // 删除后退出选择模式。
-    expect(find.text('已归档任务'), findsOneWidget);
-  });
-
-  testWidgets('反选：全选→反选=全不选（删除不生效），再反选=全选', (tester) async {
-    await seedArchived(3);
-
-    await pumpApp(tester);
-    await openArchivedPage(tester);
-    await tester.tap(find.byTooltip('批量删除'));
-    await tester.pumpAndSettle();
-
-    // 全选后反选 → 全不选。
-    await tester.tap(find.text('全选'));
-    await tester.pumpAndSettle();
-    expect(find.text('已选 3 项'), findsOneWidget);
-    await tester.tap(find.text('反选'));
-    await tester.pumpAndSettle();
-    expect(find.text('已选 0 项'), findsOneWidget);
-
-    // 无勾选时点删除不弹确认框，任务保留。
-    await tester.tap(find.byIcon(Icons.delete_outline));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('删除所选'), findsNothing);
-    expect(await tasks.allArchived(), hasLength(3));
-
-    // 再反选 = 全选。
-    await tester.tap(find.text('反选'));
-    await tester.pumpAndSettle();
-    expect(find.text('已选 3 项'), findsOneWidget);
-  });
-
-  testWidgets('删除确认点取消：任务保留且仍处于选择模式', (tester) async {
-    await seedArchived(2);
-
-    await pumpApp(tester);
-    await openArchivedPage(tester);
-    await tester.tap(find.byTooltip('批量删除'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('全选'));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byIcon(Icons.delete_outline));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('取消'));
-    await tester.pumpAndSettle();
-
-    expect(await tasks.allArchived(), hasLength(2));
+    // 列表与单条恢复仍在。
     expect(find.text('旧任务0'), findsOneWidget);
     expect(find.text('旧任务1'), findsOneWidget);
-    // 取消后仍处于选择模式（可继续调整勾选）。
-    expect(find.text('已选 2 项'), findsOneWidget);
-  });
-
-  testWidgets('长按某条进入选择模式并只选中该条', (tester) async {
-    await seedArchived(2);
-
-    await pumpApp(tester);
-    await openArchivedPage(tester);
-
-    await tester.longPress(find.text('旧任务1'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('已选 1 项'), findsOneWidget);
-    expect(find.byType(Checkbox), findsNWidgets(2));
-    final checked = tester
-        .widgetList<Checkbox>(find.byType(Checkbox))
-        .where((c) => c.value == true)
-        .length;
-    expect(checked, 1);
-  });
-
-  testWidgets('列表为空时「批量删除」入口不进入选择模式', (tester) async {
-    await goals.create(title: '考研', deadlineDate: '2026-12-31');
-
-    await pumpApp(tester);
-    await openArchivedPage(tester);
-
-    await tester.tap(find.byTooltip('批量删除'));
-    await tester.pumpAndSettle();
-    // 无可选内容：标题保持普通态，无选择控件。
-    expect(find.text('已归档任务'), findsOneWidget);
+    expect(find.text('恢复'), findsNWidgets(2));
+    // 批量删除链路已移除：无入口、无选择控件、无全选/反选。
+    expect(find.byTooltip('批量删除'), findsNothing);
     expect(find.byType(Checkbox), findsNothing);
+    expect(find.text('全选'), findsNothing);
+    expect(find.text('反选'), findsNothing);
   });
+}
+
+/// 把 [goalId] 下全部任务置为已归档。
+///
+/// 归档的生产入口是导入替换（`importPlan` 内按完成状态分流），仓储层没有
+/// 对外的单条归档 API，因此测试直接写库造数。
+Future<void> _archiveGoal(AppDatabase db, int goalId, DateTime at) {
+  return (db.update(db.tasks)..where((t) => t.goalId.equals(goalId)))
+      .write(TasksCompanion(archivedAt: Value(at.toUtc())));
 }

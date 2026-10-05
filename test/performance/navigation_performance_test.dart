@@ -15,7 +15,7 @@ import '../shared/nav_helper.dart';
 /// 页面切换性能测量（诊断用）：量化「今天 → 进度」切页首帧渲染成本。
 ///
 /// 背景：IndexedStack 常驻各分支页，切页瞬间目标页 build + 首次布局/绘制
-/// （进度页含 3 个 fl_chart 图表）集中在首帧。逐帧 pump 模拟真实帧率，
+/// （进度页含 fl_chart 燃尽折线图）集中在首帧。逐帧 pump 模拟真实帧率，
 /// 打印帧数不硬断言（JIT 与 release 有差异），用于定位切页掉帧来源。
 void main() {
   const taskCount = 5000;
@@ -33,7 +33,7 @@ void main() {
         final day = start.add(Duration(days: i ~/ perDay));
         final mm = day.month.toString().padLeft(2, '0');
         final dd = day.day.toString().padLeft(2, '0');
-        // 前 60% 已完成（供热力图/燃尽/耗时图数据），后 40% 未完成。
+        // 前 60% 已完成（供热力图/燃尽图数据），后 40% 未完成。
         final done = i < taskCount * 0.6;
         await db.into(db.tasks).insert(TasksCompanion.insert(
               goalId: goalId,

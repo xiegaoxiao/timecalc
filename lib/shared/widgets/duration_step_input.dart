@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/theme/app_tokens.dart';
 import '../../services/duration_format.dart';
+import 'clash_tones.dart';
 
 /// 小时/分钟步进时长输入组件。
 ///
@@ -144,7 +146,7 @@ class _DurationStepInputState extends State<DurationStepInput> {
         // 无时长（_empty）时整组步进弱化（半透明）：按钮/输入虽已禁用，
         // 整体变灰更能让用户明确「当前没有设置时长」。
         Opacity(
-          opacity: _empty ? 0.5 : 1,
+          opacity: _empty ? 0.75 : 1,
           child: Row(
             children: [
               Expanded(
@@ -215,12 +217,10 @@ class _DurationStepInputState extends State<DurationStepInput> {
           children: [
             Expanded(
               child: Text(
-                _empty
-                    ? '未设置时长'
-                    : '当前共 ${DurationFormat.minutes(total!)}',
+                _empty ? '未设置时长' : '当前共 ${DurationFormat.minutes(total!)}',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.outline,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
             if (widget.allowEmpty)
@@ -306,6 +306,7 @@ class _StepFieldState extends State<_StepField> {
     if (!_focusNode.hasFocus) {
       _commit();
     }
+    setState(() {});
   }
 
   /// 提交编辑输入：空值/非法保持原值，否则夹取到 min~max。
@@ -331,22 +332,23 @@ class _StepFieldState extends State<_StepField> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final editing = _focusNode.hasFocus;
+    // 聚焦态用冷藏青描边（撞色语言：暖主动作 / 冷聚焦与对照），
+    // 与主题 inputDecorationTheme.focusedBorder 同色相语义。
+    final focusInk = ClashTones.of(context, ClashTone.cool).ink;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          widget.label,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        const SizedBox(height: 4),
+        Text(widget.label, style: Theme.of(context).textTheme.bodySmall),
+        const SizedBox(height: AppTokens.spaceXs),
         Container(
           decoration: BoxDecoration(
+            color: scheme.surfaceContainerLow,
             border: Border.all(
-              color: editing ? scheme.primary : scheme.outlineVariant,
+              color: editing ? focusInk : scheme.outlineVariant,
               width: editing ? 2 : 1,
             ),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(AppTokens.radiusMd),
           ),
           child: Row(
             children: [
@@ -359,13 +361,12 @@ class _StepFieldState extends State<_StepField> {
                         widget.onStopAutoStep();
                       }
                     : null,
-                onLongPressStart:
-                    widget.enabled && widget.value > widget.min
-                        ? (_) {
-                            _handleStep(-1);
-                            widget.onStartAutoStep(-1);
-                          }
-                        : null,
+                onLongPressStart: widget.enabled && widget.value > widget.min
+                    ? (_) {
+                        _handleStep(-1);
+                        widget.onStartAutoStep(-1);
+                      }
+                    : null,
                 onLongPressEnd: (_) => widget.onStopAutoStep(),
                 onLongPressCancel: widget.onStopAutoStep,
               ),
@@ -382,13 +383,12 @@ class _StepFieldState extends State<_StepField> {
                       enabled: widget.enabled,
                       textAlign: TextAlign.center,
                       keyboardType: TextInputType.number,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                      ],
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       style: Theme.of(context).textTheme.titleMedium,
                       decoration: const InputDecoration(
                         isDense: true,
                         border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(vertical: 12),
                         hintText: '0',
                       ),
                       onSubmitted: (_) => _focusNode.unfocus(),
@@ -405,13 +405,12 @@ class _StepFieldState extends State<_StepField> {
                         widget.onStopAutoStep();
                       }
                     : null,
-                onLongPressStart:
-                    widget.enabled && widget.value < widget.max
-                        ? (_) {
-                            _handleStep(1);
-                            widget.onStartAutoStep(1);
-                          }
-                        : null,
+                onLongPressStart: widget.enabled && widget.value < widget.max
+                    ? (_) {
+                        _handleStep(1);
+                        widget.onStartAutoStep(1);
+                      }
+                    : null,
                 onLongPressEnd: (_) => widget.onStopAutoStep(),
                 onLongPressCancel: widget.onStopAutoStep,
               ),
@@ -450,6 +449,8 @@ class _StepButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final enabled = onPressed != null;
+    // 按钮 hover/静止底走暖撞色透明底（token 化，不写死 alpha 值来源）。
+    final warm = ClashTones.of(context, ClashTone.warm);
 
     return Tooltip(
       message: tooltip,
@@ -459,15 +460,15 @@ class _StepButton extends StatelessWidget {
         onLongPressEnd: onLongPressEnd,
         onLongPressCancel: onLongPressCancel,
         child: MouseRegion(
-          cursor: enabled
-              ? SystemMouseCursors.click
-              : SystemMouseCursors.basic,
+          cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
           child: Container(
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: enabled ? scheme.surfaceContainerHighest : Colors.transparent,
+              borderRadius: BorderRadius.circular(AppTokens.radiusSm),
+              color: enabled
+                  ? ClashTones.tint(warm.ink, alpha: 0.08)
+                  : Colors.transparent,
             ),
             child: Icon(
               icon,

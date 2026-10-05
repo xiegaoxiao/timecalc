@@ -3,17 +3,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/database/tables.dart';
 import '../../../core/providers/app_refresh.dart';
 import '../../../core/providers/clock_provider.dart';
-import '../../../core/theme/accent_palette.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../services/countdown_service.dart';
 import '../../../services/duration_format.dart';
 import '../../../services/load_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
-import '../../../shared/widgets/collapsible_section.dart';
+import '../../../shared/widgets/clash_hero.dart';
+import '../../../shared/widgets/clash_tones.dart';
+import '../../../shared/widgets/clash_widgets.dart';
 import '../../../shared/widgets/page_skeletons.dart';
-import '../../../shared/widgets/section_header.dart';
 import '../../settings/data/settings_repository.dart';
 import '../../settings/data/settings_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
@@ -22,6 +24,7 @@ import '../../tasks/presentation/task_section_actions.dart';
 import '../data/goal_repository_provider.dart';
 import '../data/subject_repository_provider.dart';
 import 'goal_form_dialog.dart';
+import 'goal_section.dart';
 import 'milestone_section.dart';
 import 'subject_manager.dart';
 
@@ -165,9 +168,11 @@ class _GoalDetailBodyState extends ConsumerState<GoalDetailBody> {
                 SliverPadding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   sliver: SliverToBoxAdapter(
-                    child: CollapsibleSection(
+                    child: GoalCollapsibleSection(
                       icon: Icons.checklist,
                       title: '未分类任务',
+                      // 任务 = 行动区，取暖色（与今天页待办同情绪）。
+                      tone: ClashTone.warm,
                       summary: '${unassigned.length} 个',
                       expanded: _unassignedExpanded,
                       onChanged: (v) =>
@@ -251,6 +256,9 @@ class _LoadSection extends ConsumerWidget {
         );
 
         final scheme = Theme.of(context).colorScheme;
+        // 负载 = 数据区（冷色）；有风险时整区切危险色，一眼看到问题。
+        final tone = risk ? ClashTone.danger : ClashTone.cool;
+        final danger = ClashTones.of(context, ClashTone.danger);
         // 无任何任务时数字用 `-- 分` 占位：区分「还没建立计划」与「计划
         // 已全部完成（0 分）」两种状态，避免空目标下出现误导性的 0。
         final hasAnyTask = tasks.isNotEmpty;
@@ -260,41 +268,19 @@ class _LoadSection extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 区块头统一 SectionHeader（2026-08-16 视觉升级）：风险时
-                // 图标换警示 + trailing 红色警示 chip（与今天页「超出」chip
-                // 同款；不只依赖颜色，chip 带文字）。
-                SectionHeader(
+                // 区块头统一 ClashSectionHeader（v2.0 撞色）：风险时切成危险色
+                // 并挂危险药丸（不只依赖颜色，chip 带文字 + 图标）。
+                ClashSectionHeader(
                   icon: risk ? Icons.warning_amber_rounded : Icons.speed,
                   title: '负载',
+                  tone: tone,
                   trailing: risk
-                      ? Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: scheme.error.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.warning_amber_rounded,
-                                size: 14,
-                                color: scheme.error,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                '计划风险',
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(
-                                      color: scheme.error,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                              ),
-                            ],
-                          ),
+                      ? const ClashChip(
+                          label: '计划风险',
+                          tone: ClashTone.danger,
+                          icon: Icons.warning_amber_rounded,
+                          variant: ClashChipVariant.filled,
+                          dense: true,
                         )
                       : null,
                 ),
@@ -344,13 +330,13 @@ class _LoadSection extends ConsumerWidget {
                 ],
                 if (risk) ...[
                   const SizedBox(height: 8),
-                  // 风险提示移入浅红容器（与今天页过期区块同语义）。
+                  // 风险提示移入危险色浅底容器（语义色，不只依赖颜色）。
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: scheme.errorContainer.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(8),
+                      color: danger.soft,
+                      borderRadius: BorderRadius.circular(AppTokens.radiusSm),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -358,11 +344,14 @@ class _LoadSection extends ConsumerWidget {
                         Text(
                           '按当前节奏无法在截止日前完成。'
                           '建议延长截止日、减少任务量或增加每日可用时间。',
-                          style: TextStyle(color: scheme.error),
+                          style: TextStyle(color: danger.onSoft),
                         ),
                         Text(
                           '系统仅提供建议，不会自动修改你的计划。',
-                          style: Theme.of(context).textTheme.bodySmall,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: danger.onSoft.withValues(alpha: 0.85),
+                              ),
                         ),
                       ],
                     ),
@@ -378,7 +367,8 @@ class _LoadSection extends ConsumerWidget {
 }
 
 /// 负载指标格：小标签 + 等宽数字数值 + 可选摘要小字（2026-08-16 仪表盘化，
-/// 与今天页/进度页 `_MetricCell` 同款视觉语言）。
+/// 与今天页/进度页 `_MetricCell` 同款视觉语言）。数值取暖色的对照撞色——
+/// 冷色（冷藏青），与负载区的撞色归属一致。
 class _MetricCell extends StatelessWidget {
   const _MetricCell({required this.label, required this.value, this.caption});
 
@@ -391,6 +381,7 @@ class _MetricCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final cool = ClashTones.of(context, ClashTone.cool);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Column(
@@ -409,6 +400,7 @@ class _MetricCell extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w600,
+              color: cool.ink,
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
@@ -449,22 +441,22 @@ class _GoalHeader extends ConsumerWidget {
       CountdownPhase.overdue => Icons.error_outline,
       CountdownPhase.terminated => Icons.flag_outlined,
     };
-    // 头部 hero：品牌渐变背景 + 白字（与今天页倒计时卡同款，视觉呼应）。
-    // 渐变取当前色系（绿色/蓝色主题各自变化，2026-08-16 解耦）。
-    final accent = Theme.of(context).extension<AccentPalette>()!;
-    final onHero = Colors.white;
+    // 头部 hero 撞色（契约 §2）：已完成 = 点缀、逾期/放弃 = 危险、其余 = 暖；
+    // 暖×冷双撞色渐变由 ClashHero 统一提供，白字对比 ≥4.5:1。
+    final tone = goalClashTone(goal, phase);
+
+    // 总进度：目标下任务完成比例。复用详情页已 watch 的同一 provider，
+    // 不引入新的数据源/查询；未就绪时按 0 展示。
+    final tasks = ref.watch(taskListProvider(goal.id)).valueOrNull;
+    final total = tasks?.length ?? 0;
+    final done = tasks?.where((t) => t.status == TaskStatus.done).length ?? 0;
+    final progress = total == 0 ? 0.0 : done / total;
+    final percent = (progress * 100).round().toString();
+    // hero 内的次级白字（半透明白，仍满足大字可读）。
     final onHeroSoft = Colors.white.withValues(alpha: 0.88);
 
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [accent.brandDeep, accent.brandBright],
-        ),
-      ),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+    return ClashHero(
+      tone: tone,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -474,14 +466,14 @@ class _GoalHeader extends ConsumerWidget {
                 child: Text(
                   goal.title,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: onHero,
+                    color: Colors.white,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
               IconButton(
                 tooltip: '编辑目标',
-                icon: Icon(Icons.edit_outlined, color: onHero),
+                icon: const Icon(Icons.edit_outlined),
                 onPressed: () => GoalFormDialog.show(context, goal: goal),
               ),
             ],
@@ -498,16 +490,53 @@ class _GoalHeader extends ConsumerWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              Icon(phaseIcon, size: 18, color: onHero),
+              Icon(phaseIcon, size: 18, color: Colors.white),
               const SizedBox(width: 6),
-              Text(
-                '${CountdownService.label(phase, days)} · 截止 ${formatLocalDate(parseLocalDate(goal.deadlineDate))}',
-                style: TextStyle(
-                  color: onHero,
-                  fontWeight: FontWeight.w600,
+              Expanded(
+                child: Text(
+                  '${CountdownService.label(phase, days)} · 截止 ${formatLocalDate(parseLocalDate(goal.deadlineDate))}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: AppTokens.spaceLg),
+          // 总进度：半透明白底 + 白前景（hero 上唯一可读的进度表达）。
+          Row(
+            children: [
+              Text(
+                '总进度',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: onHeroSoft),
+              ),
+              const Spacer(),
+              Text(
+                '$percent%',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppTokens.spaceSm),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 6,
+              backgroundColor: Colors.white.withValues(alpha: 0.24),
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: AppTokens.spaceSm),
+          Text(
+            total == 0 ? '尚未安排任务' : '已完成 $done / $total 项任务',
+            style: TextStyle(color: onHeroSoft, fontSize: 12),
           ),
         ],
       ),

@@ -21,8 +21,6 @@ import 'window_state_store.dart';
 /// - 托盘图标与菜单（FR-8.2）：左键单击恢复主窗口，右键弹出菜单
 ///   （显示主窗口 / 退出）；Windows 图标必须为 .ico（见
 ///   [_windowsTrayIconAsset]）。
-/// - 真正退出前调用 [onQuit] 一次（M9 退出推送；minimizeToTray 分支不
-///   退出，不触发）。
 ///
 /// 窗口状态经 [WindowStateStore] 持久化在独立 JSON 文件，不进入业务
 /// 数据备份（FR-9.5）。所有平台调用封装在 [DesktopController]，widget
@@ -32,7 +30,6 @@ class DesktopController with WindowListener implements TrayListener {
     required this.stateStore,
     required SettingsRepository settingsRepository,
     String? trayIconAssetPath,
-    this.onQuit,
   })  : _settings = settingsRepository,
         _trayIconAssetPath =
             trayIconAssetPath ?? _defaultTrayIconAsset(Platform.isWindows);
@@ -50,9 +47,6 @@ class DesktopController with WindowListener implements TrayListener {
   final WindowStateStore stateStore;
   final SettingsRepository _settings;
   final String _trayIconAssetPath;
-
-  /// 真正退出前回调（M9 退出推送，带超时的尽力而为；失败不阻断退出）。
-  final Future<void> Function()? onQuit;
 
   static const WindowRestoreService _restoreService = WindowRestoreService();
 
@@ -238,15 +232,8 @@ class DesktopController with WindowListener implements TrayListener {
     }
   }
 
-  /// 真正退出：先执行 onQuit（M9 退出推送，尽力而为），再销毁窗口。
-  ///
-  /// 同步/网络失败或超时都不阻断退出——退出必须及时，推送是可丢的兜底。
+  /// 真正退出：销毁窗口（退出必须及时，不做任何同步/网络收尾）。
   Future<void> _quitApp() async {
-    try {
-      await onQuit?.call();
-    } catch (_) {
-      // 忽略：不阻塞退出。
-    }
     await windowManager.destroy();
   }
 

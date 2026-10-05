@@ -430,22 +430,6 @@ class TaskRepository {
     });
   }
 
-  /// 归档目标下全部未归档任务（历史语义重构后仅用于测试/兼容；替换导入
-  /// 已在 importPlan 内按完成状态分流处理）。
-  Future<int> archiveAllActive(int goalId) {
-    return _db.transaction(() async {
-      final now = clock().toUtc();
-      return (_db.update(_db.tasks)
-            ..where((t) => t.goalId.equals(goalId) & t.archivedAt.isNull()))
-          .write(
-            TasksCompanion(
-              archivedAt: Value(now),
-              updatedAt: Value(now),
-            ),
-          );
-    });
-  }
-
   /// 恢复归档任务：重新进入未归档状态（回到其计划日期参与负载与列表）。
   /// 任务不存在时不写库（幂等 no-op）。
   Future<void> restoreArchived(int id) {

@@ -100,7 +100,7 @@ class _PlanImportDialogState extends ConsumerState<PlanImportDialog> {
 
   /// 示例 JSON 使用「今天/明天」的日期，保证任何时候打开都能校验通过
   /// （历史日期任务会被跳过并统计，示例不含历史日期）。所有任务均带
-  /// `minutes` 预估时长（进度页剩余工作量趋势/任务耗时图只统计带时长的
+  /// `minutes` 预估时长（进度页剩余工作量趋势只统计带时长的
   /// 任务，FR-7.4）：daily_breakdown 用对象写法、daily_must_do 用对象
   /// 写法（时长继承到每天实例）、unclassified 直接带 minutes。其中一条
   /// 带 `time`，示范小时级排程（排进日历）。

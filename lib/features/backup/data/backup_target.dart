@@ -1,10 +1,10 @@
 import 'dart:io';
 
-/// 远端备份文件元信息。
+/// 备份文件元信息（本地目录目的地内的一份备份文件）。
 ///
 /// [modifiedAt] 为 UTC，供恢复列表排序（最新在上）。
-class RemoteBackupFile {
-  const RemoteBackupFile({
+class BackupFileInfo {
+  const BackupFileInfo({
     required this.fileName,
     required this.size,
     this.modifiedAt,
@@ -32,10 +32,10 @@ String autoBackupFileName(DateTime local) {
   return '$autoBackupPrefix$stamp.timecalc';
 }
 
-/// 备份目的地抽象（M8）：本地目录目的地。
+/// 备份目的地抽象（M8）：上传/列出/删除三方法，当前唯一实现为本地目录。
 ///
-/// 上传/下载/删除失败抛可读异常（本地 IO 异常），调用方
-/// （AutoBackupService / 备份页恢复流程）负责向用户展示原因。
+/// 上传/删除失败抛可读异常（本地 IO 异常），调用方
+/// `AutoBackupService` 负责向用户展示原因。
 abstract class BackupTarget {
   /// 用户可读的目的地名称（如「本地目录」）。
   String get label;
@@ -43,11 +43,8 @@ abstract class BackupTarget {
   /// 上传 [fileName] 到目的地；目标目录不存在时先创建。
   Future<void> upload(String fileName, List<int> bytes);
 
-  /// 列出目的地内全部备份文件（最新在前由调用方排序，这里保持服务器序）。
-  Future<List<RemoteBackupFile>> list();
-
-  /// 下载 [file] 的完整内容。
-  Future<List<int>> download(RemoteBackupFile file);
+  /// 列出目的地内全部备份文件（排序由调用方负责，这里保持目录序）。
+  Future<List<BackupFileInfo>> list();
 
   /// 删除目的地内指定文件（不存在视为成功，幂等）。
   Future<void> delete(String fileName);
@@ -80,16 +77,16 @@ class LocalBackupTarget implements BackupTarget {
   }
 
   @override
-  Future<List<RemoteBackupFile>> list() async {
+  Future<List<BackupFileInfo>> list() async {
     if (!await folder.exists()) return const [];
     final entities = await folder.list().toList();
-    final result = <RemoteBackupFile>[];
+    final result = <BackupFileInfo>[];
     for (final entity in entities) {
       if (entity is! File) continue;
       if (!entity.path.endsWith('.timecalc')) continue;
       final stat = await entity.stat();
       result.add(
-        RemoteBackupFile(
+        BackupFileInfo(
           fileName: entity.uri.pathSegments.last,
           size: stat.size,
           modifiedAt: stat.modified.toUtc(),
@@ -97,12 +94,6 @@ class LocalBackupTarget implements BackupTarget {
       );
     }
     return result;
-  }
-
-  @override
-  Future<List<int>> download(RemoteBackupFile file) async {
-    return File('${folder.path}${Platform.pathSeparator}${_baseName(file.fileName)}')
-        .readAsBytes();
   }
 
   @override

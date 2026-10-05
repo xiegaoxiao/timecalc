@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers/app_refresh.dart';
+import '../../../core/theme/app_tokens.dart';
+import '../../../shared/widgets/clash_tones.dart';
 import '../../backup/data/backup_service_provider.dart';
 
 /// 重置数据页（设置页「重置数据」菜单项 push 进入）。
@@ -32,7 +34,7 @@ class _ResetDataPageState extends ConsumerState<ResetDataPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('重置数据')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTokens.pagePadding),
         children: [
           Text(
             '以下操作不可撤销，执行前会自动创建当前数据的安全副本。'
@@ -40,7 +42,7 @@ class _ResetDataPageState extends ConsumerState<ResetDataPage> {
             '导入副本文件。',
             style: Theme.of(context).textTheme.bodySmall,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppTokens.spaceMd),
           _buildOption(
             title: '重置数据',
             icon: Icons.delete_outline,
@@ -53,7 +55,7 @@ class _ResetDataPageState extends ConsumerState<ResetDataPage> {
                 '执行前会自动创建安全副本。此操作不可撤销。',
             onConfirm: () => _reset(includeSettings: false),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppTokens.spaceLg),
           _buildOption(
             title: '重置数据 + 设置',
             icon: Icons.restart_alt,
@@ -80,25 +82,42 @@ class _ResetDataPageState extends ConsumerState<ResetDataPage> {
     required String dialogContent,
     required Future<void> Function() onConfirm,
   }) {
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    // 危险动作统一走 ClashTone.danger（逾期/删除/重置语义），
+    // 与 scheme.error 同源但保证深色模式下 fill/onFill 对白字达标。
+    final danger = ClashTones.of(context, ClashTone.danger);
     return Card(
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTokens.spaceLg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(icon, size: 20, color: scheme.error),
-                const SizedBox(width: 8),
-                Text(title, style: Theme.of(context).textTheme.titleMedium),
+                Container(
+                  padding: const EdgeInsets.all(AppTokens.spaceSm),
+                  decoration: BoxDecoration(
+                    color: danger.soft,
+                    borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                  ),
+                  child: Icon(icon, size: 20, color: danger.onSoft),
+                ),
+                const SizedBox(width: AppTokens.spaceSm),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
               ],
             ),
-            const SizedBox(height: 8),
-            Text(description, style: Theme.of(context).textTheme.bodyMedium),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppTokens.spaceSm),
+            Text(description, style: theme.textTheme.bodyMedium),
+            const SizedBox(height: AppTokens.spaceMd),
             Align(
               alignment: Alignment.centerLeft,
               child: _resetting
@@ -109,13 +128,15 @@ class _ResetDataPageState extends ConsumerState<ResetDataPage> {
                     )
                   : FilledButton(
                       style: FilledButton.styleFrom(
-                        backgroundColor: scheme.error,
-                        foregroundColor: scheme.onError,
+                        backgroundColor: danger.fill,
+                        foregroundColor: danger.onFill,
                       ),
                       onPressed: () async {
                         final confirmed = await showDialog<bool>(
                           context: context,
                           builder: (context) => AlertDialog(
+                            icon: Icon(Icons.warning_amber_rounded,
+                                color: danger.ink),
                             title: Text(dialogTitle),
                             content: Text(dialogContent),
                             actions: [
@@ -126,8 +147,8 @@ class _ResetDataPageState extends ConsumerState<ResetDataPage> {
                               ),
                               FilledButton(
                                 style: FilledButton.styleFrom(
-                                  backgroundColor: scheme.error,
-                                  foregroundColor: scheme.onError,
+                                  backgroundColor: danger.fill,
+                                  foregroundColor: danger.onFill,
                                 ),
                                 onPressed: () =>
                                     Navigator.of(context).pop(true),

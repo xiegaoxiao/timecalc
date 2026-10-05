@@ -9,6 +9,7 @@ import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/app_form_field.dart';
+import '../../../shared/widgets/clash_tones.dart';
 import '../data/milestone_repository_provider.dart';
 
 /// 添加/编辑里程碑对话框（FR-2.1）。
@@ -146,6 +147,8 @@ class _MilestoneFormDialogState extends ConsumerState<MilestoneFormDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // 里程碑 = 点缀撞色（citrus）：表单内的说明块与标题区同属该撞色。
+    final citrus = ClashTones.of(context, ClashTone.citrus);
     return Form(
       key: _formKey,
       child: Column(
@@ -206,18 +209,18 @@ class _MilestoneFormDialogState extends ConsumerState<MilestoneFormDialog> {
           ),
           const SizedBox(height: AppTokens.spaceSm),
 
-          // 提示文本
+          // 提示文本（点缀色浅底块：说明本区属于里程碑语义）
           Container(
             padding: const EdgeInsets.all(AppTokens.spaceMd),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
+              color: citrus.soft,
               borderRadius: BorderRadius.circular(AppTokens.radiusMd),
             ),
             child: Text(
               '里程碑日期原则上不得晚于目标截止日（${widget.deadlineDate}）。',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: citrus.onSoft),
             ),
           ),
           const SizedBox(height: AppTokens.spaceSm),

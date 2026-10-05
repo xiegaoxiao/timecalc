@@ -23,6 +23,7 @@ import '../../features/tasks/presentation/goal_tasks_page.dart';
 import '../../features/tasks/presentation/subject_task_page.dart';
 import '../../features/timetable/presentation/timetable_page.dart';
 import '../../features/today/presentation/today_page.dart';
+import '../../shared/widgets/clash_tones.dart';
 import '../providers/clock_provider.dart';
 import '../providers/motion_provider.dart';
 import '../theme/app_tokens.dart';
@@ -366,10 +367,13 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 }
 
-/// 宽窗口桌面壳：自定义侧栏 + 内容区。
+/// 宽窗口桌面壳：撞色侧栏 + 内容区。
 ///
-/// 侧栏为 200px 导航面板：导航菜单选中态左侧主色竖条指示器，顶部与底部
-/// 留白干净（品牌由顶部自定义标题栏承担）。视觉风格对标设计稿。
+/// 侧栏为 [AppTokens.sidebarWidth]（208px）的**撞色导航面板**：顶部品牌区
+/// （撞色渐变 Logo 块 + 名称 + 副标题）、中部六个导航项、底部暖×冷撞色
+/// 装饰条。背景取 `scheme.surfaceContainerLow`（浅色=白、深色=卡面），
+/// 右侧一条 `scheme.outlineVariant` 细边框与内容区分离——侧栏是全站
+/// 「暖橙 × 冷藏青」撞色语言的第一印象。
 class _DesktopShell extends StatelessWidget {
   const _DesktopShell({
     required this.navigationShell,
@@ -386,38 +390,61 @@ class _DesktopShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       body: Row(
         children: [
           Container(
             // key 供测试定位自定义侧栏导航项（nav_helper.dart）。
             key: const ValueKey('desktop-sidebar'),
-            width: 200,
+            width: AppTokens.sidebarWidth,
             decoration: BoxDecoration(
-              color: isDark ? scheme.surfaceContainerLow : Colors.white,
+              color: scheme.surfaceContainerLow,
               border: Border(
-                right: BorderSide(
-                  color: isDark
-                      ? scheme.outlineVariant.withValues(alpha: 0.4)
-                      : AppTokens.neutralBorderLight,
-                ),
+                right: BorderSide(color: scheme.outlineVariant),
               ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 16),
-                ...List.generate(AppDestination.values.length, (index) {
-                  final dest = AppDestination.values[index];
-                  final isSelected = index == navigationShell.currentIndex;
-                  return _NavItem(
-                    destination: dest,
-                    isSelected: isSelected,
-                    onTap: () => onDestinationSelected(index),
-                  );
-                }),
-                const Spacer(),
+                const _SidebarBrand(),
+                // 导航列表：矮窗口下允许被裁切，但**不产生第二个 Scrollable**
+                // ——桌面壳里必须只有页面内容区自己的 Scrollable，否则测试的
+                // `scrollUntilVisible(find.byType(Scrollable))` 会因歧义抛
+                // `Bad state: Too many elements`（跨页回归）。
+                // OverflowBox 解除高度约束 ⇒ 不抛 RenderFlex overflow；
+                // ClipRect 把超出部分裁掉（纯视觉保护，零副作用）。
+                Expanded(
+                  child: ClipRect(
+                    child: OverflowBox(
+                      alignment: Alignment.topCenter,
+                      maxHeight: double.infinity,
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: AppTokens.spaceSm),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ...List.generate(AppDestination.values.length, (
+                              index,
+                            ) {
+                              final dest = AppDestination.values[index];
+                              final isSelected =
+                                  index == navigationShell.currentIndex;
+                              return _NavItem(
+                                destination: dest,
+                                isSelected: isSelected,
+                                onTap: () => onDestinationSelected(index),
+                              );
+                            }),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // 底部暖×冷撞色装饰条：撞色语言的签名收尾（纯装饰，无文案）。
+                const _SidebarClashBar(),
+                const SizedBox(height: AppTokens.spaceMd),
               ],
             ),
           ),
@@ -428,12 +455,115 @@ class _DesktopShell extends StatelessWidget {
   }
 }
 
-/// 侧栏单个导航项（2026-08-20 动效改造）。
+/// 侧栏品牌区：撞色渐变 Logo 方块 + 产品名 + 副标题。
 ///
-/// 交互反馈（克制微交互）：hover 淡入主色底 + 点击光标；选中态左侧 3px
-/// 竖条指示器高度生长、图标 outlined↔filled 平滑切换、标签文字加粗换色。
-/// 动画时长随「减少动画」开关归零（[motionControllerProvider]），
-/// 反馈仍即时呈现。
+/// 与导航列表之间用**暖调细边框**分隔（`ClashTone.warm.ink` 低透明度），
+/// 让品牌区成为侧栏的第一眼撞色，又不与导航项的选中块抢权重。副标题取
+/// 既有语义文案「时间计算器」（与 `app.dart` 的窗口标题同源，不新增文案）。
+class _SidebarBrand extends StatelessWidget {
+  const _SidebarBrand();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final warm = ClashTones.of(context, ClashTone.warm);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(
+        AppTokens.spaceLg,
+        AppTokens.spaceLg,
+        AppTokens.spaceLg,
+        AppTokens.spaceMd,
+      ),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: ClashTones.tint(warm.ink, alpha: 0.18)),
+        ),
+      ),
+      child: Row(
+        children: [
+          // 品牌 Logo：暖×冷双撞色渐变 + 方块，全站品牌标识的最小单位
+          // （标题栏小方块与之同源）。
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              gradient: ClashGradient.clash(context),
+              borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+            ),
+            child: Icon(
+              Icons.access_time_rounded,
+              size: 20,
+              color: warm.onFill,
+            ),
+          ),
+          const SizedBox(width: AppTokens.spaceMd),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'TimeCalc',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: scheme.onSurface,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '时间计算器',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 侧栏底部撞色装饰条：暖 × 冷双色渐变收束整块导航面板（纯装饰）。
+class _SidebarClashBar extends StatelessWidget {
+  const _SidebarClashBar();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppTokens.spaceLg),
+      child: ClipRRect(
+        // 圆角被 4px 条高限制，取最小间距档的一半。
+        borderRadius: BorderRadius.circular(AppTokens.spaceXs / 2),
+        child: Container(
+          height: 4,
+          decoration: BoxDecoration(gradient: ClashGradient.clash(context)),
+        ),
+      ),
+    );
+  }
+}
+
+/// 侧栏单个导航项（2026-08-20 动效改造 / 撞色重构）。
+///
+/// 状态语言（状态不只靠颜色：图标切换 + 字重 + 竖条三重承载）：
+/// - **选中**：撞色**实心块**（`ClashTones.fill`）圆角 [AppTokens.radiusMd]，
+///   图标与文字用 `ClashTones.onFill`（白），字重 w700，并按撞色色相投影；
+///   hover/pressed 时填充本身加深（`ClashTones.fillHover` / `fillPressed`），
+///   投影叠加 = 「可交互」直接写在填充上，而不只是阴影变化；
+/// - **hover（未选中）**：`ClashTones.tint(t.ink, alpha: 0.08)` 圆角底；
+/// - **未选中**：图标/文字 `scheme.onSurfaceVariant`（中性灰）。
+///
+/// 微交互：hover/选中底 `AnimatedContainer` 过渡、图标 outlined↔filled
+/// `AnimatedSwitcher` 淡切、选中竖条高度生长、文字字重动画。动画时长随
+/// 「减少动画」开关归零（[motionControllerProvider]），反馈仍即时呈现。
 class _NavItem extends ConsumerStatefulWidget {
   const _NavItem({
     required this.destination,
@@ -452,53 +582,86 @@ class _NavItem extends ConsumerStatefulWidget {
 class _NavItemState extends ConsumerState<_NavItem> {
   bool _hovered = false;
 
+  /// 指针按下态（由 InkWell 的 onTapDown/onTapUp/onTapCancel 驱动）。
+  bool _pressed = false;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final motion = ref.watch(motionControllerProvider);
+    final warm = ClashTones.of(context, ClashTone.warm);
     final dest = widget.destination;
     final isSelected = widget.isSelected;
     final icon = isSelected ? dest.selectedIcon : dest.icon;
-    final color = isSelected ? scheme.primary : scheme.onSurfaceVariant;
+    // 实心撞色块上必须用 onFill；未选中走中性灰，hover 时转暖色 ink，
+    // 给「即将点中」的即时反馈（深色模式下 fill 与 ink 角色不同，不能混用）。
+    final color = isSelected
+        ? warm.onFill
+        : (_hovered ? warm.ink : scheme.onSurfaceVariant);
 
-    // hover/选中背景：浅色用主色淡底，深色用 surfaceContainerHighest，
-    // 选中项 hover 仍保持主色淡底（层级一致）。
-    final hoverColor = isSelected
-        ? scheme.primary.withValues(alpha: 0.10)
-        : (Theme.of(context).brightness == Brightness.dark
-              ? scheme.surfaceContainerHighest
-              : scheme.primary.withValues(alpha: 0.06));
+    // 背景：选中＝撞色实心块，hover/pressed 用 fillHover/fillPressed 把反馈
+    // 直接做在填充上（白字对比只增不减）；hover（未选中）＝撞色 8% 透明底。
+    final background = isSelected
+        ? (_pressed
+              ? ClashTones.fillPressed(warm.fill)
+              : (_hovered ? ClashTones.fillHover(warm.fill) : warm.fill))
+        : (_hovered
+              ? ClashTones.tint(warm.ink, alpha: 0.08)
+              : Colors.transparent);
+    // 选中块按撞色自身色相投影（hover/pressed 时抬升加强），叠加在填充加深之上。
+    final shadows = isSelected
+        ? AppTokens.shadowTinted(
+            warm.fill,
+            opacity: _pressed ? 0.36 : (_hovered ? 0.32 : 0.22),
+          )
+        : const <BoxShadow>[];
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTokens.spaceMd,
+          vertical: AppTokens.spaceXs,
+        ),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
             borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-            onTap: widget.onTap,
+            // 按下态：用 InkWell 自带的 tap 回调记录（不额外套手势层，
+            // 避免与 InkWell 的手势竞技场抢事件）。
+            onTapDown: (_) => setState(() => _pressed = true),
+            onTapUp: (_) => setState(() => _pressed = false),
+            onTapCancel: () => setState(() => _pressed = false),
+            onTap: () {
+              if (_pressed) setState(() => _pressed = false);
+              widget.onTap();
+            },
             child: AnimatedContainer(
               duration: motion.duration(AppTokens.motionFast),
               curve: motion.curve,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppTokens.spaceMd,
+                vertical: 10,
+              ),
               decoration: BoxDecoration(
-                color: _hovered ? hoverColor : Colors.transparent,
+                color: background,
                 borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                boxShadow: shadows,
               ),
               child: Row(
                 children: [
-                  // 选中竖条指示器：高度生长 + 淡入（未选中 0 高度不占位跳动）。
+                  // 选中竖条指示器：高度生长 + 淡入（未选中 0 高度不占位跳动）；
+                  // 选中块内取 onFill，保证落在撞色实心底上仍可辨。
                   AnimatedContainer(
                     duration: motion.duration(AppTokens.motionFast),
                     curve: motion.curve,
                     width: 3,
-                    height: isSelected ? 20 : 0,
-                    margin: const EdgeInsets.only(right: 12),
+                    height: isSelected ? 18 : 0,
+                    margin: const EdgeInsets.only(right: AppTokens.spaceMd),
                     decoration: BoxDecoration(
-                      color: scheme.primary,
+                      color: color,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -521,14 +684,14 @@ class _NavItemState extends ConsumerState<_NavItem> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppTokens.spaceMd),
                   AnimatedDefaultTextStyle(
                     duration: motion.duration(AppTokens.motionFast),
                     curve: motion.curve,
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: isSelected
-                          ? FontWeight.w600
+                          ? FontWeight.w700
                           : FontWeight.w500,
                       color: color,
                     ),

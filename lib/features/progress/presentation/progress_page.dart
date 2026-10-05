@@ -9,42 +9,24 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/tables.dart';
 import '../../../core/providers/clock_provider.dart';
-import '../../../core/providers/motion_provider.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../services/duration_format.dart';
 import '../../../services/statistics_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
-import '../../../shared/widgets/chart_empty_state.dart';
+import '../../../shared/widgets/clash_tones.dart';
+import '../../../shared/widgets/clash_widgets.dart';
 import '../../../shared/widgets/hoverable_card.dart';
 import '../../../shared/widgets/page_skeletons.dart';
-import '../../../shared/widgets/section_header.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../../goals/data/subject_repository_provider.dart';
 import '../../settings/data/settings_repository.dart';
 import '../../settings/data/settings_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
 
-/// 热力图完成强度色（LeetCode 色板最深档，**热力图专属语义色**）。
-///
-/// 不随主题色系变化（2026-08-16 蓝色主题：热力图保留原色板）；燃尽图
-/// 剩余线与耗时图柱已改为主题派生色（见 _BurndownSection/_BarChart）。
-const _heatGreen = Color(0xFF216E39);
-
-/// 热力图完成强度浅档（LeetCode 色板第二档，热力图专属）。
-const _heatGreenLight = Color(0xFF9BE9A8);
-
-/// LeetCode 官方热力图色板（FR-7.2）。
-///
-/// 从无到多五档：空（浅灰）、1-3 项、4-6 项、7-9 项、10+ 项。
-/// 色值取自 LeetCode 贡献图（#EBEDF0 → #216E39），克制且饱和度递增。
-/// 热力图专属语义色，不随主题色系变化。
-const _heatColors = <Color>[
-  Color(0xFFEBEDF0),
-  _heatGreenLight,
-  Color(0xFF40C463),
-  Color(0xFF30A14E),
-  _heatGreen,
-];
+/// 热力图完成强度色阶不再使用固定的 LeetCode 绿：改为**单一撞色（冷）的明度
+/// 递进**，由 [_HeatmapSection] 在 build 内按当前主题解析一次（见 `_heatRamp`），
+/// 五档同色相、只差明度，三套撞色方案与深浅模式全自动跟随。
 
 /// 复用单一 DateFormat 实例（Intl 格式化非 const 可构造，逐格/逐任务
 /// 新建会引入不必要的日期符号与语言环境解析开销）。
@@ -52,17 +34,16 @@ final _ymd = DateFormat('yyyy-MM-dd');
 final _md = DateFormat('M/d');
 final _hm = DateFormat('HH:mm');
 
-/// 进度页（M3）：基础统计、热力图与任务耗时图（FR-7.1 / FR-7.2 / FR-7.3 / FR-7.4）。
+/// 进度页（M3）：基础统计、燃尽趋势与热力图（FR-7.1 / FR-7.2 / FR-7.3 / FR-7.4）。
 ///
 /// 结构（自上而下）：
 /// 1. 今日概览：今日完成数/总数、今日已完成预估时长、目标剩余工作量；
 /// 2. 燃尽趋势（FR-7.3）：从今天起到最晚截止日的「剩余预估时长」计划燃尽
 ///    曲线（今日点 = 当前剩余；按最晚截止日线性递减），避免展示无意义的
 ///    历史平线；
-/// 3. 热力图：按「完成日期」统计最近 26 周完成任务数量（LeetCode 配色，
-///    tooltip 与图例文本，状态不只依赖颜色，NFR-4）；
-/// 4. 任务耗时图（fl_chart，M7 迭代）：按周展示未来计划与已完成时长；
-/// 5. FR-7.4 说明：无预估时长的任务只计入任务数。
+/// 3. 热力图：按「完成日期」统计最近 26 周完成任务数量（**单一冷色明度递进**
+///    色阶，tooltip 与图例文本，状态不只依赖颜色，NFR-4）；
+/// 4. FR-7.4 说明：无预估时长的任务只计入任务数。
 /// 进度页各图表的数据聚合（P 优化）。
 ///
 /// 旧版 ProgressPage 在 build 里 watch 4 个任务类 provider、四层嵌套 .when，
@@ -70,7 +51,7 @@ final _hm = DateFormat('HH:mm');
 /// 整页重算全部聚合。现拆为独立 provider：
 /// - [progressTasksProvider]：把「全部未完成 + 26 周完成」合并为一次就绪，
 ///   页面只剩 goals + tasks 两层加载门；
-/// - 概览/热力图/燃尽/耗时图各 watch 自己依赖的子集，任一输入变化只重算
+/// - 概览/热力图/燃尽各 watch 自己依赖的子集，任一输入变化只重算
 ///   受影响区块（对应区块组件独立重建，互不连带）。
 const _progressStats = StatisticsService();
 
@@ -99,7 +80,7 @@ final progressOverviewProvider = Provider<({
   if (todayTasks == null || tasks == null) return null;
   // 目标剩余工作量只统计进行中目标（2026-08-14 审查 #2，与今天页 L13
   // 口径一致）：已完成/放弃/归档目标的残留 todo 任务不再计入，避免
-  // 两页显示不同数字。燃尽/甘特图仍为全局趋势（不在此过滤）。
+  // 两页显示不同数字。燃尽仍为全局趋势（不在此过滤）。
   final activeGoalIds = {
     for (final g in ref.watch(goalListProvider).valueOrNull ?? const <Goal>[])
       if (g.status != GoalStatus.completed &&
@@ -167,73 +148,6 @@ final progressBurndownProvider = Provider<({
   );
 });
 
-/// 任务耗时图数据（FR-7.3 甘特窗口）：跨目标每周聚合在此完成一次，
-/// 替代旧版 _GanttSection.build 每帧重算 rows × weekStarts。
-final progressGanttProvider = Provider<({
-  List<DateTime> weekStarts,
-  Map<int, GoalGanttRow> data,
-  List<Goal> rows,
-  List<int> plannedPerWeek,
-  List<int> completedPerWeek,
-  bool hasAnyWeek,
-  int currentWeekIndex,
-})?>((ref) {
-  final tasks = ref.watch(progressTasksProvider).valueOrNull;
-  if (tasks == null) return null;
-  final today = ref.watch(clockProvider)();
-  final goals = ref.watch(goalListProvider).valueOrNull ?? const <Goal>[];
-  // 任务耗时图主要展示未来计划，过去只保留 2 周上下文，未来 8 周，
-  // 避免刚创建计划时左侧出现大量空白历史周。
-  final weekStarts = StatisticsService.ganttWeekStarts(
-    today,
-    pastWeeks: 2,
-    futureWeeks: 8,
-  );
-  final data = _progressStats.goalGanttData(
-    todoTasks: tasks.todo,
-    completedTasks: tasks.completed,
-    weekStarts: weekStarts,
-  );
-  final rows = goals
-      .where((g) => data[g.id]?.hasData ?? false)
-      .toList();
-  final plannedPerWeek = List.filled(weekStarts.length, 0);
-  final completedPerWeek = List.filled(weekStarts.length, 0);
-  for (final goal in rows) {
-    final row = data[goal.id];
-    if (row == null) continue;
-    for (var i = 0; i < weekStarts.length; i++) {
-      plannedPerWeek[i] += row.planned[i];
-      completedPerWeek[i] += row.completed[i];
-    }
-  }
-  var hasAnyWeek = false;
-  for (var i = 0; i < weekStarts.length; i++) {
-    if (plannedPerWeek[i] > 0 || completedPerWeek[i] > 0) {
-      hasAnyWeek = true;
-      break;
-    }
-  }
-  // 当前周在 weekStarts 中的下标，用于 X 轴标注「本周」。
-  final todayDay = DateTime(today.year, today.month, today.day);
-  final thisWeekStart = addLocalDays(todayDay, -(todayDay.weekday - 1));
-  final currentWeekIndex = weekStarts.indexWhere(
-    (ws) =>
-        ws.year == thisWeekStart.year &&
-        ws.month == thisWeekStart.month &&
-        ws.day == thisWeekStart.day,
-  );
-  return (
-    weekStarts: weekStarts,
-    data: data,
-    rows: rows,
-    plannedPerWeek: plannedPerWeek,
-    completedPerWeek: completedPerWeek,
-    hasAnyWeek: hasAnyWeek,
-    currentWeekIndex: currentWeekIndex,
-  );
-});
-
 /// 进行中目标的最晚截止日（yyyy-MM-dd 文本）；无进行中目标返回 null。
 DateTime? _latestDeadline(List<Goal> goals) {
   DateTime? latest;
@@ -282,7 +196,7 @@ class ProgressPage extends ConsumerWidget {
     );
   }
 
-  /// 整页纵向滚动（概览 + 燃尽 + 热力图 + 任务耗时图 + 说明统一滚动）。
+  /// 整页纵向滚动（概览 + 燃尽 + 热力图 + 说明统一滚动）。
   ///
   /// 各图表区块为 const 构造、各自 watch 自己的聚合 provider：页面 build
   /// （仅由 goals/tasks 加载态驱动）重建时不连带重建区块；区块只在自身
@@ -296,29 +210,32 @@ class ProgressPage extends ConsumerWidget {
 
         return SingleChildScrollView(
           key: const ValueKey('progressPageScroll'),
-          padding: EdgeInsets.fromLTRB(hPad, 16, hPad, 24),
+          padding: EdgeInsets.fromLTRB(
+            hPad,
+            AppTokens.spaceLg,
+            hPad,
+            AppTokens.spaceXl,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: const [
-              // 数据开场（2026-08-16 编排）：概览/燃尽/热力图/耗时图依次
+              // 数据开场（2026-08-16 编排）：概览/燃尽/热力图依次
               // 呈现，「进度」页以数据为主角；设置类入口沉底（原首屏第一张
               // 是计划偏好入口卡，抢了数据卡的主角位）。
               _TodayOverviewCard(),
-              SizedBox(height: 12),
-              // 空态 CTA（无可归属目标时不显示按钮）：燃尽/耗时图需要
+              SizedBox(height: AppTokens.spaceMd),
+              // 空态 CTA（无可归属目标时不显示按钮）：燃尽图需要
               // 「带预估时长」的数据，点「去设置预估时长」跳转到计划页排期，
               // 语义比「随便加一个任务」更贴合图表；热力图无完成记录时
               // 渲染全灰网格，不放引导按钮。
               _BurndownSection(ctaLabel: '去设置预估时长'),
-              SizedBox(height: 12),
+              SizedBox(height: AppTokens.spaceMd),
               _HeatmapSection(),
-              SizedBox(height: 12),
-              _GanttSection(ctaLabel: '去设置预估时长'),
-              SizedBox(height: 12),
+              SizedBox(height: AppTokens.spaceMd),
               // 计划偏好入口卡：偏好是解读进度（今日概览完成率/剩余工作量）
               // 的上下文，点击进入独立编辑页（设置页已移除该区块）。
               _PlanPreferenceEntryCard(),
-              SizedBox(height: 12),
+              SizedBox(height: AppTokens.spaceMd),
               // 数据统计说明：默认折叠，点击展开（不霸占底部留白）。
               _StatNote(),
             ],
@@ -346,32 +263,38 @@ class _StatNoteState extends State<_StatNote> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    // 说明属于「统计」语义：图标取冷撞色 ink（压在暖奶油底/白卡上 ≥4.5:1），
+    // 文字用 onSurfaceVariant（比旧 outline 对比度更高）。
+    final noteInk = ClashTones.of(context, ClashTone.cool).ink;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         InkWell(
           onTap: () => setState(() => _expanded = !_expanded),
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(AppTokens.radiusSm),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+            padding: const EdgeInsets.symmetric(
+              vertical: AppTokens.spaceXs,
+              horizontal: 2,
+            ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.info_outline, size: 16, color: scheme.outline),
+                Icon(Icons.info_outline, size: 16, color: noteInk),
                 const SizedBox(width: 6),
                 Text(
                   '数据统计说明',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: scheme.outline),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: AppTokens.spaceXs),
                 Icon(
                   _expanded
                       ? Icons.expand_less
                       : Icons.expand_more,
                   size: 16,
-                  color: scheme.outline,
+                  color: noteInk,
                 ),
               ],
             ),
@@ -383,13 +306,23 @@ class _StatNoteState extends State<_StatNote> {
           alignment: Alignment.topCenter,
           child: _expanded
               ? Padding(
-                  padding: const EdgeInsets.only(left: 2, right: 2, top: 4),
+                  padding: const EdgeInsets.only(
+                    left: 2,
+                    right: 2,
+                    top: AppTokens.spaceXs,
+                  ),
                   child: Text(
+                    // 只更新与实际渲染不符的描述性文案（Lead 批准）：
+                    // ①图里已无灰色虚线参考线，剩余线本身就是按最晚截止日
+                    //   匀速递减到 0 的计划燃尽线；
+                    // ②方向纠正：「今天」在 X 轴**最左端**——已核对渲染路径
+                    //   （_BurndownChart: minX=0 处 index==0 固定标注「今天」，
+                    //   maxX 处标注截止日；数据 points[0]=today 向右递增），
+                    //   轴方向与数据方向一致，原「最右端=今天」才是笔误。
                     '无预估时长的任务只计入任务数，不计入时长（FR-7.4）。'
-                    '剩余工作量图展示还没做完的工作量随日期的变化（最右端=今天，'
-                    '对应当前剩余），灰色虚线为按最晚截止日匀速消化的参考线；'
-                    '热力图按任务完成日期统计；任务耗时图按周展示未来计划（浅色）'
-                    '与已完成时长（深色）。',
+                    '剩余工作量图展示还没做完的工作量随日期的变化（最左端=今天，'
+                    '对应当前剩余），曲线按最晚截止日匀速递减到 0；'
+                    '热力图按任务完成日期统计。',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 )
@@ -400,7 +333,8 @@ class _StatNoteState extends State<_StatNote> {
   }
 }
 
-/// 统一图例色块：圆角方块 12×12，可带描边（燃尽实际线保留白描边语义）。
+/// 统一图例色块：圆角方块 12×12，可带描边（燃尽曲线节点描边用 surface，
+/// 让撞色节点在卡片底上有清晰边界）。
 class _LegendDot extends StatelessWidget {
   const _LegendDot({required this.color, this.borderColor});
 
@@ -434,6 +368,9 @@ class _PlanPreferenceEntryCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
+    // 「计划偏好」是主动作入口（点了要去排期），取**暖色实心撞色块**：
+    // 与相邻的热力图（冷）与统计说明（冷）形成暖/冷对冲。
+    final warm = ClashTones.of(context, ClashTone.warm);
     final settingsAsync = ref.watch(settingsProvider);
     return HoverableCard(
       // 计划偏好入口卡可点：hover 边框加深 + 阴影增强 + 微上浮。
@@ -456,24 +393,25 @@ class _PlanPreferenceEntryCard extends ConsumerWidget {
               ? '每周 7 天'
               : '每周 ${weekdays.map(_weekdayShort).join('、')}';
           return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppTokens.spaceLg,
+              vertical: AppTokens.spaceMd,
+            ),
             child: Row(
               children: [
                 Container(
                   width: 34,
                   height: 34,
                   decoration: BoxDecoration(
-                    color: scheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(10),
+                    // 实心撞色块必须配 onFill（深色模式下 primaryContainer
+                    // 与 primary 的对比不足，这正是拆分色彩角色的原因）。
+                    color: warm.fill,
+                    borderRadius: BorderRadius.circular(AppTokens.radiusMd),
                   ),
                   alignment: Alignment.center,
-                  child: Icon(
-                    Icons.tune,
-                    size: 18,
-                    color: scheme.primary,
-                  ),
+                  child: Icon(Icons.tune, size: 18, color: warm.onFill),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: AppTokens.spaceMd),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -499,7 +437,7 @@ class _PlanPreferenceEntryCard extends ConsumerWidget {
                 Icon(
                   Icons.chevron_right,
                   size: 20,
-                  color: scheme.onSurfaceVariant,
+                  color: warm.ink,
                 ),
               ],
             ),
@@ -523,13 +461,19 @@ class _PlanPreferenceEntryCard extends ConsumerWidget {
   }
 }
 
-/// 今日概览卡（FR-7.1，2026-08-16 仪表盘化：与今天页负载卡同构）。
+/// 今日概览卡（FR-7.1，撞色 KPI 行）。
 ///
-/// 左侧进度环（今日完成 N/M）+ 右侧两格指标（已完成时长 / 目标剩余
-/// 工作量）；数值等宽（tabular figures），完成数/总数由环承载，不再
-/// 单列一格。无数据语义（与「计划已满但全部完成」区分，避免 0 误导）：
-/// - 今日没有任务（totalCount==0）：环置 0、中心 `--`、已完成时长
-///   `-- 分`；
+/// 三个 [ClashStatTile] 构成撞色 KPI 行（数值由 ClashStatTile 统一承载，
+/// headlineSmall + w700）：
+/// - **暖（实心）＝已完成时长**：今天真正投入的量，视觉重量最高；
+/// - **冷（浅底）＝目标剩余工作量**：与燃尽图同源的「还剩多少」数据；
+/// - **点缀（浅底）＝今日完成 N/M + 完成率**：完成徽标语义（契约中
+///   citrus＝成就/完成徽标），N/M 与完成率同格承载，不再另外占一格。
+/// 密集排布统一用 `filled: false` 浅底变体（仅暖块实心），避免三块实心
+/// 互相抢戏。
+///
+/// 无数据语义（与「计划已满但全部完成」区分，避免 0 误导）：
+/// - 今日没有任务（totalCount==0）：今日完成 `--`、已完成时长 `-- 分`；
 /// - 应用完全没有任务（[hasAnyTask] 为 false）：目标剩余工作量 `-- 分`。
 class _TodayOverviewCard extends ConsumerWidget {
   const _TodayOverviewCard();
@@ -557,104 +501,65 @@ class _TodayOverviewCard extends ConsumerWidget {
     final remainingMinutes = data.remainingMinutes;
     final hasAnyTask = data.hasAnyTask;
 
-    final scheme = Theme.of(context).colorScheme;
     final hasTodayTask = stats.totalCount > 0;
-    final progress = hasTodayTask ? stats.doneCount / stats.totalCount : 0.0;
-    final motion = ref.watch(motionControllerProvider);
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTokens.spaceLg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SectionHeader(icon: Icons.insights, title: '今日概览'),
-            const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // 今日完成进度环：与今天页负载卡同款（品牌主色圆头弧 +
-                // 320ms 平滑过渡 + 中心 N/M 等宽数字）。
-                SizedBox(
-                  width: 72,
-                  height: 72,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Positioned.fill(
-                        child: TweenAnimationBuilder<double>(
-                          tween: Tween(end: progress),
-                          duration: motion.duration(
-                            const Duration(milliseconds: 320),
-                          ),
-                          curve: motion.curve,
-                          builder: (context, value, _) =>
-                              CircularProgressIndicator(
-                                value: hasTodayTask ? value : 0,
-                                strokeWidth: 6,
-                                strokeCap: StrokeCap.round,
-                                backgroundColor:
-                                    scheme.surfaceContainerHighest,
-                                valueColor: AlwaysStoppedAnimation(
-                                  scheme.primary,
-                                ),
-                              ),
-                        ),
-                      ),
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // FittedBox 防系统放大字号撑爆 72px 固定环。
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              hasTodayTask
-                                  ? '${stats.doneCount}/${stats.totalCount}'
-                                  : '--',
-                              style: Theme.of(context).textTheme.titleMedium
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    fontFeatures: const [
-                                      FontFeature.tabularFigures(),
-                                    ],
-                                  ),
-                            ),
-                          ),
-                          Text(
-                            '今日完成',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: scheme.outline,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+            // 数据/统计类区块头 → 冷撞色。
+            const ClashSectionHeader(
+              icon: Icons.insights,
+              title: '今日概览',
+              tone: ClashTone.cool,
+            ),
+            const SizedBox(height: AppTokens.spaceMd),
+            // IntrinsicHeight：三个 KPI 块等高对齐（只有 3 个子节点，
+            // 一次额外测量，开销可忽略）。
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: ClashStatTile(
+                      tone: ClashTone.warm,
+                      icon: Icons.timer_outlined,
+                      label: '已完成时长',
+                      value: hasTodayTask
+                          ? DurationFormat.minutes(stats.doneMinutes)
+                          : '-- 分',
+                    ),
                   ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _MetricCell(
-                          label: '已完成时长',
-                          value: hasTodayTask
-                              ? DurationFormat.minutes(stats.doneMinutes)
-                              : '-- 分',
-                        ),
-                      ),
-                      Expanded(
-                        child: _MetricCell(
-                          label: '目标剩余工作量',
-                          value: hasAnyTask
-                              ? DurationFormat.minutes(remainingMinutes)
-                              : '-- 分',
-                        ),
-                      ),
-                    ],
+                  const SizedBox(width: AppTokens.spaceMd),
+                  Expanded(
+                    child: ClashStatTile(
+                      tone: ClashTone.cool,
+                      filled: false,
+                      icon: Icons.hourglass_bottom,
+                      label: '目标剩余工作量',
+                      value: hasAnyTask
+                          ? DurationFormat.minutes(remainingMinutes)
+                          : '-- 分',
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: AppTokens.spaceMd),
+                  Expanded(
+                    child: ClashStatTile(
+                      tone: ClashTone.citrus,
+                      filled: false,
+                      icon: Icons.check_circle_outline,
+                      label: '今日完成',
+                      value: hasTodayTask
+                          ? '${stats.doneCount}/${stats.totalCount}'
+                          : '--',
+                      hint: hasTodayTask
+                          ? '完成率 ${(stats.doneCount / stats.totalCount * 100).round()}%'
+                          : null,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -663,76 +568,39 @@ class _TodayOverviewCard extends ConsumerWidget {
   }
 }
 
-/// 概览指标格：小标签 + 等宽数字数值（2026-08-16 仪表盘化，与今天页
-/// `_MetricCell` 同款视觉语言）。
-class _MetricCell extends StatelessWidget {
-  const _MetricCell({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: scheme.outline),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 燃尽趋势区（FR-7.3）：最近 [windowDays] 天「剩余预估时长」随日期的
-/// 变化 + 理想参考线（fl_chart 图表，视觉重构增强）。
+/// 燃尽趋势区（FR-7.3）：从今天到最晚截止日的「剩余预估时长」计划燃尽曲线
+/// （fl_chart 图表，撞色重构）。
 ///
 /// - 实际剩余（实线 + 面积填充）：今日点 = 当前剩余（与 FR-7.1 口径一致），
-///   随日期往前回退，完成日期越晚的任务越晚被「消化」，剩余越多；
-/// - 理想参考线（虚线）：从窗口起点的实际剩余按 [endDate]（最晚截止日）
-///   线性递减到 0；
-/// - Header 右侧展示「当前剩余」大字（燃尽核心信息）；标题与图例用白话
-///   （剩余工作量趋势 / 匀速参考线），副标题为一句话结论（过去 N 天消化
-///   了多少、还剩多少）；悬停 tooltip + 图例文本 + 整体读屏语义（NFR-4，
-///   不只依赖颜色）。
+///   随日期往后按最晚截止日线性递减到 0；
+/// - Header 右侧展示「当前剩余」大字（燃尽核心信息）；副标题为一句话结论；
+///   悬停 tooltip + 图例文本 + 整体读屏语义（NFR-4，不只依赖颜色）。
+///
+/// 撞色映射（统一取 [ClashTones.chartSeries]）：
+/// - 主序列「剩余工作量」＝暖色（`series[0]`），面积填充同色低透明度；
+/// - 第三序列点缀＝今日锚点节点（`series[2]`）：前向燃尽的起点是「今天」，
+///   用点缀色把起点从曲线上拎出来，并在图例中以文本标注（NFR-4）。
 class _BurndownSection extends ConsumerWidget {
   const _BurndownSection({this.ctaLabel = '去添加任务'});
 
-  /// 空态按钮文案（默认「去添加任务」；燃尽/耗时图用「去设置预估时长」）。
+  /// 空态按钮文案（默认「去添加任务」；燃尽图用「去设置预估时长」）。
   final String ctaLabel;
 
-  /// 实际剩余线颜色 = 当前主题主色（2026-08-16：从固定绿改为主题派生，
-  /// 蓝色主题下燃尽图跟随变蓝）；面积填充从主色 28% 淡出到透明。
-  /// 因依赖主题，由 build 内计算后传给 [_BurndownChart] 与图例。
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final remainingColor = scheme.primary;
+    // 图表三序列撞色一次取好（纯查表，无分配压力；不要下沉到 itemBuilder）。
+    final series = ClashTones.chartSeries(context);
+    final remainingColor = series[0]; // 暖：主序列（剩余工作量）
+    final todayDotColor = series[2]; // 点缀：今日锚点
+    // 面积填充：主序列同色 28% → 透明（纵向淡出，网格线仍可见）。
     final areaGradient = [
-      scheme.primary.withValues(alpha: 0.28),
-      scheme.primary.withValues(alpha: 0.0),
+      ClashTones.tint(remainingColor, alpha: 0.28),
+      ClashTones.tint(remainingColor, alpha: 0.0),
     ];
-    // 节点/图例描边：浅色下白色，深色下用 surface 兜住主色节点。
-    final dotBorder = Theme.of(context).brightness == Brightness.dark
-        ? scheme.surface
-        : Colors.white;
+    // 节点/图例描边：用卡片表面色兜住撞色节点（浅色下即白色，深色下自动
+    // 跟随深色表面），不再硬编码 Colors.white。
+    final dotBorder = scheme.surface;
 
     // 数据聚合由 progressBurndownProvider 完成（独立区块，输入变化只重算
     // 本区块）；空态 CTA 的目标归属列表同样自查，避免父级传参导致本区块
@@ -779,26 +647,33 @@ class _BurndownSection extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SectionHeader(
+            // 数据/统计类区块头 → 冷撞色（与暖色曲线形成对照）。
+            ClashSectionHeader(
               icon: Icons.trending_down,
               title: '剩余工作量趋势',
+              tone: ClashTone.cool,
               subtitle: summary,
               // Header 右侧：当前剩余大字（燃尽核心信息直接呈现）。
-              // 无带时长数据时显示灰色 `-- 分`（与顶部今日概览无数据语义一致），
-              // 只有真有任务且剩余为 0（全部完成）才显示绿色完成状态。
+              // 无带时长数据时显示 `-- 分`（与顶部今日概览无数据语义一致），
+              // 只有真有任务且剩余为 0（全部完成）才用点缀色表达完成状态。
               trailing: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text('当前剩余', style: Theme.of(context).textTheme.bodySmall),
+                  Text(
+                    '当前剩余',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                  ),
                   Text(
                     currentRemaining == null
                         ? '-- 分'
                         : DurationFormat.minutes(currentRemaining),
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       color: currentRemaining == null
-                          ? scheme.outline
+                          ? scheme.onSurfaceVariant
                           : currentRemaining == 0
-                          ? scheme.primary
+                          ? ClashTones.of(context, ClashTone.citrus).ink
                           : scheme.onSurface,
                       fontWeight: currentRemaining == null
                           ? FontWeight.w400
@@ -810,16 +685,23 @@ class _BurndownSection extends ConsumerWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppTokens.spaceLg),
             if (!hasMinutes)
-              ChartEmptyState(
+              ClashEmptyState(
                 icon: Icons.trending_down,
                 title: '还没有可展示的剩余工作量数据',
-                caption:
+                message:
                     '给任务设置预估时长并开始完成后，'
                     '这里会展示剩余工作量随时间的变化',
-                actionLabel: onAddTask == null ? null : ctaLabel,
-                onAction: onAddTask,
+                tone: ClashTone.cool,
+                compact: true,
+                action: onAddTask == null
+                    ? null
+                    : OutlinedButton.icon(
+                        onPressed: onAddTask,
+                        icon: const Icon(Icons.add, size: 18),
+                        label: Text(ctaLabel),
+                      ),
               )
             else ...[
               // RepaintBoundary：fl_chart 每帧 repaint 开销大，隔离成独立
@@ -829,17 +711,23 @@ class _BurndownSection extends ConsumerWidget {
                   points: points,
                   today: today,
                   remainingColor: remainingColor,
+                  todayDotColor: todayDotColor,
                   areaGradient: areaGradient,
                   endDate: data.endDate,
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppTokens.spaceLg),
               // Footer 图例：色块 + 文字（与其它图表统一；无数据时不渲染）。
+              // 每个撞色都带文本标签（NFR-4：信息不只靠颜色）。
               Row(
                 children: [
                   _LegendDot(color: remainingColor, borderColor: dotBorder),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppTokens.spaceSm),
                   const Text('剩余工作量', style: TextStyle(fontSize: 10)),
+                  const SizedBox(width: AppTokens.spaceLg),
+                  _LegendDot(color: todayDotColor, borderColor: dotBorder),
+                  const SizedBox(width: AppTokens.spaceSm),
+                  const Text('今日节点', style: TextStyle(fontSize: 10)),
                 ],
               ),
             ],
@@ -850,22 +738,23 @@ class _BurndownSection extends ConsumerWidget {
   }
 }
 
-/// 燃尽折线图（fl_chart 重构）：计划剩余量（平滑曲线 + 面积填充 + 白描边
+/// 燃尽折线图（fl_chart）：计划剩余量（平滑曲线 + 面积填充 + 表面色描边
 /// 节点）+ 浅色网格 + 日期轴（最左端标注「今天」、最右端标注截止日）
 /// + 悬停 tooltip。
 ///
-/// 视觉重构（M7 迭代增强）：
-/// - 面积填充：实际线下方 from 主题主色 28% 到透明（belowBarData gradient）；
-/// - 平滑曲线（isCurved）替代生硬折线；
-/// - 节点白描边（FlDotCirclePainter strokeColor 白），图更精致；
-/// - X/Y 轴每 25% 浅色虚线网格，增加参考感；
-/// - 入场动画：TweenAnimationBuilder 高度 0→100% 从底部向上生长；
+/// 撞色：
+/// - 曲线/节点/面积＝主序列暖色（由 _BurndownSection 传入）；
+/// - 今日锚点节点＝点缀色（`todayDotColor`），与 X 轴「今天」标注呼应；
+/// - 网格用 `scheme.outlineVariant`，轴标签用 `scheme.onSurfaceVariant`，
+///   tooltip 用 `scheme.inverseSurface` / `onInverseSurface`（对比度达标）；
+/// - 入场动画：TweenAnimationBuilder 淡入 + 上移；
 /// - 整体 Semantics（NFR-4）+ 悬停 tooltip（日期 + 剩余）。
 class _BurndownChart extends StatelessWidget {
   const _BurndownChart({
     required this.points,
     required this.today,
     required this.remainingColor,
+    required this.todayDotColor,
     required this.areaGradient,
     required this.endDate,
   });
@@ -876,10 +765,13 @@ class _BurndownChart extends StatelessWidget {
   /// 最晚截止日，用于在 X 轴最右端标注。
   final DateTime endDate;
 
-  /// 实际剩余线/节点色（当前主题主色，由 _BurndownSection 传入）。
+  /// 实际剩余线/节点色（撞色主序列暖色，由 _BurndownSection 传入）。
   final Color remainingColor;
 
-  /// 面积填充渐变（主题主色淡出，由 _BurndownSection 传入）。
+  /// 今日锚点节点色（撞色点缀色，由 _BurndownSection 传入）。
+  final Color todayDotColor;
+
+  /// 面积填充渐变（主序列同色淡出，由 _BurndownSection 传入）。
   final List<Color> areaGradient;
 
   static const _chartHeight = 220.0;
@@ -905,9 +797,15 @@ class _BurndownChart extends StatelessWidget {
       for (final p in points) FlSpot(xOf(p.date), p.remaining.toDouble()),
     ];
 
-    final axisStyle = Theme.of(
-      context,
-    ).textTheme.bodySmall?.copyWith(fontSize: 10, color: scheme.outline);
+    final axisStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+      fontSize: 10,
+      color: scheme.onSurfaceVariant,
+    );
+
+    // 网格线颜色在 build 顶层算好：getDrawingHorizontalLine/VerticalLine 是
+    // 绘制期回调，若在其中做 withValues 就会每帧每条网格线重算一次。
+    final gridLineColorH = scheme.outlineVariant.withValues(alpha: 0.4);
+    final gridLineColorV = scheme.outlineVariant.withValues(alpha: 0.3);
 
     // Y 轴最大值（含 10% 顶部余量）：gridData 水平间隔与刻度统一用它。
     final maxY = _maxMinutes * 1.1;
@@ -970,12 +868,12 @@ class _BurndownChart extends StatelessWidget {
                 horizontalInterval: maxY / 4,
                 verticalInterval: labelInterval.toDouble(),
                 getDrawingHorizontalLine: (_) => FlLine(
-                  color: scheme.outlineVariant.withValues(alpha: 0.4),
+                  color: gridLineColorH,
                   strokeWidth: 1,
                   dashArray: [4, 4],
                 ),
                 getDrawingVerticalLine: (_) => FlLine(
-                  color: scheme.outlineVariant.withValues(alpha: 0.3),
+                  color: gridLineColorV,
                   strokeWidth: 1,
                   dashArray: [4, 4],
                 ),
@@ -1091,7 +989,7 @@ class _BurndownChart extends StatelessWidget {
                 ),
               ),
               lineBarsData: [
-                // 实际剩余线：实线 + 面积填充 + 白描边节点。
+                // 实际剩余线：实线 + 面积填充 + 表面色描边节点。
                 LineChartBarData(
                   spots: remainingSpots,
                   isCurved: true,
@@ -1111,13 +1009,13 @@ class _BurndownChart extends StatelessWidget {
                     getDotPainter: (spot, percent, bar, index) =>
                         FlDotCirclePainter(
                           radius: 3.5,
-                          color: remainingColor,
+                          // 今日锚点（index 0，X 轴「今天」位置）用点缀色，
+                          // 其余节点用主序列暖色；图例有对应文本（NFR-4）。
+                          color: index == 0 ? todayDotColor : remainingColor,
                           strokeWidth: 2,
-                          // 描边：浅色下白色、深色下 surface，兜住主色节点。
-                          strokeColor:
-                              Theme.of(context).brightness == Brightness.dark
-                              ? scheme.surface
-                              : Colors.white,
+                          // 描边取卡片表面色，兜住撞色节点（浅色下即白色，
+                          // 深色下自动跟随深色表面），不硬编码颜色。
+                          strokeColor: scheme.surface,
                         ),
                   ),
                 ),
@@ -1132,12 +1030,15 @@ class _BurndownChart extends StatelessWidget {
   }
 }
 
-/// 热力图区（FR-7.2）：LeetCode 风格，最近 26 周，周一开头。
+/// 热力图区（FR-7.2）：最近 26 周，周一开头。
 ///
-/// 配色使用 [LeetCode 官方色板]（_heatColors）；小圆角（3px）+ 色块间
-/// 白色间距；悬停展示「yyyy-MM-dd：完成 N 项」；底部紧凑图例对应色块。
-/// 无完成记录时网格照常渲染（全灰 0 档），把「还没开始」当作真实状态
-/// 直观呈现，不放空态引导（与燃尽/耗时图的「去添加任务」空态区分）。
+/// **色阶＝单一撞色（冷）的明度递进**：从 `tint(cool, 0.12)`（0 档，几乎
+/// 为空）到 `cool` 满色（10+ 档），五档同色相只差明度，全图一致；不再使用
+/// 固定 LeetCode 绿，三套撞色方案与深浅模式自动跟随。
+/// 分级逻辑仍由 [StatisticsService.heatLevel] 决定（0 / 1-3 / 4-6 / 7-9 / 10+）。
+/// 小圆角 + 色块间距不变；悬停 tooltip 与底部图例文本始终保留（NFR-4）。
+/// 无完成记录时网格照常渲染（0 档），把「还没开始」当作真实状态直观呈现，
+/// 不放空态引导（与燃尽图的「去添加任务」空态区分）。
 class _HeatmapSection extends ConsumerWidget {
   const _HeatmapSection();
 
@@ -1151,10 +1052,12 @@ class _HeatmapSection extends ConsumerWidget {
     }
     final today = ref.watch(clockProvider)();
     final todayStr = _ymd.format(today);
-    final dark = Theme.of(context).brightness == Brightness.dark;
     final weekStarts = data.weekStarts;
     final completedCounts = data.counts;
     final completedByDate = data.byDate;
+    // 五档色阶在区块 build 顶层算一次（tint 只是 withValues，无插值开销），
+    // 逐格只做数组取值——不在格子构建路径里做任何颜色计算。
+    final heatColors = _heatRamp(context);
 
     return Card(
       child: Padding(
@@ -1162,12 +1065,15 @@ class _HeatmapSection extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SectionHeader(
+            // 「完成热力图」是页面的**成就/积累**视角（完成了多少）→ 点缀撞色
+            // 区块头；其余纯统计块用冷色，主动作入口卡用暖色，形成撞色节奏。
+            const ClashSectionHeader(
               icon: Icons.local_fire_department_outlined,
               title: '完成热力图',
+              tone: ClashTone.citrus,
               subtitle: '最近 26 周，按完成日期统计完成任务数量',
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppTokens.spaceMd),
             // RepaintBoundary：热力图区域相对独立，滚动经过时只重绘本层，
             // 不连带整页其它图表/列表一起 repaint（进度页整页单滚动视图）。
             RepaintBoundary(
@@ -1176,16 +1082,15 @@ class _HeatmapSection extends ConsumerWidget {
                 weekStarts: weekStarts,
                 completedCounts: completedCounts,
                 completedByDate: completedByDate,
-                dark: dark,
+                colors: heatColors,
               ),
             ),
-            const SizedBox(height: 12),
-            // 图例始终渲染：全灰网格需要「0」档色块解释（与有数据时一致，
-            // 不再只在有数据时出现）。
+            const SizedBox(height: AppTokens.spaceMd),
+            // 图例始终渲染：0 档色块需要解释（与有数据时一致，不再只在
+            // 有数据时出现）；每档都带分桶文本（NFR-4：不只靠颜色）。
             _CompactLegend(
-              colors: _heatColors,
+              colors: heatColors,
               labels: const ['0', '1-3', '4-6', '7-9', '10+'],
-              dark: dark,
             ),
           ],
         ),
@@ -1194,29 +1099,37 @@ class _HeatmapSection extends ConsumerWidget {
   }
 }
 
+/// 热力图五档色阶：**冷撞色的单色明度递进**（0 档近乎空白 → 4 档满色）。
+///
+/// 用同一个基准色（`ClashTones.cool.ink`，深色模式下自动换成亮青）叠加
+/// 递增透明度：浅色下是「白卡上的浅青 → 深青」，深色下是「深卡上的暗青
+/// → 亮青」，两种模式都是单调加深/加亮，不会出现档位反转。
+List<Color> _heatRamp(BuildContext context) {
+  final base = ClashTones.of(context, ClashTone.cool).ink;
+  return [
+    ClashTones.tint(base, alpha: 0.12),
+    ClashTones.tint(base, alpha: 0.34),
+    ClashTones.tint(base, alpha: 0.56),
+    ClashTones.tint(base, alpha: 0.78),
+    base,
+  ];
+}
+
 /// 紧凑图例：一行色块 + 对应分桶文本，直接对应上方图表颜色。
 class _CompactLegend extends StatelessWidget {
-  const _CompactLegend({
-    required this.colors,
-    required this.labels,
-    required this.dark,
-  });
+  const _CompactLegend({required this.colors, required this.labels});
 
   final List<Color> colors;
   final List<String> labels;
-  final bool dark;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
         for (var i = 0; i < colors.length; i++) ...[
-          if (i > 0) const SizedBox(width: 8),
-          _LegendDot(
-            // 暗色主题下空档用深灰，其余色块保持 LeetCode 色板。
-            color: i == 0 && dark ? const Color(0xFF3C4043) : colors[i],
-          ),
-          const SizedBox(width: 4),
+          if (i > 0) const SizedBox(width: AppTokens.spaceSm),
+          _LegendDot(color: colors[i]),
+          const SizedBox(width: AppTokens.spaceXs),
           Text(labels[i], style: const TextStyle(fontSize: 10)),
         ],
       ],
@@ -1224,8 +1137,8 @@ class _CompactLegend extends StatelessWidget {
   }
 }
 
-/// LeetCode 风格热力图网格：小圆角 + 色块间白色间距 + 悬停 tooltip，
-/// 点击色块查看当天完成的具体任务。
+/// 热力图网格：小圆角 + 色块间距 + 悬停 tooltip，点击色块查看当天完成
+/// 的具体任务。
 ///
 /// 用 LayoutBuilder 按父级宽度动态计算色块尺寸：26 周横向铺满卡片内容区
 /// （宽屏下色块自动放大，消除右侧留白），窄窗口自动收缩并出现横向滚动。
@@ -1235,14 +1148,16 @@ class _HeatmapGrid extends StatelessWidget {
     required this.weekStarts,
     required this.completedCounts,
     required this.completedByDate,
-    required this.dark,
+    required this.colors,
   });
 
   final String todayStr;
   final List<DateTime> weekStarts;
   final Map<String, int> completedCounts;
   final Map<String, List<Task>> completedByDate;
-  final bool dark;
+
+  /// 五档撞色色阶（由 _HeatmapSection 在 build 顶层算好传入）。
+  final List<Color> colors;
 
   static const _weekdayLabels = ['一', '二', '三', '四', '五', '六', '日'];
 
@@ -1288,7 +1203,10 @@ class _HeatmapGrid extends StatelessWidget {
                         padding: const EdgeInsets.only(top: 2),
                         child: Text(
                           _weekdayLabels[row],
-                          style: TextStyle(fontSize: 9, color: scheme.outline),
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: scheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
                     ),
@@ -1307,7 +1225,7 @@ class _HeatmapGrid extends StatelessWidget {
                             weekStart: weekStarts[week],
                             labelStyle: TextStyle(
                               fontSize: 9,
-                              color: scheme.outline,
+                              color: scheme.onSurfaceVariant,
                             ),
                           ),
                           for (var row = 0; row < daysInWeek; row++)
@@ -1366,9 +1284,9 @@ class _HeatmapGrid extends StatelessWidget {
     final isToday = dateStr == todayStr;
     final level = StatisticsService.heatLevel(count);
 
-    final color = level == 0 && dark
-        ? const Color(0xFF3C4043)
-        : _heatColors[level];
+    // 色阶＝冷撞色单色明度递进（0 档 also 用同一色相的最浅档，
+    // 深浅模式一致，不再有「暗色下额外换灰」的特例）。
+    final color = colors[level];
 
     // 点击色块：查看当天完成的具体任务（含 0 档：弹窗内展示空提示）。
     // 已按日期预分桶，此处 O(1) 取当天任务，避免逐格全量扫描。
@@ -1442,7 +1360,7 @@ class _DayTasksDialog extends ConsumerWidget {
                 child: Center(
                   child: Text(
                     '这一天没有完成任务',
-                    style: TextStyle(color: scheme.outline),
+                    style: TextStyle(color: scheme.onSurfaceVariant),
                   ),
                 ),
               )
@@ -1469,7 +1387,6 @@ class _DayTasksDialog extends ConsumerWidget {
     Task task,
     Map<int, Goal> goalsById,
   ) {
-    final scheme = Theme.of(context).colorScheme;
     final goal = goalsById[task.goalId];
     // 科目名经 subjectListProvider 自查（避免父级传参）。
     final subjectName = task.subjectId == null
@@ -1493,366 +1410,14 @@ class _DayTasksDialog extends ConsumerWidget {
 
     return ListTile(
       dense: true,
-      leading: Icon(Icons.check_circle, size: 20, color: scheme.primary),
+      // 完成徽标语义 → 点缀撞色（契约：citrus＝成就/完成徽标）。
+      leading: Icon(
+        Icons.check_circle,
+        size: 20,
+        color: ClashTones.of(context, ClashTone.citrus).ink,
+      ),
       title: Text(task.title),
       subtitle: parts.isEmpty ? null : Text(parts.join(' · ')),
-    );
-  }
-}
-
-/// 任务耗时图区（M7 迭代增强，fl_chart 重构）。
-///
-/// 原「甘特图」实为按目标×周的周时长堆叠条形图（每格竖向条形=该周该
-/// 目标时长），无任务时间跨度、非真正甘特图，名不符实；重构后以周为
-/// 横轴（一维 fl_chart BarChart），跨目标合并为每周一根堆叠条——
-/// 深色=已完成时长（底）、浅色=未来计划时长（上），保留时间趋势。
-///
-/// 数据聚合（目标×周 + 跨目标合并）由 [progressGanttProvider] 缓存完成，
-/// 本区块只在聚合变化时重建——不再每帧重算 rows × weekStarts。
-class _GanttSection extends ConsumerWidget {
-  const _GanttSection({this.ctaLabel = '去添加任务'});
-
-  /// 空态按钮文案（默认「去添加任务」；燃尽/耗时图用「去设置预估时长」）。
-  final String ctaLabel;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final data = ref.watch(progressGanttProvider);
-    if (data == null) {
-      return const SizedBox.shrink(); // 首载由页面加载门处理
-    }
-    final activeGoals = ref
-            .watch(goalListProvider)
-            .valueOrNull
-            ?.where(
-              (g) =>
-                  g.status != GoalStatus.completed &&
-                  g.status != GoalStatus.abandoned &&
-                  g.status != GoalStatus.archived,
-            )
-            .toList() ??
-        const <Goal>[];
-    final onAddTask =
-        activeGoals.isEmpty ? null : () => context.go('/plan');
-    final weekStarts = data.weekStarts;
-    final plannedPerWeek = data.plannedPerWeek;
-    final completedPerWeek = data.completedPerWeek;
-    final hasAnyWeek = data.hasAnyWeek;
-
-    return Card(
-      // 顶部加大留白：容纳 Y 轴 maxY 刻度的长文本（如「74 小时 10 分」），
-      // 底部留白给 X 轴旋转 45° 后的斜日期标签与悬停 tooltip。
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const SectionHeader(
-              icon: Icons.bar_chart_outlined,
-              title: '任务耗时图',
-              subtitle: '按周展示未来计划与已完成时长',
-            ),
-            const SizedBox(height: 12),
-            if (!hasAnyWeek)
-              ChartEmptyState(
-                icon: Icons.bar_chart_outlined,
-                title: '还没有带预估时长的任务安排',
-                caption: '给任务设置预估时长后，这里会按周展示计划与完成进度',
-                actionLabel: onAddTask == null ? null : ctaLabel,
-                onAction: onAddTask,
-              )
-            else ...[
-              // RepaintBoundary：fl_chart 每帧 repaint 开销大，隔离成独立
-              // 图层，滚动经过时避免整页连带重绘。
-              RepaintBoundary(
-                child: _BarChart(
-                  plannedPerWeek: plannedPerWeek,
-                  completedPerWeek: completedPerWeek,
-                  weekStarts: weekStarts,
-                  currentWeekIndex: data.currentWeekIndex,
-                ),
-              ),
-              const SizedBox(height: 12),
-              // 图例固定在卡片底部，不随图表横向滚动而移动；无数据时不渲染。
-              // 色块随主题（浅=计划 primaryContainer、深=完成 primary）。
-              Row(
-                children: [
-                  _LegendDot(color: Theme.of(context).colorScheme.primaryContainer),
-                  const SizedBox(width: 8),
-                  const Text('计划', style: TextStyle(fontSize: 10)),
-                  const SizedBox(width: 16),
-                  _LegendDot(color: Theme.of(context).colorScheme.primary),
-                  const SizedBox(width: 8),
-                  const Text('完成', style: TextStyle(fontSize: 10)),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 任务耗时图（fl_chart BarChart）：以周为横轴，每周一根堆叠条。
-///
-/// - 深色段=已完成时长（底），浅色段=未来计划时长（上），仅当对应段 >0
-///   时加入，杜绝 fromY==toY 的空段；
-/// - 无数据周保留占位（toY=0），确保每周 X 轴位置固定、间隔均匀；
-/// - X 轴当前周标注「本周」，其余按密度显示「M/d 起」水平标签；
-/// - Y 轴中文时长刻度（沿用燃尽图修复后的 reservedSize/space 配置，
-///   杜绝文字压线）；
-/// - 悬停 tooltip 按 group.x 反查闭包捕获的每周数据（fl_chart 的
-///   getTooltipItem 拿不到被触发的 stack 段，用数据源重建）；
-/// - 宽屏铺满，窄窗横向滚动；整体读屏语义（NFR-4）。
-class _BarChart extends StatelessWidget {
-  const _BarChart({
-    required this.plannedPerWeek,
-    required this.completedPerWeek,
-    required this.weekStarts,
-    required this.currentWeekIndex,
-  });
-
-  final List<int> plannedPerWeek;
-  final List<int> completedPerWeek;
-  final List<DateTime> weekStarts;
-
-  /// 当前周在 [weekStarts] 中的下标，X 轴对应位置标注「本周」。
-  final int currentWeekIndex;
-
-  static const _chartHeight = 220.0;
-
-  /// 每周堆叠条宽 + 组间距。
-  static const _barWidth = 22.0;
-  static const _groupSpace = 6.0;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final weeks = weekStarts.length;
-
-    // 每周总量 + 全局最大值（Y 轴顶）。
-    final totals = List.generate(
-      weeks,
-      (i) => plannedPerWeek[i] + completedPerWeek[i],
-    );
-    var maxTotal = 1;
-    for (final t in totals) {
-      if (t > maxTotal) maxTotal = t;
-    }
-    // 顶部留 20% 余量：长刻度文本（如「74 小时 10 分」）不顶到卡片边缘。
-    final maxY = maxTotal * 1.2;
-
-    final axisStyle = Theme.of(
-      context,
-    ).textTheme.bodySmall?.copyWith(fontSize: 10, color: scheme.outline);
-
-    final barGroups = <BarChartGroupData>[];
-    for (var i = 0; i < weeks; i++) {
-      final planned = plannedPerWeek[i];
-      final completed = completedPerWeek[i];
-      final hasData = planned + completed > 0;
-      // 主题派生色（2026-08-16）：完成段=主色、计划段=主容器浅色，
-      // 蓝色主题下整图跟随变蓝；深浅段对比同主题派生，明暗均成立。
-      final stackItems = <BarChartRodStackItem>[
-        if (completed > 0)
-          BarChartRodStackItem(0, completed.toDouble(), scheme.primary),
-        if (planned > 0)
-          BarChartRodStackItem(
-            completed.toDouble(),
-            (completed + planned).toDouble(),
-            scheme.primaryContainer,
-          ),
-      ];
-      barGroups.add(
-        BarChartGroupData(
-          x: i,
-          barRods: [
-            BarChartRodData(
-              // 无数据周也保留占位（toY=0），确保每周在 X 轴上位置固定、
-              // 间隔均匀，避免有数据周被压缩到一侧。
-              toY: hasData ? (completed + planned).toDouble() : 0,
-              width: _barWidth,
-              rodStackItems: stackItems,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(3),
-              ),
-              // 无数据周用透明占位，不渲染多余视觉元素。
-              color: hasData ? null : Colors.transparent,
-            ),
-          ],
-          barsSpace: _groupSpace,
-        ),
-      );
-    }
-
-    // 读屏语义（NFR-4）：状态不只依赖颜色，辅以文本。
-    final plannedTotal = plannedPerWeek.fold<int>(0, (a, b) => a + b);
-    final completedTotal = completedPerWeek.fold<int>(0, (a, b) => a + b);
-    final semanticLabel = StringBuffer('任务耗时图，按周展示未来计划与已完成时长。')
-      ..write('窗口内计划 ${DurationFormat.minutes(plannedTotal)}，')
-      ..write('已完成 ${DurationFormat.minutes(completedTotal)}。');
-
-    return Semantics(
-      label: semanticLabel.toString(),
-      child: SizedBox(
-        height: _chartHeight,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            // 最小条宽 = 每周 (barWidth + groupSpace)；宽屏铺满、窄窗横向滚动。
-            final minChartWidth = weeks * (_barWidth + _groupSpace);
-            final chartWidth = constraints.maxWidth > minChartWidth
-                ? constraints.maxWidth
-                : minChartWidth;
-            // 水平日期标签约 46px；按图表实际宽度动态放大周间隔，保证
-            // 相邻标签中心距 ≥ 48px（窄窗不再互相覆盖）。
-            final perWeekPx = chartWidth / weeks;
-            const minLabelSpacing = 48.0;
-            var labelInterval = 1;
-            while (perWeekPx * labelInterval < minLabelSpacing) {
-              labelInterval += 1;
-            }
-
-            final chart = BarChart(
-              BarChartData(
-                minY: 0,
-                maxY: maxY,
-                barGroups: barGroups,
-                alignment: BarChartAlignment.spaceAround,
-                // 浅色虚线网格（水平 + 垂直），增强参考感。
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: true,
-                  drawHorizontalLine: true,
-                  horizontalInterval: maxY / 4,
-                  verticalInterval: 3,
-                  getDrawingHorizontalLine: (_) => FlLine(
-                    color: scheme.outlineVariant.withValues(alpha: 0.35),
-                    strokeWidth: 1,
-                    dashArray: [4, 4],
-                  ),
-                  getDrawingVerticalLine: (_) => FlLine(
-                    color: scheme.outlineVariant.withValues(alpha: 0.2),
-                    strokeWidth: 1,
-                    dashArray: [4, 4],
-                  ),
-                ),
-                borderData: FlBorderData(show: false),
-                titlesData: FlTitlesData(
-                  topTitles: const AxisTitles(),
-                  rightTitles: const AxisTitles(),
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      // 长中文文本（如「66 小时 40 分」）需足够槽位宽度，
-                      // 否则溢出槽位压到柱状图；104 可容纳最长刻度。
-                      reservedSize: 104,
-                      // interval 显式设为 maxY/4（与水平网格线同步、均匀
-                      // 分布）——否则 fl_chart 自动刻度可能恰好等于柱顶
-                      // 高度，刻度文字与柱子最高/次高点贴线重叠。
-                      interval: maxY / 4,
-                      getTitlesWidget: (value, meta) {
-                        final text = value == 0
-                            ? '0'
-                            : DurationFormat.minutes(value.round());
-                        return SideTitleWidget(
-                          meta: meta,
-                          // 文本与绘图区之间的额外间隙，彻底脱离柱状图。
-                          space: 14,
-                          child: Align(
-                            alignment: Alignment.centerRight,
-                            // FittedBox 缩放长时长文本到槽位内，防溢出压线。
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerRight,
-                              child: Text(text, style: axisStyle),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      // 水平文字所需占位小于斜文字，统一 40 即可。
-                      reservedSize: 40,
-                      interval: labelInterval.toDouble(),
-                      getTitlesWidget: (value, meta) {
-                        final index = value.round();
-                        if (index < 0 || index >= weeks) {
-                          return const SizedBox.shrink();
-                        }
-                        // 当前周固定显示「本周」，不受 interval 限制。
-                        if (index == currentWeekIndex) {
-                          return SideTitleWidget(
-                            meta: meta,
-                            space: 12,
-                            child: Text(
-                              '本周',
-                              style: axisStyle?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          );
-                        }
-                        // 其他位置按 interval 显示周起始日，格式「M/d 起」。
-                        if (index % labelInterval != 0) {
-                          return const SizedBox.shrink();
-                        }
-                        return SideTitleWidget(
-                          meta: meta,
-                          space: 12,
-                          child: Text(
-                            '${_md.format(weekStarts[index])} 起',
-                            style: axisStyle,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                // 悬停 tooltip：按 group.x 反查闭包捕获的每周数据重建文本。
-                barTouchData: BarTouchData(
-                  touchTooltipData: BarTouchTooltipData(
-                    getTooltipColor: (_) => scheme.inverseSurface,
-                    tooltipBorderRadius: BorderRadius.circular(8),
-                    getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                      final weekIndex = group.x;
-                      if (weekIndex < 0 || weekIndex >= weeks) return null;
-                      final planned = plannedPerWeek[weekIndex];
-                      final completed = completedPerWeek[weekIndex];
-                      final parts = <String>[
-                        if (planned > 0)
-                          '计划 ${DurationFormat.minutes(planned)}',
-                        if (completed > 0)
-                          '完成 ${DurationFormat.minutes(completed)}',
-                      ];
-                      return BarTooltipItem(
-                        '${_md.format(weekStarts[weekIndex])}'
-                        ' 起一周\n${parts.join(' · ')}',
-                        TextStyle(
-                          color: scheme.onInverseSurface,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            );
-
-            if (constraints.maxWidth > minChartWidth) {
-              return chart;
-            }
-            return SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(width: chartWidth, child: chart),
-            );
-          },
-        ),
-      ),
     );
   }
 }

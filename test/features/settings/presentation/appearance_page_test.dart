@@ -11,15 +11,16 @@ import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/core/theme/accent_palette.dart';
 import 'package:timecalc/features/settings/data/settings_repository.dart';
 
-/// 外观设置页 Widget 测试（M10 明暗主题 + 2026-08-16 主题色系）。
+/// 外观设置页 Widget 测试（M10 明暗主题 + 2026-08-16 主题色系；
+/// v2.0 撞色重构后色系选择器只展示 3 套撞色方案）。
 ///
 /// 固定时钟 2026-08-05，验证：
-/// - 初始态：默认选中「跟随系统」+ 绿色色系；
+/// - 初始态：默认选中「跟随系统」+ 默认撞色方案（暖橙 × 冷藏青）；
 /// - 点击「深色」即写库 + SnackBar，根组件换肤为 dark（无保存按钮）；
 /// - 点击「浅色」即写库 + 换肤为 light；
 /// - 改回「跟随系统」即写库回 system；
-/// - 点击「蓝色」即写库 + 根组件色系切换（MaterialApp.theme 的
-///   AccentPalette 变为 blue）+ SnackBar + 预览同步；改回「绿色」恢复。
+/// - 点击撞色方案即写库 + 根组件色系切换（MaterialApp.theme 的
+///   AccentPalette 变为对应方案）+ SnackBar + 预览同步；可改回默认方案。
 void main() {
   late AppDatabase db;
   late DateTime fixedNow;
@@ -57,7 +58,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// 点击色系分段按钮（绿色/蓝色标签限定在色系按钮内）。
+  /// 点击色系分段按钮（撞色方案标签限定在色系按钮内）。
   Future<void> tapAccentSegment(WidgetTester tester, String label) async {
     await tester.tap(find.descendant(
       of: find.byType(SegmentedButton<AccentPalette>),
@@ -81,7 +82,7 @@ void main() {
     await db.close();
   });
 
-  testWidgets('初始态：默认选中「跟随系统」与绿色色系，无保存按钮', (tester) async {
+  testWidgets('初始态：默认选中「跟随系统」与默认撞色方案，无保存按钮', (tester) async {
     await pumpPage(tester);
 
     expect(find.textContaining('选择应用的明暗主题'), findsOneWidget);
@@ -92,8 +93,13 @@ void main() {
     final accentSegmented = tester.widget<SegmentedButton<AccentPalette>>(
       find.byType(SegmentedButton<AccentPalette>),
     );
-    expect(accentSegmented.selected, {greenAccent});
+    expect(accentSegmented.selected, {clashAccent});
     expect(find.textContaining('当前模式：跟随系统'), findsOneWidget);
+    // v2.0：预览卡显示当前撞色方案名（默认「暖橙 × 冷藏青」）。
+    expect(
+      find.textContaining('当前模式：跟随系统 · 暖橙 × 冷藏青色系'),
+      findsOneWidget,
+    );
     // 点击即生效，不再有独立的保存按钮。
     expect(find.widgetWithText(FilledButton, '保存'), findsNothing);
   });
@@ -138,32 +144,35 @@ void main() {
     expect(app.themeMode, ThemeMode.system);
   });
 
-  testWidgets('点击「蓝色」即切换色系：写库 + 根组件换肤 + SnackBar', (tester) async {
+  testWidgets('点击撞色方案即切换色系：写库 + 根组件换肤 + SnackBar', (tester) async {
     await pumpPage(tester);
-    await tapAccentSegment(tester, '蓝色');
+    await tapAccentSegment(tester, '电光青 × 青柠');
 
-    expect(find.textContaining('已切换为蓝色主题'), findsOneWidget);
+    expect(find.textContaining('已切换为电光青 × 青柠主题'), findsOneWidget);
     final saved = await SettingsRepository(db).get();
-    expect(saved.accentColor, 'blue');
-    // 根组件色系已切换（theme 里注册的 AccentPalette 变为 blue）。
-    expect(appAccent(tester).id, 'blue');
-    // 预览卡同步更新（文案为「当前模式：跟随系统 · 蓝色色系」）。
-    expect(find.textContaining('当前模式：跟随系统 · 蓝色色系'), findsOneWidget);
+    expect(saved.accentColor, 'electric');
+    // 根组件色系已切换（theme 里注册的 AccentPalette 变为 electric）。
+    expect(appAccent(tester).id, 'electric');
+    // 预览卡同步更新（文案为「当前模式：跟随系统 · 电光青 × 青柠色系」）。
+    expect(
+      find.textContaining('当前模式：跟随系统 · 电光青 × 青柠色系'),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('色系选择持久化：预置蓝色进入页面选中、改回绿色恢复', (tester) async {
-    await SettingsRepository(db).updateAccentColor('blue');
+  testWidgets('色系选择持久化：预置电光青进入页面选中、改回默认方案恢复', (tester) async {
+    await SettingsRepository(db).updateAccentColor('electric');
     await pumpPage(tester);
 
     final accentSegmented = tester.widget<SegmentedButton<AccentPalette>>(
       find.byType(SegmentedButton<AccentPalette>),
     );
-    expect(accentSegmented.selected, {blueAccent});
+    expect(accentSegmented.selected, {electricAccent});
 
-    await tapAccentSegment(tester, '绿色');
-    expect(find.textContaining('已切换为绿色主题'), findsOneWidget);
-    expect((await SettingsRepository(db).get()).accentColor, 'green');
-    expect(appAccent(tester).id, 'green');
+    await tapAccentSegment(tester, '暖橙 × 冷藏青');
+    expect(find.textContaining('已切换为暖橙 × 冷藏青主题'), findsOneWidget);
+    expect((await SettingsRepository(db).get()).accentColor, 'clash');
+    expect(appAccent(tester).id, 'clash');
   });
 
   testWidgets('初始态：减少动画开关默认关闭', (tester) async {

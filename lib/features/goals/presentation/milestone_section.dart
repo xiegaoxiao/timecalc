@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../shared/widgets/app_error_view.dart';
-import '../../../shared/widgets/chart_empty_state.dart';
-import '../../../shared/widgets/collapsible_section.dart';
+import '../../../shared/widgets/clash_tones.dart';
+import '../../../shared/widgets/clash_widgets.dart';
 import '../../../shared/widgets/progressive_rows.dart';
 import '../data/milestone_repository_provider.dart';
+import 'goal_section.dart';
 import 'milestone_actions.dart';
 import 'milestone_card.dart';
 
@@ -56,9 +58,11 @@ class _MilestoneSectionState extends ConsumerState<MilestoneSection> {
   Widget build(BuildContext context) {
     final milestonesAsync = ref.watch(milestoneListProvider(widget.goalId));
 
-    return CollapsibleSection(
+    return GoalCollapsibleSection(
       icon: Icons.outlined_flag,
       title: '里程碑',
+      // 里程碑 = 点缀撞色（citrus）：区块头竖条/图标底/计数徽标统一点缀色。
+      tone: ClashTone.citrus,
       // 受控模式：添加成功后需主动展开，状态由本组件持有。
       expanded: _expanded,
       onChanged: (v) => setState(() => _expanded = v),
@@ -76,7 +80,7 @@ class _MilestoneSectionState extends ConsumerState<MilestoneSection> {
         loading: () => const Card(
           margin: EdgeInsets.zero,
           child: Padding(
-            padding: EdgeInsets.all(12),
+            padding: EdgeInsets.all(AppTokens.spaceMd),
             child: Row(
               children: [Text('正在加载里程碑…')],
             ),
@@ -88,9 +92,11 @@ class _MilestoneSectionState extends ConsumerState<MilestoneSection> {
             // 空态内容横向居中：本列 start 对齐，需给全宽内部才能居中。
             return const SizedBox(
               width: double.infinity,
-              child: ChartEmptyState(
+              child: ClashEmptyState(
                 icon: Icons.flag_outlined,
                 title: '还没有里程碑，点击「添加里程碑」设定阶段性节点',
+                tone: ClashTone.citrus,
+                compact: true,
               ),
             );
           }
@@ -195,11 +201,14 @@ class _ViewAllTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final citrus = ClashTones.of(context, ClashTone.citrus);
+    // 「查看全部」是里程碑区的动作入口：图标点缀色锚定区块归属。
     return ListTile(
       onTap: onTap,
-      leading: const Icon(Icons.visibility_outlined, size: 20),
+      leading: Icon(Icons.visibility_outlined, size: 20, color: citrus.ink),
       title: Text('查看全部 $totalCount 个里程碑'),
-      trailing: const Icon(Icons.chevron_right),
+      trailing: Icon(Icons.chevron_right, color: citrus.ink),
+      iconColor: citrus.ink,
     );
   }
 }

@@ -822,8 +822,8 @@ void main() {
       expect(rebuilt.closeBehavior, CloseBehavior.exit);
       expect(rebuilt.autoBackupEnabled, isFalse);
       expect(rebuilt.themeMode, 'system');
-      // 2026-08-16 色系解耦：重置后默认重建为绿色。
-      expect(rebuilt.accentColor, 'green');
+      // v2.0 撞色重构：重置后默认重建为默认撞色方案 clash。
+      expect(rebuilt.accentColor, 'clash');
     });
 
     test('两种模式的安全副本均可往返恢复原数据（FR-9.3 语义）', () async {

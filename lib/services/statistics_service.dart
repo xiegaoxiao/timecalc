@@ -21,22 +21,6 @@ class DayCompletionStats {
   );
 }
 
-/// 目标在甘特图某窗口各周的时长数据（计划 vs 完成）。
-class GoalGanttRow {
-  const GoalGanttRow({required this.planned, required this.completed});
-
-  /// 每周计划时长（分钟）：未完成任务按计划日期归周。
-  final List<int> planned;
-
-  /// 每周完成时长（分钟）：已完成任务按完成日期归周。
-  final List<int> completed;
-
-  /// 该目标在窗口内是否有任何数据（计划或完成）。
-  bool get hasData {
-    return planned.any((m) => m > 0) || completed.any((m) => m > 0);
-  }
-}
-
 /// 进度统计规则（FR-7.1 / FR-7.2 / FR-7.4）。
 ///
 /// 纯 Dart service，不依赖数据库与 UI。
@@ -80,25 +64,6 @@ class StatisticsService {
       byDate.putIfAbsent(key, () => <Task>[]).add(task);
     }
     return byDate;
-  }
-
-  /// 按完成月份（本地年-月）统计完成任务数量（年视图月格）。
-  ///
-  /// 口径与 [completedCountsByLocalDate] 一致（status=done 且 completedAt
-  /// 非空，按本地日期归月），返回以 `yyyy-MM` 为键的数量映射，无完成
-  /// 记录的月份不出现在映射中。
-  Map<String, int> completedCountsByMonth(List<Task> tasks) {
-    final counts = <String, int>{};
-    for (final task in tasks) {
-      if (task.status != TaskStatus.done) continue;
-      final completedAt = task.completedAt;
-      if (completedAt == null) continue;
-      final local = completedAt.toLocal();
-      final key =
-          '${local.year}-${local.month.toString().padLeft(2, '0')}';
-      counts[key] = (counts[key] ?? 0) + 1;
-    }
-    return counts;
   }
 
   /// 单日完成概览（FR-7.1）：完成数 / 总数 / 已完成任务预估时长之和。
@@ -145,124 +110,14 @@ class StatisticsService {
     return 4;
   }
 
-  /// 甘特图窗口：过去 [pastWeeks] 个完整周 + 当前周 + 未来 [futureWeeks] 周
-  /// （默认共 26 周），让用户能同时看到历史完成与未来计划。
-  ///
-  /// 周从周一开始（与热力图一致）。返回的列表按时间升序，当前周位于
-  /// `pastWeeks` 下标处。
-  static List<DateTime> ganttWeekStarts(
-    DateTime today, {
-    int pastWeeks = 12,
-    int futureWeeks = 13,
-  }) {
-    final day = DateTime(today.year, today.month, today.day);
-    // 纯日历加法（date_text）：Duration(days:) 在夏令时切换日偏移一小时，
-    // 周起点/窗口端点可能落到相邻日期，导致归周错位。
-    final thisWeekStart = addLocalDays(day, -(day.weekday - 1));
-    return List.generate(pastWeeks + 1 + futureWeeks, (i) {
-      return addLocalDays(thisWeekStart, -(pastWeeks - i) * 7);
-    });
-  }
-
-  /// 每个目标在 [weekStarts] 各周内的「计划时长」与「完成时长」（甘特图）。
-  ///
-  /// - 计划时长：未完成任务按计划日期（plannedDate）归入所在周；
-  /// - 完成时长：已完成任务按完成日期（completedAt）归入所在周；
-  /// - 无预估时长的任务不计入（FR-7.4），窗口外的任务忽略。
-  Map<int, GoalGanttRow> goalGanttData({
-    required List<Task> todoTasks,
-    required List<Task> completedTasks,
-    required List<DateTime> weekStarts,
-  }) {
-    final byGoal = <int, GoalGanttRow>{};
-
-    GoalGanttRow rowFor(int goalId) => byGoal.putIfAbsent(
-          goalId,
-          () => GoalGanttRow(
-            planned: List.filled(weekStarts.length, 0),
-            completed: List.filled(weekStarts.length, 0),
-          ),
-        );
-
-    for (final task in todoTasks) {
-      final minutes = task.estimatedMinutes;
-      if (minutes == null) continue;
-      // 容错解析：手工改库/旧版残留的非规范 plannedDate 不再让甘特图崩溃
-      // （DateTime.parse 对 "2026-8-6" 抛 FormatException，对 "2026-13-99"
-      // 静默溢出归一化），解析失败直接跳过该任务。
-      final planned = _tryParseLocalDate(task.plannedDate);
-      if (planned == null) continue;
-      final weekIndex = _weekIndexOf(planned, weekStarts);
-      if (weekIndex == null) continue;
-      rowFor(task.goalId).planned[weekIndex] += minutes;
-    }
-
-    for (final task in completedTasks) {
-      if (task.status != TaskStatus.done) continue;
-      final minutes = task.estimatedMinutes;
-      final completedAt = task.completedAt;
-      if (minutes == null || completedAt == null) continue;
-      final weekIndex = _weekIndexOf(completedAt.toLocal(), weekStarts);
-      if (weekIndex == null) continue;
-      rowFor(task.goalId).completed[weekIndex] += minutes;
-    }
-
-    return byGoal;
-  }
-
-  /// [date]（本地日历日期）落在 [weekStarts] 中哪一周（下标）；不在任何
-  /// 一周内返回 null。
-  ///
-  /// O(1)：周窗是均匀的 7 天网格，直接用「距首周起点的日历天数 ~/ 7」
-  /// 定位，替代旧版逐周线性扫描（N 个任务 × 26 周）。天差用 UTC 归一化
-  /// 计算，避免本地 DST 让 `difference().inDays` 出现 23/25 小时偏差——
-  /// 与 [addLocalDays] 的纯日历口径一致。
-  static int? _weekIndexOf(DateTime date, List<DateTime> weekStarts) {
-    if (weekStarts.isEmpty) return null;
-    final first = weekStarts.first;
-    final startUtc = DateTime.utc(first.year, first.month, first.day);
-    final dayUtc = DateTime.utc(date.year, date.month, date.day);
-    final index = dayUtc.difference(startUtc).inDays ~/ 7;
-    if (index < 0 || index >= weekStarts.length) return null;
-    return index;
-  }
-
-  /// 容错解析 `yyyy-MM-dd`（本地日历日期）。
-  ///
-  /// 脏数据（空串、字段数不足、非数字）返回 null，由调用方跳过；纯日历
-  /// 口径与 `date_text.parseLocalDate` 一致（`DateTime` 构造函数对超出范围
-  /// 的月/日做归一化，不抛异常）。
-  static DateTime? _tryParseLocalDate(String value) {
-    final parts = value.split('-');
-    if (parts.length != 3) return null;
-    final year = int.tryParse(parts[0]);
-    final month = int.tryParse(parts[1]);
-    final day = int.tryParse(parts[2]);
-    if (year == null || month == null || day == null) return null;
-    // 防御（审查 #17）：年份越界时 DateTime(...) 抛 ArgumentError，
-    // 补充 1~9999 区间校验，与「解析失败直接跳过」的容错契约一致。
-    if (year < 1 || year > 9999) return null;
-    return DateTime(year, month, day);
-  }
-
-  /// 甘特图时长分桶（LeetCode 绿系五档，按周完成分钟数）。
-  ///
-  /// 0 分钟 → 0；1-59 → 1；60-119 → 2；120-299 → 3；300+ → 4。
-  static int minutesLevel(int minutes) {
-    if (minutes <= 0) return 0;
-    if (minutes < 60) return 1;
-    if (minutes < 120) return 2;
-    if (minutes < 300) return 3;
-    return 4;
-  }
-
   /// 最近 [weeks] 周（默认 26）的「周起始日」列表。
   ///
   /// 周从周一开始（与日历视图一致）。返回的列表按时间升序排列，
   /// 最后一项是包含 [today] 那一周的周一。
   static List<DateTime> recentWeekStarts(DateTime today, {int weeks = 26}) {
     final day = DateTime(today.year, today.month, today.day);
-    // 纯日历加法（date_text），同 ganttWeekStarts：防 DST 切换日偏移。
+    // 纯日历加法（date_text）：Duration(days:) 在夏令时切换日偏移一小时，
+    // 周起点可能落到相邻日期（与日历视图同口径）。
     final thisWeekStart = addLocalDays(day, -(day.weekday - 1));
     return List.generate(weeks, (i) {
       return addLocalDays(thisWeekStart, -(weeks - 1 - i) * 7);

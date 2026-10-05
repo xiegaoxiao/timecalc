@@ -10,24 +10,33 @@ import 'package:timecalc/core/theme/app_theme.dart';
 /// 主题对比度测试（NFR-4：文本与背景对比度以 WCAG 2.1 AA 为目标）。
 ///
 /// 对浅色/深色主题的关键「前景/背景」色对计算对比度，断言 ≥ 4.5:1
-/// （普通文本 AA 标准）。数值同时记录到 M4 里程碑验收记录。
+/// （普通文本 AA 标准）。
 ///
-/// 2026-08-16 色系解耦：默认绿 + 专业藏蓝两套色系均须满足 AA，
-/// 任一色系的派生色板回归（明暗两态）都会在此暴露。
+/// **v2.0 撞色重构后的强化**：
+/// - 覆盖范围从 2 套色系扩到**注册表全部**（撞色三方案 + 2 个 legacy），
+///   新增色系忘记验对比度会被本测试挡住；
+/// - 主题改为显式构造 `ColorScheme`，`scheme.surface == 页面底色`，
+///   因此本测试断言的「xxx/surface」**就是用户真实看到的色对**
+///   （v1 时代 `scheme.surface` 与页面底色不一致，断言的是另一个颜色）；
+/// - 新增「实心主色按钮填充/白字」断言：深色模式的主色填充另取
+///   [AccentPalette.warmDark]，与 `scheme.primary`（图标/文字语义）分离。
 ///
-/// 说明：热力图/甘特图色块为装饰性图形，信息由 tooltip 与图例文本承载
+/// 色值由 `tool/clash_palette_solver.dart` 求解后固化到
+/// `app_tokens.dart` / `accent_palette.dart`。
+///
+/// 说明：热力图色块为装饰性图形，信息由 tooltip 与图例文本承载
 /// （M3 已落实，不在此对比度断言范围）。
 void main() {
-  for (final (accentName, accent) in [
-    ('绿', greenAccent),
-    ('蓝', blueAccent),
-  ]) {
+  for (final entry in accentPalettes.entries) {
+    final accentName = entry.key;
+    final accent = entry.value;
     for (final (brightnessName, theme) in [
       ('浅色', AppTheme.light(accent: accent)),
       ('深色', AppTheme.dark(accent: accent)),
     ]) {
       final scheme = theme.colorScheme;
       final semantics = theme.extension<AppSemanticColors>()!;
+      final isDark = theme.brightness == Brightness.dark;
       group('$accentName$brightnessName主题关键色对对比度（WCAG 2.1 AA ≥ 4.5）', () {
       test('正文文本 onSurface/surface', () {
         expect(
@@ -53,6 +62,13 @@ void main() {
           greaterThanOrEqualTo(4.5),
         );
       });
+      test('实心主色按钮 白字/填充底色（深色取 warmDark）', () {
+        final fill = isDark ? accent.warmDark : accent.warm;
+        expect(
+          _contrast(Colors.white, fill),
+          greaterThanOrEqualTo(4.5),
+        );
+      });
       test('主容器 onPrimaryContainer/primaryContainer（今天高亮格）', () {
         expect(
           _contrast(scheme.onPrimaryContainer, scheme.primaryContainer),
@@ -65,9 +81,21 @@ void main() {
           greaterThanOrEqualTo(4.5),
         );
       });
+      test('点缀容器 onTertiaryContainer/tertiaryContainer（里程碑徽标）', () {
+        expect(
+          _contrast(scheme.onTertiaryContainer, scheme.tertiaryContainer),
+          greaterThanOrEqualTo(4.5),
+        );
+      });
       test('日历普通格 onSurface/surfaceContainerLow', () {
         expect(
           _contrast(scheme.onSurface, scheme.surfaceContainerLow),
+          greaterThanOrEqualTo(4.5),
+        );
+      });
+      test('次级文字 onSurfaceVariant/surface', () {
+        expect(
+          _contrast(scheme.onSurfaceVariant, scheme.surface),
           greaterThanOrEqualTo(4.5),
         );
       });

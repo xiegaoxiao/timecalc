@@ -10,6 +10,7 @@ import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/app_form_field.dart';
+import '../../../shared/widgets/clash_tones.dart';
 import '../data/goal_repository_provider.dart';
 
 /// 创建/编辑目标对话框（FR-1.1：名称与截止日期为必填项）。
@@ -142,6 +143,8 @@ class _GoalFormDialogState extends ConsumerState<GoalFormDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // 科目（分类/数据）在本表单里取冷色撞色；主按钮由主题给暖色实心。
+    final cool = ClashTones.of(context, ClashTone.cool);
     return Form(
       key: _formKey,
       child: Column(
@@ -202,17 +205,13 @@ class _GoalFormDialogState extends ConsumerState<GoalFormDialog> {
             // 创建时批量添加科目
             Row(
               children: [
-                Icon(
-                  Icons.book_outlined,
-                  size: 16,
-                  color: AppTokens.neutralTextSecondaryLight,
-                ),
+                Icon(Icons.book_outlined, size: 16, color: cool.ink),
                 const SizedBox(width: AppTokens.spaceSm),
                 Text(
                   '科目（可选，可添加多个）',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppTokens.neutralTextSecondaryLight,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: cool.ink),
                 ),
               ],
             ),

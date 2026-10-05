@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/providers/app_refresh.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../services/duration_format.dart';
 import '../../../shared/widgets/app_error_view.dart';
-import '../../../shared/widgets/collapsible_section.dart';
+import '../../../shared/widgets/clash_tones.dart';
 import '../../goals/data/subject_repository_provider.dart';
+import '../../goals/presentation/goal_section.dart';
 import '../data/task_repository_provider.dart';
 import 'task_list_section.dart';
 import 'task_section_actions.dart';
@@ -87,9 +89,11 @@ class _SubjectTaskPageState extends ConsumerState<SubjectTaskPage> {
                   SliverPadding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     sliver: SliverToBoxAdapter(
-                      child: CollapsibleSection(
+                      child: GoalCollapsibleSection(
                         icon: Icons.checklist,
                         title: '任务',
+                        // 科目任务页 = 科目（分类/数据）语义，取冷色撞色。
+                        tone: ClashTone.cool,
                         summary: '${subjectTasks.length} 个',
                         expanded: _tasksExpanded,
                         onChanged: (v) => setState(() => _tasksExpanded = v),
@@ -137,6 +141,9 @@ class _SubjectSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    // 科目任务页整体属「数据/分类」语义：冷色撞色浅底总览块。
+    final cool = ClashTones.of(context, ClashTone.cool);
     final doneCount = tasks.where((t) => t.status == 'done').length;
     final doneMinutes = tasks
         .where((t) => t.status == 'done' && t.estimatedMinutes != null)
@@ -145,23 +152,48 @@ class _SubjectSummary extends StatelessWidget {
         .where((t) => t.estimatedMinutes != null)
         .fold<int>(0, (sum, t) => sum + t.estimatedMinutes!);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '${subject.name} · $doneCount/${tasks.length} 个任务完成',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        if (tasks.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          Text(
-            '已完成 ${DurationFormat.minutes(doneMinutes)} / 共 ${DurationFormat.minutes(totalMinutes)}',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.outline,
-            ),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppTokens.spaceLg),
+      decoration: BoxDecoration(
+        color: cool.soft,
+        borderRadius: BorderRadius.circular(AppTokens.radiusXl),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(AppTokens.spaceSm),
+                decoration: BoxDecoration(
+                  color: cool.fill,
+                  borderRadius: BorderRadius.circular(AppTokens.radiusSm),
+                ),
+                child: Icon(Icons.label_outline, size: 18, color: cool.onFill),
+              ),
+              const SizedBox(width: AppTokens.spaceMd),
+              Expanded(
+                child: Text(
+                  '${subject.name} · $doneCount/${tasks.length} 个任务完成',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: cool.onSoft,
+                  ),
+                ),
+              ),
+            ],
           ),
+          if (tasks.isNotEmpty) ...[
+            const SizedBox(height: AppTokens.spaceSm),
+            Text(
+              '已完成 ${DurationFormat.minutes(doneMinutes)} / 共 ${DurationFormat.minutes(totalMinutes)}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: cool.onSoft.withValues(alpha: 0.85),
+              ),
+            ),
+          ],
         ],
-      ],
+      ),
     );
   }
 }

@@ -359,14 +359,13 @@ void main() {
       expect(second.color, isNull);
     });
 
-    test('中文别名与中文星期/单双周文本都被接受', () {
+    test('JSON 中文别名不再兼容（只认英文键）', () {
       final result = parser.parse('''
 {
   "courses": [
     {
       "课程名称": "具身认知与机器智能",
       "教师": "余松森，周娴玮",
-      "上课地点": "教A309",
       "星期": "周一",
       "startPeriod": 1,
       "endPeriod": 4,
@@ -378,12 +377,9 @@ void main() {
 }
 ''');
 
-      final course = result.courses.single;
-      expect(course.title, '具身认知与机器智能');
-      expect(course.teacher, '余松森，周娴玮');
-      expect(course.location, '教A309');
-      expect(course.weekday, 1);
-      expect(course.weekParity, WeekParity.odd);
+      expect(result.isValid, isFalse);
+      expect(result.courses, isEmpty);
+      expect(result.issues.single.message, contains('缺少课程名'));
     });
 
     test('非法字段逐条报错且不写入任何课程', () {

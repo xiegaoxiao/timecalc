@@ -4,12 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/theme/accent_palette.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../shared/widgets/app_error_view.dart';
+import '../../../shared/widgets/clash_tones.dart';
+import '../../../shared/widgets/clash_widgets.dart';
 import '../data/settings_repository_provider.dart';
 
-/// 外观设置页（M10）：明暗主题三选一（跟随系统 / 浅色 / 深色）+ 主题色系
-/// 二选一（绿色 / 蓝色，2026-08-16 色系解耦）+ 减少动画开关
-/// （2026-08-20 动效改造）。
+/// 外观设置页（M10；**v2.0 撞色重构**）：明暗主题三选一（跟随系统 / 浅色 /
+/// 深色）+ **撞色方案**三选一（暖橙×冷藏青 / 电光青×青柠 / 紫罗兰×暖橙，
+/// 见 [clashPaletteOrder]）+ 减少动画开关（2026-08-20 动效改造）。
 ///
 /// 由设置页「外观」菜单项 push 进入。明暗存储于 schema v12
 /// `Settings.theme_mode`（取值与 [ThemeMode.name] 一致）；色系存储于
@@ -19,6 +22,10 @@ import '../data/settings_repository_provider.dart';
 /// **点击即切换**：分段点击立即写库并换肤（`settingsProvider` 失效 →
 /// [TimeCalcApp] 整树换肤 / 全局动效重建），无需单独保存；写库失败还原
 /// 选择并提示。
+///
+/// 色系选择器**只展示 v2 撞色方案**（[clashPaletteOrder]），但写库 id 与
+/// 失败还原逻辑完全保留 —— legacy 方案（green/blue）不出现在 UI，
+/// 老数据仍能正确渲染（[accentPaletteById] 回退注册表）。
 class AppearancePage extends ConsumerStatefulWidget {
   const AppearancePage({super.key});
 
@@ -176,13 +183,19 @@ class _AppearancePageState extends ConsumerState<AppearancePage> {
     return Scaffold(
       appBar: AppBar(title: const Text('外观')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTokens.pagePadding),
         children: [
+          const ClashSectionHeader(
+            icon: Icons.brightness_6_outlined,
+            title: '明暗模式',
+            tone: ClashTone.warm,
+          ),
+          const SizedBox(height: AppTokens.spaceSm),
           Text(
             '选择应用的明暗主题，点击即生效。「跟随系统」随 Windows 的深浅色自动切换。',
             style: Theme.of(context).textTheme.bodySmall,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppTokens.spaceMd),
           SegmentedButton<ThemeMode>(
             segments: const [
               ButtonSegment(
@@ -204,49 +217,90 @@ class _AppearancePageState extends ConsumerState<AppearancePage> {
             selected: {_mode},
             onSelectionChanged: (selection) => _selectMode(selection.first),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppTokens.spaceXl),
+          const ClashSectionHeader(
+            icon: Icons.palette_outlined,
+            title: '撞色方案',
+            tone: ClashTone.cool,
+          ),
+          const SizedBox(height: AppTokens.spaceSm),
           Text(
-            '主题色：选择应用的色调基调（背景、按钮、任务、日历等随主色变化）。',
+            '主题色：选择应用的撞色方案（暖色主动作 × 冷色数据），'
+            '背景、按钮、任务、日历等随主色变化。',
             style: Theme.of(context).textTheme.bodySmall,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppTokens.spaceMd),
+          // 展示 v2 撞色方案注册表（clashPaletteOrder）；legacy 值
+          // （green/blue，仅老数据可能存有）**不写库归一**，而是作为
+          // 「当前选中项」额外渲染一项 —— 这样分段控件永远有且仅有
+          // 一个高亮项，且高亮项与 app.dart 实际生效的 AccentPalette
+          // 完全同一，预览卡与真实主题不会打架。
           SegmentedButton<AccentPalette>(
-            // 从色系注册表渲染（2026-08-16 解耦）：新增色系只需注册一项。
+            // 纵向排布：三套方案各带三色圆点预览，窄窗口下不会挤压溢出。
+            direction: Axis.vertical,
+            showSelectedIcon: false,
             segments: [
-              for (final palette in accentPalettes.values)
+              for (final palette in _paletteOptions)
                 ButtonSegment(
                   value: palette,
                   label: Text(palette.label),
-                  icon: Icon(
-                    palette.id == 'blue'
-                        ? Icons.palette_outlined
-                        : Icons.palette,
-                  ),
+                  icon: _PaletteDots(palette: palette),
                 ),
             ],
             selected: {_accent},
             onSelectionChanged: (selection) => _selectAccent(selection.first),
           ),
-          const SizedBox(height: 24),
+          if (_isLegacyAccent) ...[
+            const SizedBox(height: AppTokens.spaceSm),
+            Text(
+              '当前色系「${_accent.label}」是旧版方案，仅为老数据保留渲染路径；'
+              '选择任一撞色方案即可切换（不会自动改写你的数据）。',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+          const SizedBox(height: AppTokens.spaceXl),
           // —— 动效（2026-08-20 动效改造）——
+          const ClashSectionHeader(
+            icon: Icons.animation_outlined,
+            title: '动效',
+            tone: ClashTone.citrus,
+          ),
+          const SizedBox(height: AppTokens.spaceSm),
           Card(
             clipBehavior: Clip.antiAlias,
             child: SwitchListTile(
               value: _reduceMotion,
               onChanged: _toggleReduceMotion,
-              secondary: const Icon(Icons.animation_outlined),
+              secondary: Icon(
+                Icons.animation_outlined,
+                color: ClashTones.of(context, ClashTone.citrus).ink,
+              ),
               title: const Text('减少动画'),
               subtitle: const Text(
                 '开启后减少页面入场、切换等过渡动效，交互仍保持即时响应。',
               ),
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppTokens.spaceXl),
           _ThemePreview(mode: _mode, accent: _accent),
         ],
       ),
     );
   }
+
+  /// 分段控件渲染列表：三套 v2 撞色方案；若当前值是 legacy（不在
+  /// [clashPaletteOrder] 内）则把它追加为当前选中项，避免出现
+  /// 「无高亮项」或「高亮项 ≠ 实际生效主题」。
+  List<AccentPalette> get _paletteOptions {
+    final options = [for (final id in clashPaletteOrder) accentPalettes[id]!];
+    if (!options.any((palette) => palette.id == _accent.id)) {
+      options.add(_accent);
+    }
+    return options;
+  }
+
+  /// 当前库内色系是否为 legacy（green/blue：旧版方案，不在撞色列表内）。
+  bool get _isLegacyAccent => !clashPaletteOrder.contains(_accent.id);
 }
 
 /// 主题模式显示名。
@@ -256,21 +310,51 @@ String _modeLabel(ThemeMode mode) => switch (mode) {
   ThemeMode.dark => '深色',
 };
 
-/// 主题预览卡：并排展示浅色/深色两套色板（用当前色系派生）的「表面 +
-/// 主色」对比，高亮当前选中模式，直观反馈选择效果。
+/// 撞色方案的三色圆点预览（暖 / 冷 / 点缀）：一眼看出该方案的撞色关系。
+class _PaletteDots extends StatelessWidget {
+  const _PaletteDots({required this.palette});
+
+  final AccentPalette palette;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final color in [palette.warm, palette.cool, palette.citrus])
+          Container(
+            width: 10,
+            height: 10,
+            margin: const EdgeInsets.only(right: 3),
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outlineVariant,
+                width: 0.5,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// 主题预览卡：并排展示浅色/深色两套色板（用当前撞色方案派生）的
+/// 「表面 + 撞色三色」对比，高亮当前选中模式，直观反馈选择效果。
 class _ThemePreview extends StatelessWidget {
   const _ThemePreview({required this.mode, required this.accent});
 
   final ThemeMode mode;
 
-  /// 当前选中的色系（预览随绿/蓝变化）。
+  /// 当前选中的撞色方案（预览随方案变化）。
   final AccentPalette accent;
 
   @override
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTokens.spaceLg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -278,15 +362,21 @@ class _ThemePreview extends StatelessWidget {
               '当前模式：${_modeLabel(mode)} · ${accent.label}色系',
               style: Theme.of(context).textTheme.titleSmall,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppTokens.spaceMd),
             Row(
               children: [
                 Expanded(
-                  child: _Swatch(theme: AppTheme.light(accent: accent), label: '浅色'),
+                  child: _Swatch(
+                    theme: AppTheme.light(accent: accent),
+                    label: '浅色',
+                  ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: AppTokens.spaceMd),
                 Expanded(
-                  child: _Swatch(theme: AppTheme.dark(accent: accent), label: '深色'),
+                  child: _Swatch(
+                    theme: AppTheme.dark(accent: accent),
+                    label: '深色',
+                  ),
                 ),
               ],
             ),
@@ -306,35 +396,50 @@ class _Swatch extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = theme.colorScheme;
+    // 撞色三色：暖（primary=主结构/主动作）、冷（secondary=数据/对照）、
+    // 点缀（tertiary=里程碑/徽标）。
+    final swatches = <(Color, String)>[
+      (scheme.primary, '暖'),
+      (scheme.secondary, '冷'),
+      (scheme.tertiary, '点缀'),
+    ];
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppTokens.spaceMd),
       decoration: BoxDecoration(
         color: scheme.surface,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppTokens.radiusLg),
         border: Border.all(color: scheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label, style: theme.textTheme.bodyMedium),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppTokens.spaceSm),
           Row(
             children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: scheme.primary,
-                  shape: BoxShape.circle,
+              for (final (color, name) in swatches)
+                Expanded(
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 26,
+                        height: 26,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: scheme.outlineVariant),
+                        ),
+                      ),
+                      const SizedBox(height: AppTokens.spaceXs),
+                      Text(
+                        name,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  scheme.primary.toARGB32().toRadixString(16).substring(2),
-                  style: theme.textTheme.bodySmall,
-                ),
-              ),
             ],
           ),
         ],

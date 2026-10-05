@@ -1,4 +1,3 @@
-import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,18 +10,20 @@ import 'package:timecalc/core/providers/clock_provider.dart';
 import 'package:timecalc/features/goals/data/goal_repository.dart';
 import 'package:timecalc/features/tasks/data/task_repository.dart';
 
+import 'package:timecalc/shared/widgets/clash_tones.dart';
 import 'package:timecalc/shared/widgets/completion_checkbox.dart';
 
 import '../../../shared/nav_helper.dart';
 
-/// 计划页三视图（周/月/年）Widget 测试。
+/// 计划页双视图（周/月）Widget 测试。
 ///
 /// 固定时钟 2026-08-05（周三，处于 2026-08-03~08-09 那一周）。
 /// 验证：
-/// - 视图切换器存在（周/月/年三段）且默认月视图；
+/// - 视图切换器存在（周/月两段）且默认月视图；
 /// - 周视图：显示当周 7 天、跨月周正确（2026-08 月首 8/1 是周六）；
-/// - 年视图：3×4 十二个月格、月完成数正确、点月格下钻月视图；
 /// - 「回到今天」从任意视图回当前单元。
+///
+/// 年视图已于 2026-10 删除（与进度页热力图语义重复），用例同步移除。
 void main() {
   late AppDatabase db;
   late GoalRepository goals;
@@ -62,10 +63,9 @@ void main() {
     await pumpApp(tester);
     await openCalendar(tester);
 
-    // 三段切换器。
+    // 两段切换器。
     expect(find.text('周'), findsOneWidget);
     expect(find.text('月'), findsOneWidget);
-    expect(find.text('年'), findsOneWidget);
     // 默认月视图标题。
     expect(find.text('2026年8月'), findsOneWidget);
   });
@@ -121,7 +121,7 @@ void main() {
     expect(find.text('下周任务'), findsNothing);
   });
 
-  testWidgets('周视图选中格任务条可读：胶囊 onPrimary 覆盖层，不再浅底配 onPrimary 文字（回归 2026-08-16）', (tester) async {
+  testWidgets('周视图选中格任务条可读：撞色序列着色胶囊，不再随格子前景色（回归 2026-08-16）', (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
     // 今天（8/5 周三，默认选中）放 4 个任务：3 条进胶囊预览 + 1 条溢出。
     for (final title in ['高数练习', '英语阅读', '政治刷题', '专业课复习']) {
@@ -146,15 +146,24 @@ void main() {
     await tester.pumpAndSettle();
 
     // 主题取自视图切换器（标题在周格胶囊与选日面板各出现一次，不能作锚点）。
-    final scheme = Theme.of(tester.element(find.text('年'))).colorScheme;
+    final context = tester.element(find.text('月'));
+    final scheme = Theme.of(context).colorScheme;
+    // 事件块按**目标 id** 稳定映射到撞色序列（暖/冷/点缀）：
+    // 胶囊底色＝序列色 8% 半透明底压在不透明卡片底上，文字/图标＝序列色。
+    final series = ClashTones.chartSeries(context);
+    final accent = series[goal.id % series.length];
+    final pillColor = Color.alphaBlend(
+      ClashTones.tint(accent, alpha: 0.08),
+      scheme.surfaceContainerLowest,
+    );
 
     // 选中格（今天 8/5）胶囊文字（fontSize 10，区别于选日面板的完整
-    // TaskTile）应为 onPrimary，胶囊底为 onPrimary 半透明覆盖层——
-    // 此前是 surfaceContainerHigh 浅底 + onPrimary 文字，完全不可读。
+    // TaskTile）＝撞色序列色；此前是「onPrimary 覆盖层 + onPrimary 文字」，
+    // 选中格改为冷藏青浅容器后那种写法会变成浅底白字，完全不可读。
     final selectedTitle = tester
         .widgetList<Text>(find.text('高数练习'))
         .firstWhere((t) => t.style?.fontSize == 10);
-    expect(selectedTitle.style?.color, scheme.onPrimary);
+    expect(selectedTitle.style?.color, accent);
 
     final pill = tester
         .widgetList<Container>(
@@ -164,66 +173,55 @@ void main() {
           ),
         )
         .firstWhere((c) => c.constraints?.maxHeight == 16);
-    expect(
-      (pill.decoration as BoxDecoration).color,
-      scheme.onPrimary.withValues(alpha: 0.14),
-    );
+    expect((pill.decoration as BoxDecoration).color, pillColor);
 
-    // 溢出文案在选中格上跟随 onPrimary（灰字落在主色实底上对比不足）。
+    // 溢出文案走中性次级文字（冷浅底与白卡底上都可读）。
     expect(
       tester.widget<Text>(find.text('+1 项')).style?.color,
-      scheme.onPrimary.withValues(alpha: 0.8),
+      scheme.onSurfaceVariant,
     );
 
-    // 非选中格保持原配色：胶囊文字为格子前景色（onSurface）。
+    // 非选中格同样是撞色序列色（不再继承格子前景色）。
     final unselectedTitle = tester
         .widgetList<Text>(find.text('昨日回顾'))
         .firstWhere((t) => t.style?.fontSize == 10);
-    expect(unselectedTitle.style?.color, scheme.onSurface);
-  });
+    expect(unselectedTitle.style?.color, accent);
 
-  testWidgets('年视图：12 月格 + 月完成数 + 点月格下钻月视图', (tester) async {
-    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
-    // 直接插入已完成任务并指定 completedAt（setDone 用真实时钟，
-    // 与固定时钟测试环境不一致，无法控制完成月份）。
-    Future<void> insertDone(String title, String date, DateTime completedAt) async {
-      await db.into(db.tasks).insert(
-            TasksCompanion.insert(
-              goalId: goal.id,
-              title: title,
-              plannedDate: date,
-              status: const Value('done'),
-              completedAt: Value(completedAt.toUtc()),
-              createdAt: DateTime.utc(2026, 1, 1),
-              updatedAt: DateTime.utc(2026, 1, 1),
+    // 今天 vs 选中必须一眼可分（默认二者重合）：冷浅底 + 暖粗描边。
+    final cool = ClashTones.of(context, ClashTone.cool);
+    final warm = ClashTones.of(context, ClashTone.warm);
+    BoxDecoration cellDecoration(String day) {
+      final container = tester
+          .widgetList<Container>(
+            find.ancestor(
+              of: find.text(day).first,
+              matching: find.byType(Container),
             ),
-          );
+          )
+          .firstWhere((c) => (c.decoration as BoxDecoration?)?.border != null);
+      return container.decoration as BoxDecoration;
     }
 
-    await insertDone('一月任务1', '2026-01-05', DateTime(2026, 1, 5, 8));
-    await insertDone('一月任务2', '2026-01-15', DateTime(2026, 1, 15, 9));
-    await insertDone('二月任务', '2026-02-10', DateTime(2026, 2, 10, 10));
+    final todaySelected = cellDecoration('5');
+    expect(todaySelected.color, cool.soft, reason: '选中日期格＝冷藏青浅容器');
+    expect(
+      (todaySelected.border as Border).top.color,
+      warm.ink,
+      reason: '今天＝暖色粗描边',
+    );
+    expect((todaySelected.border as Border).top.width, 2);
 
-    await pumpApp(tester);
-    await openCalendar(tester);
-
-    // 切到年视图。
-    await tester.tap(find.text('年'));
+    // 换选到非今天的 8/4：选中态为冷描边，8/5 回落为「只是今天」（暖底）。
+    await tester.tap(find.text('4').first);
     await tester.pumpAndSettle();
+    final day4Selected = cellDecoration('4');
+    expect(day4Selected.color, cool.soft);
+    expect((day4Selected.border as Border).top.color, cool.ink);
+    expect((day4Selected.border as Border).top.width, 1.5);
 
-    // 标题 + 12 个月格。
-    expect(find.text('2026年'), findsOneWidget);
-    expect(find.text('1 月'), findsOneWidget);
-    expect(find.text('12 月'), findsOneWidget);
-    // 完成数文本（1 月 2 个、2 月 1 个）。
-    expect(find.text('2'), findsOneWidget);
-    expect(find.text('1'), findsWidgets);
-    expect(find.text('完成'), findsWidgets);
-
-    // 点 2 月格 → 下钻到月视图 2026年2月。
-    await tester.tap(find.text('2 月'));
-    await tester.pumpAndSettle();
-    expect(find.text('2026年2月'), findsOneWidget);
+    final todayOnly = cellDecoration('5');
+    expect(todayOnly.color, warm.soft, reason: '未选中的今天＝暖色浅容器');
+    expect((todayOnly.border as Border).top.color, warm.ink);
   });
 
   testWidgets('周视图勾选任务后即时刷新（回归：invalidatePlanData 补上 tasksByWeek）', (tester) async {
@@ -260,7 +258,7 @@ void main() {
     expect(find.text('0/1'), findsNothing);
   });
 
-  testWidgets('「回到今天」从周/年视图回当前单元', (tester) async {
+  testWidgets('「回到今天」从周视图回当前周', (tester) async {
     await goals.create(title: '考研', deadlineDate: '2026-12-31');
     await pumpApp(tester);
     await openCalendar(tester);
@@ -275,15 +273,5 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('8月3日'), findsOneWidget);
     expect(find.textContaining('第'), findsOneWidget);
-
-    // 年视图切到上一年，回到今天回 2026。
-    await tester.tap(find.text('年'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('上一单元'));
-    await tester.pumpAndSettle();
-    expect(find.text('2025年'), findsOneWidget);
-    await tester.tap(find.text('回到今天'));
-    await tester.pumpAndSettle();
-    expect(find.text('2026年'), findsOneWidget);
   });
 }

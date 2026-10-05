@@ -19,7 +19,6 @@ import '../../../shared/nav_helper.dart';
 /// 固定时钟 2026-08-05（周三），验证：
 /// - 今日概览：完成数/总数、已完成时长、目标剩余工作量（FR-7.1）
 /// - 热力图：LeetCode 图例文本、tooltip、无完成记录时全灰网格（无空态）
-/// - 任务耗时图：按周堆叠条形（M7 迭代，fl_chart 重构）
 /// - 燃尽趋势：剩余预估时长曲线（FR-7.3）
 /// - FR-7.4 说明文本
 void main() {
@@ -61,7 +60,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// 在指定 UTC 时刻完成一项带时长的任务（供热力图/任务耗时图断言）。
+  /// 在指定 UTC 时刻完成一项带时长的任务（供热力图断言）。
   Future<void> completeTask({
     required int goalId,
     required String title,
@@ -121,7 +120,7 @@ void main() {
     // 「2 小时」刻度，故限定在今日概览卡内断言）。
     final overviewCard = find.widgetWithText(Card, '今日概览');
     expect(find.text('1/2'), findsOneWidget);
-    // 已完成时长「1 小时」也出现在任务耗时图 Y 轴刻度，限定在概览卡内断言。
+    // 已完成时长「1 小时」也可能出现在燃尽图 Y 轴刻度，限定在概览卡内断言。
     expect(
       find.descendant(of: overviewCard, matching: find.text('1 小时')),
       findsOneWidget,
@@ -198,47 +197,10 @@ void main() {
     expect(find.byTooltip('2026-08-05：完成 2 项'), findsOneWidget);
   });
 
-  testWidgets('任务耗时图展示未来计划与已完成时长（M7 迭代）', (tester) async {
-    final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
-    await goals.create(title: '论文', deadlineDate: '2026-09-30');
-    // 未来计划：2 周后（2026-08-19，周三）的任务 120 分钟。
-    await tasks.create(
-      goalId: goal.id,
-      title: '高数强化',
-      plannedDate: '2026-08-19',
-      estimatedMinutes: 120,
-    );
-    // 本周完成 60 分钟。
-    await completeTask(
-      goalId: goal.id,
-      title: '背单词',
-      minutes: 60,
-      completedAtUtc: fixedNow.toUtc(),
-    );
-
-    await pumpApp(tester);
-    await openProgress(tester);
-
-    expect(find.text('任务耗时图'), findsOneWidget);
-    expect(find.textContaining('按周展示未来计划与已完成时长'), findsOneWidget);
-    // fl_chart 堆叠条形图已渲染（数据正确性由 statistics_service_test 保证）。
-    expect(find.byType(BarChart), findsOneWidget);
-    // 图例（在任务耗时图 Card 内断言，避免与底部导航「计划」标签歧义）。
-    final chartCard = find.widgetWithText(Card, '任务耗时图');
-    expect(
-      find.descendant(of: chartCard, matching: find.text('计划')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: chartCard, matching: find.text('完成')),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('无完成记录时热力图仍渲染全灰网格，耗时图展示空态（FR-7.2 / PRD §8）',
+  testWidgets('无完成记录时热力图仍渲染全灰网格（FR-7.2 / PRD §8）',
       (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
-    // 无预估时长的任务不计入任务耗时图（FR-7.4），展示空态。
+    // 无预估时长的任务不产生任何图表数据（FR-7.4）。
     await tasks.create(
       goalId: goal.id,
       title: '未完成任务',
@@ -259,8 +221,6 @@ void main() {
       find.descendant(of: heatCard, matching: find.text('0')),
       findsOneWidget,
     );
-    // 任务耗时图空态保留（带预估时长数据缺失，引导排期）。
-    expect(find.text('还没有带预估时长的任务安排'), findsOneWidget);
     // FR-7.4 说明折叠在「数据统计说明」下，展开后断言。
     await expandNote(tester);
     expect(
@@ -268,39 +228,9 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('完成热力图'), findsOneWidget);
-    expect(find.text('任务耗时图'), findsOneWidget);
   });
 
-  testWidgets('任务耗时图最忙周堆叠条不溢出（回归：planned+completed 达最大值）',
-      (tester) async {
-    final goal =
-        await goals.create(title: '考研', deadlineDate: '2026-12-31');
-    // 本周同时存在计划与完成，且二者合计为全局最大值，触发归一化满高。
-    // 计划 120 分钟（2026-08-05 当周）；完成 120 分钟（同周）。
-    await tasks.create(
-      goalId: goal.id,
-      title: '计划任务',
-      plannedDate: '2026-08-05',
-      estimatedMinutes: 120,
-    );
-    await completeTask(
-      goalId: goal.id,
-      title: '完成任务',
-      minutes: 120,
-      completedAtUtc: fixedNow.toUtc(),
-    );
-
-    await pumpApp(tester);
-    await openProgress(tester);
-
-    // 堆叠条 toY 达最大值（maxY ×1.1 含余量），不应触发 RenderFlex
-    // overflow。pump 后无未处理异常即视为通过。
-    expect(tester.takeException(), isNull);
-    expect(find.text('任务耗时图'), findsOneWidget);
-    expect(find.byType(BarChart), findsOneWidget);
-  });
-
-  testWidgets('宽屏下卡片随窗口宽度拉伸，任务耗时图/热力图消除右侧留白（布局回归）',
+  testWidgets('宽屏下卡片随窗口宽度拉伸，热力图消除右侧留白（布局回归）',
       (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
     await tasks.create(
@@ -321,48 +251,16 @@ void main() {
     final overviewCard = find.widgetWithText(Card, '今日概览');
     expect(overviewCard, findsOneWidget);
     final overviewBox = tester.getRect(overviewCard);
-    // 卡片随窗口拉伸：宽窗走自定义侧栏（200px），内容区宽度
-    // ≈ 1600-200=1400，再扣内容 padding 与卡片 margin（约 90px）后卡片仍
-    // 应铺满内容区（>1300，比旧式整宽断言更贴近真实布局）。
-    expect(overviewBox.width, greaterThan(1300));
+    // 卡片随窗口拉伸：宽窗走自定义侧栏（v2.0 撞色重构后 208px），内容区
+    // 宽度 ≈ 1600-208=1392，再扣内容 padding 与卡片边框后实测 1296。
+    // 阈值取 >1280 以保留「卡片必须铺满内容区、不得出现右侧留白」这一
+    // 回归意图，同时不再把侧栏宽度的设计微调（200→208）误判为布局回归。
+    expect(overviewBox.width, greaterThan(1280));
 
     // 热力图卡片同样铺满，且色块随宽度放大（工具提示存在即已渲染）。
     final heatCard = find.widgetWithText(Card, '完成热力图');
     final heatBox = tester.getRect(heatCard);
-    expect(heatBox.width, greaterThan(1300));
-
-    // 任务耗时图无 RenderFlex overflow（宽屏等分拉伸）。
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('任务耗时图宽度自适应：宽屏铺满、窄窗横向滚动（布局回归）',
-      (tester) async {
-    // 4 个目标（各带计划任务）：26 周窗口下有多个有数据周。
-    for (final name in ['考研', '论文', '雅思', '驾照']) {
-      final goal = await goals.create(title: name, deadlineDate: '2026-12-31');
-      await tasks.create(
-        goalId: goal.id,
-        title: '$name 任务',
-        plannedDate: '2026-08-05',
-        estimatedMinutes: 120,
-      );
-    }
-
-    // 窄窗：图表最小宽度 > 可用宽度时出现横向滚动，不溢出。
-    await tester.binding.setSurfaceSize(const Size(500, 600));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
-    await pumpApp(tester);
-    await openProgress(tester);
-    expect(find.byType(BarChart), findsOneWidget);
-    expect(tester.takeException(), isNull);
-
-    // 整页纵向滚动可达底部说明（图表未被固定/截断）：先展开折叠说明。
-    await expandNote(tester);
-    final caption = find.textContaining('无预估时长的任务只计入任务数');
-    await tester.ensureVisible(caption);
-    await tester.pumpAndSettle();
-    expect(caption, findsOneWidget);
+    expect(heatBox.width, greaterThan(1280));
 
     // 无布局溢出。
     expect(tester.takeException(), isNull);
@@ -450,7 +348,7 @@ void main() {
     await openProgress(tester);
 
     expect(find.text('剩余工作量趋势'), findsOneWidget);
-    // 燃尽空态文案与甘特图空态区分，避免歧义。
+    // 燃尽空态文案固定，避免与其他卡片歧义。
     expect(find.text('还没有可展示的剩余工作量数据'), findsOneWidget);
 
     // 无带时长数据时 Header「当前剩余」显示灰 `-- 分`（与今日概览无数据
@@ -511,15 +409,15 @@ void main() {
     );
   });
 
-  testWidgets('有进行中目标时燃尽/耗时图空态显示引导按钮', (tester) async {
+  testWidgets('有进行中目标时燃尽图空态显示引导按钮', (tester) async {
     await goals.create(title: '考研', deadlineDate: '2026-12-31');
-    // 无带时长数据：燃尽/耗时图展示空态与 CTA（热力图无完成记录时
+    // 无带时长数据：燃尽图展示空态与 CTA（热力图无完成记录时
     // 渲染全灰网格，不放引导按钮）。
     await pumpApp(tester);
     await openProgress(tester);
 
-    // 燃尽/耗时图：需要带预估时长的数据 → 「去设置预估时长」。
-    expect(find.text('去设置预估时长'), findsNWidgets(2));
+    // 燃尽图：需要带预估时长的数据 → 「去设置预估时长」。
+    expect(find.text('去设置预估时长'), findsOneWidget);
     expect(find.text('去添加任务'), findsNothing);
 
     // 点击燃尽图空态的 CTA：跳转计划页排期（归属于进行中目标）。
@@ -532,13 +430,12 @@ void main() {
     expect(find.textContaining('星期三'), findsOneWidget);
   });
 
-  testWidgets('无目标时燃尽/耗时图空态不显示引导按钮', (tester) async {
-    // 没有任何目标（也没有任务）：热力图渲染全灰网格，燃尽/耗时图空态
+  testWidgets('无目标时燃尽图空态不显示引导按钮', (tester) async {
+    // 没有任何目标（也没有任务）：热力图渲染全灰网格，燃尽图空态
     // 无可归属目标，CTA 不显示。
     await pumpApp(tester);
     await openProgress(tester);
 
-    expect(find.text('还没有带预估时长的任务安排'), findsOneWidget);
     expect(find.text('去添加任务'), findsNothing);
     expect(find.text('去设置预估时长'), findsNothing);
   });
@@ -617,7 +514,7 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('新增任务后剩余工作量趋势与任务耗时图及时刷新（回归）', (tester) async {
+  testWidgets('新增任务后剩余工作量趋势及时刷新（回归）', (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
     // 初始剩余工作量 120 分钟。
     await tasks.create(
@@ -630,13 +527,12 @@ void main() {
     await pumpApp(tester);
     await openProgress(tester);
 
-    // 燃尽卡「当前剩余」= 2 小时；任务耗时图已有计划数据。
+    // 燃尽卡「当前剩余」= 2 小时。
     final burnCard = find.widgetWithText(Card, '剩余工作量趋势');
     expect(
       find.descendant(of: burnCard, matching: find.text('2 小时')),
       findsOneWidget,
     );
-    expect(find.byType(BarChart), findsOneWidget);
 
     // 切到「今天」页，经真实 UI 路径快速添加一个 90 分钟任务
     // （保存后今日页走 invalidateAppData 全量刷新）。
@@ -656,7 +552,7 @@ void main() {
       await tester.pump();
     }
     expect(find.text('当前共 1 小时 30 分'), findsOneWidget);
-    await tester.tap(find.text('创建'));
+    await tester.tap(find.text('创建任务'));
     await tester.pumpAndSettle();
 
     // 今日页自身已刷新（任务出现在今日列表，证明 invalidate 已触发）。
@@ -681,7 +577,7 @@ void main() {
     );
   });
 
-  testWidgets('编辑任务（改预估时长）后剩余工作量趋势与任务耗时图及时刷新（回归）', (tester) async {
+  testWidgets('编辑任务（改预估时长）后剩余工作量趋势及时刷新（回归）', (tester) async {
     final goal = await goals.create(title: '考研', deadlineDate: '2026-12-31');
     // 初始剩余工作量 120 分钟（今天，便于今日页直接编辑）。
     await tasks.create(

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -8,8 +7,6 @@ import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../core/providers/app_refresh.dart';
 import '../../../core/providers/motion_provider.dart';
-import '../../../core/theme/accent_palette.dart';
-import '../../../core/theme/app_semantic_colors.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../services/countdown_service.dart';
@@ -18,11 +15,13 @@ import '../../../services/duration_format.dart';
 import '../../../services/load_service.dart';
 import '../../../services/statistics_service.dart';
 import '../../../shared/widgets/app_error_view.dart';
-import '../../../shared/widgets/celebration_overlay.dart';
+import '../../../shared/widgets/clash_hero.dart';
+import '../../../shared/widgets/clash_tones.dart';
+import '../../../shared/widgets/clash_widgets.dart';
 import '../../../shared/widgets/hoverable_card.dart';
 import '../../../shared/widgets/page_skeletons.dart';
 import '../../../shared/widgets/progressive_rows.dart';
-import '../../../shared/widgets/section_header.dart';
+import '../../../shared/widgets/section_error_view.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../../goals/data/milestone_repository_provider.dart';
 import '../../goals/data/subject_repository_provider.dart';
@@ -34,9 +33,9 @@ import '../../tasks/data/task_repository_provider.dart';
 import '../../tasks/presentation/quick_task_form_dialog.dart';
 import '../../tasks/presentation/task_tile.dart';
 
-/// 今日负载卡数值动画时长（v1.17）：进度环 + 四个指标数字共用。
-/// 比全局 motionSlow(320ms) 更慢（800ms），勾选任务后数字滑落从容、
-/// 松弛可辨；对称缓动 easeInOutCubic。
+/// 今日负载卡进度环数值动画时长（v1.17）：比全局 motionSlow(320ms) 更慢
+/// （800ms），勾选任务后进度滑落从容、松弛可辨；对称缓动 easeInOutCubic。
+/// （v2 撞色重构后指标数字改由 ClashStatTile 直接呈现，时长仅进度环使用。）
 const _kMetricAnimDuration = Duration(milliseconds: 800);
 
 /// 今天页：目标倒计时 + 今日任务闭环（M2）。
@@ -58,13 +57,34 @@ class _TodayPageState extends ConsumerState<TodayPage> {
   static const _defer = DeferService();
   static const _load = LoadService();
   static const _stats = StatisticsService();
+  static const _countdown = CountdownService();
+
+  /// hero 区倒计时：取「最近截止」的活跃目标，与倒计时卡同一
+  /// [CountdownService] 口径（同一次 evaluate，数值不完全另算）。
+  ///
+  /// **只回传（阶段, 天数），不回传 `CountdownService.label` 文案**：
+  /// `剩余 N 天` / `今天截止` / `已逾期 N 天` 在页面上必须由倒计时卡的
+  /// 撞色药丸唯一承载（goal_crud_widget_test 断言这些文案全页恰好出现
+  /// 一次），hero 若再渲染同一文案就会重复。
+  (CountdownPhase, int)? _heroCountdown(
+    List<Goal> activeGoals,
+    DateTime today,
+  ) {
+    if (activeGoals.isEmpty) return null;
+    final nearest = activeGoals.reduce((a, b) {
+      final da = tryParseLocalDate(a.deadlineDate) ?? DateTime(9999);
+      final db = tryParseLocalDate(b.deadlineDate) ?? DateTime(9999);
+      return da.isAfter(db) ? b : a;
+    });
+    return _countdown.evaluate(
+      deadlineDate: nearest.deadlineDate,
+      today: today,
+      status: nearest.status,
+    );
+  }
 
   /// FR-3.7 横幅的会话级关闭（「保留原日期」），不写库。
   bool _bannerDismissed = false;
-
-  /// v1.11 彩带：已触发过「今日任务全部完成」庆祝的标记（非全完成时复位），
-  /// 避免每次刷新/操作重复播放骚扰用户。
-  bool _celebratedDone = false;
 
   @override
   Widget build(BuildContext context) {
@@ -190,23 +210,8 @@ class _TodayPageState extends ConsumerState<TodayPage> {
     final todayEmpty =
         todayTasks.isEmpty && !tasksLoading && tasksError == null;
 
-    // 今日任务全部完成庆祝（v1.11）：从非全完成跃迁到全完成（且确有任务）
-    // 时在 Overlay 层播一次彩带；首帧即全完成不触发，非全完成后复位标记。
-    // 开启「减少动画」时不播彩带（静默完成），但仍复位标记避免开关切换后
-    // 补播骚扰。
-    final reduceMotion = ref.watch(motionControllerProvider).skipEntrance;
+    // 今日任务完成数：区块头计数与负载概览共用同一次遍历口径。
     final doneCount = todayTasks.where((t) => t.status == 'done').length;
-    final allDone = todayTasks.isNotEmpty && doneCount == todayTasks.length;
-    if (allDone && !_celebratedDone) {
-      _celebratedDone = true;
-      if (!reduceMotion) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && _celebratedDone) showCelebration(context);
-        });
-      }
-    } else if (!allDone && _celebratedDone) {
-      _celebratedDone = false;
-    }
 
     final viewport = MediaQuery.sizeOf(context).width;
     final pageInset = viewport > 1500
@@ -222,15 +227,23 @@ class _TodayPageState extends ConsumerState<TodayPage> {
           // 懒加载。
           slivers: [
             SliverPadding(
-              padding: EdgeInsets.fromLTRB(pageInset, 24, pageInset, 16),
+              padding: EdgeInsets.fromLTRB(
+                pageInset,
+                AppTokens.spaceXl,
+                pageInset,
+                AppTokens.spaceLg,
+              ),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
                   _TodayHeading(
                     today: today,
                     done: doneCount,
                     total: todayTasks.length,
+                    countdown: _heroCountdown(activeGoals, today),
                   ),
-                  const SizedBox(height: 24),
+                  // hero 与倒计时卡区间距：首屏高度敏感（今日任务列表与
+                  // 逾期任务区必须留在首屏命中范围内），故用 spaceLg。
+                  const SizedBox(height: AppTokens.spaceLg),
                   // 倒计时卡区块：有目标才显示，且首张卡必须常驻（视口最顶）。
                   // 卡片自带 bottom margin 12 提供行距。
                   if (activeGoals.isNotEmpty)
@@ -239,7 +252,8 @@ class _TodayPageState extends ConsumerState<TodayPage> {
                       itemBuilder: (context, i) =>
                           _CountdownCard(goal: activeGoals[i]),
                     ),
-                  if (activeGoals.isNotEmpty) const SizedBox(height: 8),
+                  if (activeGoals.isNotEmpty)
+                    const SizedBox(height: AppTokens.spaceSm),
                   // 今日概览常驻：有活跃目标即显示（空态用 `--` 无数据语义），
                   // 把「今日计划量与完成度」前置到首页。
                   if (activeGoals.isNotEmpty) ...[
@@ -256,10 +270,10 @@ class _TodayPageState extends ConsumerState<TodayPage> {
                         hasAnyTask: hasAnyTask,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppTokens.spaceSm),
                   ],
                   if (unfinished.isEmpty && unfinishedError != null)
-                    _SectionError(
+                    SectionErrorView(
                       error: unfinishedError,
                       onRetry: onRetryUnfinished,
                     ),
@@ -311,14 +325,16 @@ class _TodayPageState extends ConsumerState<TodayPage> {
                             setState(() => _bannerDismissed = true),
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppTokens.spaceSm),
                   ],
-                  // 区块头统一（2026-08-16 视觉升级）：与进度页同一 SectionHeader
-                  // 语言，trailing 承载完成计数与「添加任务」入口。
+                  // 区块头统一（v2 撞色重构）：待办主体＝暖色撞色块，
+                  // count 徽标显示今日任务量，trailing 承载完成计数与入口。
                   // 空态时不重复右上角按钮：唯一的「添加任务」入口由空态大按钮承担。
-                  SectionHeader(
+                  ClashSectionHeader(
                     icon: Icons.checklist_rounded,
                     title: '今日任务',
+                    tone: ClashTone.warm,
+                    count: todayTasks.length,
                     trailing: todayEmpty
                         ? null
                         : Row(
@@ -328,9 +344,10 @@ class _TodayPageState extends ConsumerState<TodayPage> {
                                 '${todayStats.doneCount}/${todayTasks.length}',
                                 style: Theme.of(context).textTheme.titleMedium
                                     ?.copyWith(
-                                      color: Theme.of(
+                                      color: ClashTones.of(
                                         context,
-                                      ).colorScheme.outline,
+                                        ClashTone.warm,
+                                      ).ink,
                                       fontFeatures: const [
                                         FontFeature.tabularFigures(),
                                       ],
@@ -355,11 +372,11 @@ class _TodayPageState extends ConsumerState<TodayPage> {
                   ),
                   if (todayTasks.isEmpty && tasksLoading)
                     const Padding(
-                      padding: EdgeInsets.only(bottom: 4),
+                      padding: EdgeInsets.only(bottom: AppTokens.spaceXs),
                       child: LinearProgressIndicator(minHeight: 2),
                     ),
                   if (todayTasks.isEmpty && tasksError != null)
-                    _SectionError(error: tasksError, onRetry: onRetryTasks),
+                    SectionErrorView(error: tasksError, onRetry: onRetryTasks),
                   if (todayTasks.isEmpty && !tasksLoading && tasksError == null)
                     _TodayEmptyView(
                       onAddTask: addGoals.isEmpty
@@ -377,17 +394,22 @@ class _TodayPageState extends ConsumerState<TodayPage> {
                 ]),
               ),
             ),
-            // 今日任务列表：单卡分组行（2026-08-16 视觉升级）——一张卡片承载
-            // 全部任务行，行间细分隔线，行内容由 TaskTile（自身无卡）提供；
-            // 行经 ProgressiveRows 视口驱动懒构建（同日二次卡顿修复 v2），
-            // 大任务量导入不卡首帧、滚动按需构建。
+            // 今日任务列表：单卡分组行（v2 撞色重构）——一张白卡承载全部
+            // 任务行（暖调细边框 + 暖投影），行间细分隔线，行内容由 TaskTile
+            // （自身无卡）提供；行经 ProgressiveRows 视口驱动懒构建（同日
+            // 二次卡顿修复 v2），大任务量导入不卡首帧、滚动按需构建。
             if (todayTasks.isNotEmpty)
               SliverPadding(
-                padding: EdgeInsets.fromLTRB(pageInset, 0, pageInset, 20),
+                padding: EdgeInsets.fromLTRB(
+                  pageInset,
+                  0,
+                  pageInset,
+                  AppTokens.pagePadding,
+                ),
                 sliver: SliverToBoxAdapter(
-                  child: Card(
-                    margin: EdgeInsets.zero,
+                  child: Container(
                     clipBehavior: Clip.antiAlias,
+                    decoration: _clashCardDecoration(context),
                     child: ProgressiveRows(
                       itemCount: todayTasks.length,
                       itemBuilder: (context, i) => Column(
@@ -442,60 +464,137 @@ class _TodayPageState extends ConsumerState<TodayPage> {
   }
 }
 
+/// 页面头部撞色英雄区（v2 撞色重构）：**暖×冷双撞色渐变**承载「日期 + 星期 +
+/// 最近截止目标的倒计时天数 + 今日概览」，是首页第一眼的撞色锚点，也是全站
+/// hero 的视觉标杆。
+///
+/// 文案口径：hero **不复述**倒计时卡里的 `CountdownService.label` 文案
+/// （`剩余 N 天` / `今天截止` / `已逾期 N 天` 由倒计时卡的撞色药丸唯一承载），
+/// 只把同一个倒计时**数字**以 hero 大字号呈现，阶段由图标承载——因此页面上
+/// 不会出现重复文案（goal_crud_widget_test 断言这些文案全页唯一）。
 class _TodayHeading extends StatelessWidget {
   const _TodayHeading({
     required this.today,
     required this.done,
     required this.total,
+    required this.countdown,
   });
   final DateTime today;
   final int done;
   final int total;
 
+  /// 最近截止目标的（阶段, 天数），与倒计时卡同源同口径；
+  /// 无活跃目标时为 null，此时 hero 只展示日期与今日概览。
+  final (CountdownPhase, int)? countdown;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
-    return Wrap(
-      alignment: WrapAlignment.spaceBetween,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 24,
-      runSpacing: 12,
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '${today.month}月${today.day}日 · 星期${weekdays[today.weekday - 1]}',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '专注今天，向目标靠近',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.5,
-              ),
-            ),
-          ],
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.primary.withValues(alpha: 0.07),
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: Text(
-            total == 0 ? '留一点时间，给新的进步' : '今日已完成 $done / $total 项',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.w600,
+    // hero 内前景色：撞色 hero 的默认前景已给白，这里取 warm.onFill 派生
+    // 半透明层级，避免页面自己写死颜色（契约 §2 硬规则 2）。
+    final onHero = ClashTones.of(context, ClashTone.warm).onFill;
+    final countdown = this.countdown;
+    Widget? countdownBlock;
+    if (countdown != null) {
+      final (phase, days) = countdown;
+      // 倒计时数字：hero 主视觉大字号（headlineLarge）+ w700 + 等宽数字，
+      // 让「还剩多少天」成为首页第一眼可读的量；阶段由撞色 hero 上的
+      // 图标承载（状态不只靠颜色），完整文案留在倒计时卡的药丸里。
+      countdownBlock = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(_countdownPhaseIcon(phase), size: 18, color: onHero),
+          const SizedBox(width: AppTokens.spaceSm),
+          Text(
+            '$days',
+            style: theme.textTheme.headlineLarge?.copyWith(
+              color: onHero,
+              fontWeight: FontWeight.w700,
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
-        ),
-      ],
+        ],
+      );
+    }
+    return ClashHero(
+      tone: ClashTone.warm,
+      // 暖×冷双撞色渐变：首页的撞色身份标识。
+      gradient: ClashGradient.clash(context),
+      // 竖向留白收一档（spaceLg）：hero 信息变多的同时必须把首屏让给
+      // 倒计时卡与今日任务列表（首页信息密度优先于大面积留白）。
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.spaceXl,
+        vertical: AppTokens.spaceLg,
+      ),
+      child: Row(
+        // spaceBetween：右列是 Flexible（可被压缩，内容可能小于分配宽度），
+        // 靠 spaceBetween 把右列顶到最右，保持「左信息 / 右数字」的对齐。
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '${today.month}月${today.day}日 · 星期${weekdays[today.weekday - 1]}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: onHero.withValues(alpha: 0.90),
+                    letterSpacing: 0.4,
+                  ),
+                ),
+                const SizedBox(height: AppTokens.spaceXs),
+                Text(
+                  '专注今天，向目标靠近',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    color: onHero,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppTokens.spaceMd),
+          // Flexible（不是固定宽 Column）：系统放大字号（textScaler 2.0）下
+          // 右列会变宽，必须允许它被压缩（内含 Text 自行换行），否则左列
+          // Expanded 挤压不动、Row 直接溢出。
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (countdownBlock != null) ...[
+                  countdownBlock,
+                  const SizedBox(height: AppTokens.spaceXs),
+                ],
+                // 今日概览胶囊：hero 内的半透明白底，撞色渐变上的「轻容器」。
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppTokens.spaceMd,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: onHero.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: onHero.withValues(alpha: 0.30)),
+                  ),
+                  child: Text(
+                    total == 0 ? '留一点时间，给新的进步' : '今日已完成 $done / $total 项',
+                    textAlign: TextAlign.end,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: onHero,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -527,260 +626,152 @@ class _LoadOverviewCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final semantics = AppSemanticColors.of(context);
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final cool = ClashTones.of(context, ClashTone.cool);
+    final danger = ClashTones.of(context, ClashTone.danger);
     final motion = ref.watch(motionControllerProvider);
-    // 无数据语义：今日无任务时「总计/完成」用 `--`，避免 0/0 误导；
-    // 应用完全无任务时「目标剩余」也用 `--`（区分「没计划」与「已排完」）。
+    // 无数据语义：今日无任务时「总计/完成」用 `-- 分`，避免 0/0 误导；
+    // 应用完全无任务时「目标剩余」也用 `-- 分`（区分「没计划」与「已排完」）。
     final hasTodayTask = stats.totalCount > 0;
     final progress = hasTodayTask ? stats.doneCount / stats.totalCount : 0.0;
-    return Card(
-      margin: EdgeInsets.zero,
+    return Container(
       clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 区块标题：与进度页统计卡同一视觉语言（SectionHeader）；
-            // 超载时右侧警示 chip（图标 + 文案，不只依赖颜色）。
-            SectionHeader(
-              icon: over > 0 ? Icons.warning_amber_rounded : Icons.balance,
-              title: '今日负载',
-              trailing: over > 0
-                  ? Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: semantics.warning.withValues(alpha: 0.14),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                          color: semantics.warning.withValues(alpha: 0.35),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.warning_amber_rounded,
-                            size: 14,
-                            color: semantics.warning,
-                          ),
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              '超出 ${DurationFormat.minutes(over)}',
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(
-                                    color: semantics.warning,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : null,
-            ),
-            const SizedBox(height: 14),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final wide = constraints.maxWidth >= 760;
-                final cells = <Widget>[
-                  _MetricCell(
-                    icon: Icons.timer_outlined,
-                    label: '今日总计',
-                    minutes: hasTodayTask ? load : null,
-                  ),
-                  _MetricCell(
-                    icon: Icons.check_circle_outline,
-                    label: '已完成',
-                    minutes: hasTodayTask ? stats.doneMinutes : null,
-                  ),
-                  _MetricCell(
-                    icon: Icons.schedule_outlined,
-                    label: '今日可用',
-                    minutes: available,
-                  ),
-                  _MetricHighlight(
-                    icon: Icons.flag_outlined,
-                    label: '目标剩余',
-                    minutes: hasAnyTask ? remainingMinutes : null,
-                  ),
-                ];
-                final metrics = LayoutBuilder(
-                  builder: (context, box) => Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      for (final cell in cells)
-                        Container(
-                          width:
-                              (box.maxWidth - (wide ? 36 : 12)) /
-                              (wide ? 4 : 2),
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: scheme.surfaceContainerLow,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: cell,
-                        ),
-                    ],
-                  ),
-                );
-                final ring = SizedBox(
-                  width: 74,
-                  height: 74,
-                  child: TweenAnimationBuilder<double>(
-                    tween: Tween(end: progress),
-                    duration: motion.duration(_kMetricAnimDuration),
-                    curve: motion.curve,
-                    builder: (context, value, _) {
-                      final animatedDone = (value * stats.totalCount).round();
-                      return Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Positioned.fill(
-                            child: CircularProgressIndicator(
-                              value: hasTodayTask ? value : 0,
-                              strokeWidth: 6,
-                              strokeCap: StrokeCap.round,
-                              backgroundColor: scheme.surfaceContainerHighest,
-                              valueColor: AlwaysStoppedAnimation(
-                                over > 0 ? semantics.warning : scheme.primary,
-                              ),
-                            ),
-                          ),
-                          // 中心 N/M（等宽数字）：FittedBox 防系统放大字号时
-                          // 撑爆 72px 固定环；环 + 分数即「完成比例」语义，
-                          // 无需再叠「完成」小标签（与指标格「已完成」互补）。
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              hasTodayTask
-                                  ? '$animatedDone/${stats.totalCount}'
-                                  : '--',
-                              style: Theme.of(context).textTheme.titleMedium
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    fontFeatures: const [
-                                      FontFeature.tabularFigures(),
-                                    ],
-                                  ),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                );
-                if (!wide) return metrics;
-                return Row(
+      decoration: _clashCardDecoration(context),
+      padding: const EdgeInsets.all(AppTokens.spaceLg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 区块标题：数据/统计类区块＝冷色撞色块；超载时右侧警示 chip
+          // （图标 + 文案 + 撞色，状态不只依赖颜色）。
+          ClashSectionHeader(
+            icon: over > 0 ? Icons.warning_amber_rounded : Icons.balance,
+            title: '今日负载',
+            tone: ClashTone.cool,
+            dense: true,
+            trailing: over > 0
+                ? ClashChip(
+                    label: '超出 ${DurationFormat.minutes(over)}',
+                    tone: ClashTone.danger,
+                    variant: ClashChipVariant.soft,
+                    icon: Icons.warning_amber_rounded,
+                  )
+                : null,
+          ),
+          const SizedBox(height: AppTokens.spaceLg),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final wide = constraints.maxWidth >= 760;
+              // 撞色统计块行：暖＝今日待办总量，冷＝已完成/今日可用，
+              // 点缀（citrus）＝目标剩余。数值与「无数据＝`-- 分`」语义
+              // 与改造前完全一致，只换撞色承载。
+              final tiles = <Widget>[
+                ClashStatTile(
+                  value: hasTodayTask ? DurationFormat.minutes(load) : '-- 分',
+                  label: '今日总计',
+                  tone: ClashTone.warm,
+                  icon: Icons.timer_outlined,
+                ),
+                ClashStatTile(
+                  value: hasTodayTask
+                      ? DurationFormat.minutes(stats.doneMinutes)
+                      : '-- 分',
+                  label: '已完成',
+                  tone: ClashTone.cool,
+                  icon: Icons.check_circle_outline,
+                ),
+                ClashStatTile(
+                  value: DurationFormat.minutes(available),
+                  label: '今日可用',
+                  tone: ClashTone.cool,
+                  icon: Icons.schedule_outlined,
+                  filled: false,
+                ),
+                ClashStatTile(
+                  value: hasAnyTask
+                      ? DurationFormat.minutes(remainingMinutes)
+                      : '-- 分',
+                  label: '目标剩余',
+                  tone: ClashTone.citrus,
+                  icon: Icons.flag_outlined,
+                ),
+              ];
+              final metrics = LayoutBuilder(
+                builder: (context, box) => Wrap(
+                  spacing: AppTokens.spaceMd,
+                  runSpacing: AppTokens.spaceMd,
                   children: [
-                    ring,
-                    const SizedBox(width: 24),
-                    Expanded(child: metrics),
+                    for (final tile in tiles)
+                      SizedBox(
+                        width:
+                            (box.maxWidth -
+                                (wide
+                                    ? AppTokens.spaceMd * 3
+                                    : AppTokens.spaceMd)) /
+                            (wide ? 4 : 2),
+                        child: tile,
+                      ),
                   ],
-                );
-              },
-            ),
-          ],
-        ),
+                ),
+              );
+              final ring = SizedBox(
+                width: 74,
+                height: 74,
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(end: progress),
+                  duration: motion.duration(_kMetricAnimDuration),
+                  curve: motion.curve,
+                  builder: (context, value, _) {
+                    final animatedDone = (value * stats.totalCount).round();
+                    return Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Positioned.fill(
+                          child: CircularProgressIndicator(
+                            value: hasTodayTask ? value : 0,
+                            strokeWidth: 6,
+                            strokeCap: StrokeCap.round,
+                            // 进度＝冷色撞色（数据/进度），超载时转危险色。
+                            backgroundColor: cool.soft,
+                            valueColor: AlwaysStoppedAnimation(
+                              over > 0 ? danger.fill : cool.fill,
+                            ),
+                          ),
+                        ),
+                        // 中心 N/M（等宽数字）：FittedBox 防系统放大字号时
+                        // 撑爆 74px 固定环；环 + 分数即「完成比例」语义，
+                        // 无需再叠「完成」小标签（与统计块「已完成」互补）。
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            hasTodayTask
+                                ? '$animatedDone/${stats.totalCount}'
+                                : '--',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: cool.ink,
+                              fontWeight: FontWeight.w700,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              );
+              if (!wide) return metrics;
+              return Row(
+                children: [
+                  ring,
+                  const SizedBox(width: AppTokens.spaceXl),
+                  Expanded(child: metrics),
+                ],
+              );
+            },
+          ),
+        ],
       ),
-    );
-  }
-}
-
-/// 负载概览指标格：图标 + 小标签 + 等宽数字数值（2026-08-19 视觉升级）。
-///
-/// [minutes] 为 null 时显示 `-- 分`（无数据语义）；有值经
-/// [_AnimatedMinutesValue] 渲染，数值变化时随动画计数（v1.17）。
-class _MetricCell extends StatelessWidget {
-  const _MetricCell({this.icon, required this.label, required this.minutes});
-
-  final IconData? icon;
-  final String label;
-  final int? minutes;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 12, color: scheme.outline),
-              const SizedBox(width: 4),
-            ],
-            Text(
-              label,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: scheme.outline),
-            ),
-          ],
-        ),
-        const SizedBox(height: 3),
-        _AnimatedMinutesValue(
-          minutes: minutes,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-            fontSize: 20,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// 高亮指标格（「目标剩余」）：大字号 + 主色，作整卡最醒目的数字
-/// （v1.17 精修）；其余指标用 [_MetricCell] 常规档位。
-class _MetricHighlight extends StatelessWidget {
-  const _MetricHighlight({
-    required this.icon,
-    required this.label,
-    required this.minutes,
-  });
-
-  final IconData icon;
-  final String label;
-  final int? minutes;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 12, color: scheme.primary),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: scheme.outline),
-            ),
-          ],
-        ),
-        const SizedBox(height: 3),
-        _AnimatedMinutesValue(
-          minutes: minutes,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: scheme.primary,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
-        ),
-      ],
     );
   }
 }
@@ -837,32 +828,6 @@ class _StaggeredEntry extends StatelessWidget {
   }
 }
 
-/// 分钟数动画值：null 显示 `-- 分`（无数据）；有值用 TweenAnimationBuilder
-/// 计数，数值变化时从旧值滑到新值，与进度环同时长同缓动（v1.17）。
-/// 开启「减少动画」时直接显示目标值（时长归零）。
-class _AnimatedMinutesValue extends ConsumerWidget {
-  const _AnimatedMinutesValue({required this.minutes, required this.style});
-
-  final int? minutes;
-  final TextStyle? style;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final minutes = this.minutes;
-    if (minutes == null) {
-      return Text('-- 分', style: style);
-    }
-    final motion = ref.watch(motionControllerProvider);
-    return TweenAnimationBuilder<double>(
-      tween: Tween(end: minutes.toDouble()),
-      duration: motion.duration(_kMetricAnimDuration),
-      curve: motion.curve,
-      builder: (context, value, _) =>
-          Text(DurationFormat.minutes(value.round()), style: style),
-    );
-  }
-}
-
 /// FR-3.7 次日未完成任务集中确认横幅。
 ///
 /// 不自动改变原计划（FR-3.7）：由用户选择延期（下一可用日/指定日期）
@@ -882,95 +847,88 @@ class _UnfinishedBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      margin: EdgeInsets.zero,
-      color: Color.alphaBlend(
-        AppSemanticColors.of(context).warning.withValues(alpha: 0.07),
-        scheme.surface,
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // 逾期＝危险撞色（契约 §1 角色表）：浅色危险容器底 + 撞色描边 +
+    // 撞色图标/文字，状态仍由文案与图标承载，不只靠颜色。
+    final danger = ClashTones.of(context, ClashTone.danger);
+    return Container(
+      decoration: BoxDecoration(
+        color: danger.soft,
+        borderRadius: BorderRadius.circular(AppTokens.radiusXl),
+        border: Border.all(color: ClashTones.tint(danger.ink, alpha: 0.32)),
+        boxShadow: AppTokens.shadowCard(isDark),
       ),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: AppSemanticColors.of(context).warning.withValues(alpha: 0.22),
-        ),
+      padding: const EdgeInsets.fromLTRB(
+        AppTokens.spaceLg,
+        AppTokens.spaceLg,
+        AppTokens.spaceLg,
+        AppTokens.spaceMd,
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: scheme.onSurfaceVariant.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.event_busy,
-                    size: 18,
-                    color: scheme.onSurfaceVariant,
-                  ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: ClashTones.tint(danger.ink, alpha: 0.14),
+                  shape: BoxShape.circle,
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '昨日及更早有 $count 个未完成任务',
-                        style: TextStyle(
-                          color: scheme.onSurfaceVariant,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                        ),
+                child: Icon(Icons.event_busy, size: 18, color: danger.ink),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '昨日及更早有 $count 个未完成任务',
+                      style: TextStyle(
+                        color: danger.onSoft,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '原计划不会被自动更改，请选择处理方式',
-                        style: TextStyle(
-                          color: scheme.onSurfaceVariant.withValues(
-                            alpha: 0.85,
-                          ),
-                          fontSize: 12,
-                        ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '原计划不会被自动更改，请选择处理方式',
+                      style: TextStyle(
+                        color: danger.onSoft.withValues(alpha: 0.85),
+                        fontSize: 12,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            // 三个操作分两级行动（2026-08-16 降噪）：主操作「延期至下一
-            // 可用日」实心、次操作「选择日期」tonal，「保留原日期」为最弱
-            // 的 TextButton——它是「暂不处理」，不该与延期同等抢眼。
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                FilledButton.icon(
-                  onPressed: onDeferNext,
-                  icon: const Icon(Icons.arrow_forward, size: 16),
-                  label: const Text('延期至下一可用日'),
-                ),
-                FilledButton.tonal(
-                  onPressed: onDeferPickDate,
-                  child: const Text('选择日期…'),
-                ),
-                TextButton(
-                  onPressed: onKeepOriginal,
-                  style: TextButton.styleFrom(
-                    foregroundColor: scheme.onSurfaceVariant,
-                  ),
-                  child: const Text('保留原日期'),
-                ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppTokens.spaceMd),
+          // 三个操作分两级行动（2026-08-16 降噪）：主操作「延期至下一
+          // 可用日」实心、次操作「选择日期」tonal，「保留原日期」为最弱
+          // 的 TextButton——它是「暂不处理」，不该与延期同等抢眼。
+          Wrap(
+            spacing: AppTokens.spaceSm,
+            runSpacing: AppTokens.spaceSm,
+            children: [
+              FilledButton.icon(
+                onPressed: onDeferNext,
+                icon: const Icon(Icons.arrow_forward, size: 16),
+                label: const Text('延期至下一可用日'),
+              ),
+              FilledButton.tonal(
+                onPressed: onDeferPickDate,
+                child: const Text('选择日期…'),
+              ),
+              TextButton(
+                onPressed: onKeepOriginal,
+                style: TextButton.styleFrom(foregroundColor: danger.onSoft),
+                child: const Text('保留原日期'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -999,76 +957,48 @@ class _OverdueTasksSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
+    final theme = Theme.of(context);
+    final danger = ClashTones.of(context, ClashTone.danger);
+    return Container(
       clipBehavior: Clip.antiAlias,
+      decoration: _clashCardDecoration(context),
       child: Stack(
         children: [
-          // 左侧红色警示带：提示逾期状态，但不再把整张卡染红，避免视觉过重。
+          // 左侧危险色警示带：提示逾期状态，但不再把整张卡染红，避免视觉过重。
           Positioned(
             left: 0,
             top: 0,
             bottom: 0,
             child: Container(
               width: 3,
-              color: scheme.error.withValues(alpha: 0.35),
+              color: ClashTones.tint(danger.ink, alpha: 0.40),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 14, 6),
+            padding: const EdgeInsets.fromLTRB(
+              AppTokens.spaceLg,
+              AppTokens.spaceMd,
+              AppTokens.spaceMd,
+              6,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(5),
-                      decoration: BoxDecoration(
-                        color: scheme.error.withValues(alpha: 0.12),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.error_outline,
-                        size: 16,
-                        color: scheme.error,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '过期任务',
-                      style: TextStyle(
-                        color: scheme.error,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: scheme.error.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        '${tasks.length} 个未处理',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: scheme.error,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
+                // 区块头：逾期＝危险撞色；数量仍由「N 个未处理」撞色药丸承载。
+                ClashSectionHeader(
+                  icon: Icons.error_outline,
+                  title: '过期任务',
+                  tone: ClashTone.danger,
+                  dense: true,
+                  trailing: ClashChip(
+                    label: '${tasks.length} 个未处理',
+                    tone: ClashTone.danger,
+                    variant: ClashChipVariant.soft,
+                  ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '以下任务原计划日期已过，请逐条延期或完成',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppTokens.spaceXs),
+                Text('以下任务原计划日期已过，请逐条延期或完成', style: theme.textTheme.bodySmall),
+                const SizedBox(height: AppTokens.spaceSm),
                 ProgressiveRows(
                   itemCount: tasks.length,
                   // 单卡分组行：任务之间细分隔线（与今日任务列表同形态），
@@ -1080,25 +1010,13 @@ class _OverdueTasksSection extends StatelessWidget {
                         const Divider(height: 1, indent: 12, endIndent: 12),
                       Padding(
                         padding: const EdgeInsets.only(top: 6, bottom: 2),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: scheme.error.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            '原计划 ${formatLocalDate(parseLocalDate(tasks[i].plannedDate))}'
-                            ' · 已逾期 ${_overdueDays(today, tasks[i].plannedDate)} 天',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  color: scheme.error,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 11,
-                                ),
-                          ),
+                        child: ClashChip(
+                          label:
+                              '原计划 ${formatLocalDate(parseLocalDate(tasks[i].plannedDate))}'
+                              ' · 已逾期 ${_overdueDays(today, tasks[i].plannedDate)} 天',
+                          tone: ClashTone.danger,
+                          variant: ClashChipVariant.soft,
+                          dense: true,
                         ),
                       ),
                       TaskTile(
@@ -1168,7 +1086,9 @@ class _UndoFabState extends ConsumerState<_UndoFab>
     });
     final batch = ref.watch(taskCompletionControllerProvider);
     final visible = batch.isNotEmpty;
-    final scheme = Theme.of(context).colorScheme;
+    // 5 秒撤回＝暖色撞色（主动作）：圆环与中央按钮都走暖色 token，
+    // 倒计时数值与定稿逻辑（[TaskCompletionController]）完全不动。
+    final warm = ClashTones.of(context, ClashTone.warm);
 
     return AnimatedOpacity(
       opacity: visible ? 1.0 : 0.0,
@@ -1197,15 +1117,15 @@ class _UndoFabState extends ConsumerState<_UndoFab>
                     value: 1 - _controller.value,
                     strokeWidth: 3,
                     strokeCap: StrokeCap.round,
-                    backgroundColor: scheme.primary.withValues(alpha: 0.12),
-                    valueColor: AlwaysStoppedAnimation(scheme.primary),
+                    backgroundColor: ClashTones.tint(warm.fill, alpha: 0.14),
+                    valueColor: AlwaysStoppedAnimation(warm.fill),
                   ),
                 ),
                 Center(
                   child: Tooltip(
                     message: '撤回 ${batch.length} 项勾选',
                     child: Material(
-                      color: scheme.primary,
+                      color: warm.fill,
                       shape: const CircleBorder(),
                       clipBehavior: Clip.antiAlias,
                       elevation: 2,
@@ -1213,12 +1133,12 @@ class _UndoFabState extends ConsumerState<_UndoFab>
                         onTap: () => ref
                             .read(taskCompletionControllerProvider.notifier)
                             .undo(),
-                        child: const SizedBox(
+                        child: SizedBox(
                           width: 44,
                           height: 44,
                           child: Icon(
                             Icons.undo_rounded,
-                            color: Colors.white,
+                            color: warm.onFill,
                             size: 22,
                           ),
                         ),
@@ -1237,8 +1157,9 @@ class _UndoFabState extends ConsumerState<_UndoFab>
 
 /// 今日无任务空态（PRD §8：提供与页面相关的首个操作，非纯说明页）。
 ///
-/// v1.17 精修：空态放进淡色容器（圆角 + 浅底 + 细边框），让「今日任务」
-/// 成为有设计感的完整内容区域，页面底部不再像「没做完」的裸空白。
+/// v2 撞色重构：空态改用共享的 [ClashEmptyState]（撞色圆底图标 + 标题 +
+/// 动作），外层保留淡色容器让「今日任务」成为完整内容区域——
+/// 撞色卡语言（radiusXl + 暖调细边框 + 暖投影）。
 class _TodayEmptyView extends StatelessWidget {
   const _TodayEmptyView({required this.onAddTask});
 
@@ -1246,87 +1167,37 @@ class _TodayEmptyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final onAddTask = this.onAddTask;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 16),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(AppTokens.radiusXl),
-        border: Border.all(
-          color: Theme.of(context).brightness == Brightness.dark
-              ? scheme.outlineVariant.withValues(alpha: 0.4)
-              : AppTokens.neutralBorderLight,
-        ),
-      ),
-      child: Column(
-        children: [
-          // 圆底图标语言与图表空态/今天页全页空态统一（v1.11 空态规范）。
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: scheme.primary.withValues(alpha: 0.08),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(Icons.event_available, size: 26, color: scheme.primary),
-          ),
-          const SizedBox(height: 12),
-          const Text('今天没有安排'),
-          const SizedBox(height: 12),
-          if (onAddTask != null) ...[
-            FilledButton.icon(
-              onPressed: onAddTask,
-              icon: const Icon(Icons.add),
-              label: const Text('添加任务'),
-            ),
-            const SizedBox(height: 8),
-            // 引导小字：指向「计划」页的按周批量排期能力，降低空态迷失感。
-            Text(
-              '小提示：可以在「计划」页按周批量添加学习任务',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.outline,
+      clipBehavior: Clip.antiAlias,
+      decoration: _clashCardDecoration(context),
+      child: ClashEmptyState(
+        icon: Icons.event_available,
+        title: '今天没有安排',
+        tone: ClashTone.cool,
+        action: onAddTask == null
+            ? null
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FilledButton.icon(
+                    onPressed: onAddTask,
+                    icon: const Icon(Icons.add),
+                    label: const Text('添加任务'),
+                  ),
+                  const SizedBox(height: AppTokens.spaceSm),
+                  // 引导小字：指向「计划」页的按周批量排期能力，降低空态迷失感。
+                  Text(
+                    '小提示：可以在「计划」页按周批量添加学习任务',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.outline,
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-/// 局部错误条（区块级提示，替代整页 AppErrorView）：错误文案 + 重试。
-class _SectionError extends StatelessWidget {
-  const _SectionError({required this.error, required this.onRetry});
-
-  final Object error;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: scheme.errorContainer,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.error_outline, size: 18, color: scheme.onErrorContainer),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              '$error',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: scheme.onErrorContainer, fontSize: 12),
-            ),
-          ),
-          TextButton(onPressed: onRetry, child: const Text('重试')),
-        ],
       ),
     );
   }
@@ -1351,22 +1222,19 @@ class _CountdownCard extends ConsumerWidget {
       today: today,
       status: goal.status,
     );
-    final phaseIcon = switch (phase) {
-      CountdownPhase.upcoming => Icons.schedule,
-      CountdownPhase.today => Icons.today,
-      CountdownPhase.overdue => Icons.error_outline,
-      CountdownPhase.terminated => Icons.flag_outlined,
-    };
-    // 倒计时卡是「今日焦点」hero（v1.17 浅色化）：从品牌渐变白字改为
-    // 浅色强调底——brand 7% 叠白（蓝主题≈#EAF3FC 档位，比 #DCEBFA 更淡、
-    // 更像「页面顶部信息摘要」而非主视觉 Banner），深色模式 brand 26%
-    // 叠 surface。标题/文字用 brandDeep（深色模式用品牌亮端，保证对比
-    // 度），与应用的 accent 色系系统保持一致。
-    final accent = Theme.of(context).extension<AccentPalette>()!;
+    final phaseIcon = _countdownPhaseIcon(phase);
+    // 倒计时卡＝「今日焦点」白卡（v2 撞色）：暖调细边框 + 暖投影，
+    // 目标名/时间进度走暖色撞色，倒计时徽标按阶段取撞色（剩余＝暖、
+    // 今天截止＝点缀、已逾期＝危险、已结束＝冷），下一里程碑＝点缀。
+    // 阶段与天数完全来自 [CountdownService]，只换配色与承载组件。
     final scheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final onHero = isDark ? accent.brandBright : accent.brandDeep;
-    final onHeroSoft = onHero.withValues(alpha: 0.72);
+    final warm = ClashTones.of(context, ClashTone.warm);
+    final badgeTone = switch (phase) {
+      CountdownPhase.upcoming => ClashTone.warm,
+      CountdownPhase.today => ClashTone.citrus,
+      CountdownPhase.overdue => ClashTone.danger,
+      CountdownPhase.terminated => ClashTone.cool,
+    };
 
     // 学习日剩余：按「计划偏好」的每周可用日排除休息日（与目标详情页
     // 「学习日」口径一致），让首页倒计时与负载计算共享同一规则。
@@ -1391,44 +1259,33 @@ class _CountdownCard extends ConsumerWidget {
         ? 1.0
         : (elapsedDays / totalDays).clamp(0.0, 1.0).toDouble();
 
-    return Animate(
+    // 入场动效：淡入 + 自上方落位。用 TweenAnimationBuilder 直接写，不引入
+    // 动画包（全站仅此一处入场动效，为此背一个依赖不划算）；位移是自身
+    // 高度的 4%（分数位移，跨窗口尺寸稳定）。开启「减少动画」时 begin 与
+    // end 相同，动画不启动即静止呈现。
+    return TweenAnimationBuilder<double>(
       key: ValueKey('countdown-${goal.id}'),
-      // 开启「减少动画」时跳过入场效果（effects 为空即静止）。
-      effects: motion.skipEntrance
-          ? const []
-          : [
-              FadeEffect(
-                duration: AppTokens.motionSlow,
-                curve: AppTokens.motionCurve,
-              ),
-              SlideEffect(
-                begin: const Offset(0, -0.04),
-                end: Offset.zero,
-                duration: AppTokens.motionSlow,
-                curve: AppTokens.motionCurve,
-              ),
-            ],
-      // 倒计时卡可点：hover 边框加深 + 阴影增强 + 微上浮（桌面交互反馈）。
-      // 渐变底由 decoration 提供，与 HoverableCard 的水波纹叠加。
+      tween: Tween(begin: motion.skipEntrance ? 1.0 : 0.0, end: 1.0),
+      duration: AppTokens.motionSlow,
+      curve: AppTokens.motionCurve,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: FractionalTranslation(
+          translation: Offset(0, (1 - t) * -0.04),
+          child: child,
+        ),
+      ),
+      // 倒计时卡可点：hover 边框加深 + shadowCardHover 抬升 + 微上浮
+      // （桌面交互反馈），与 HoverableCard 的水波纹叠加。
       child: Padding(
-        padding: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.only(bottom: AppTokens.spaceMd),
         child: HoverableCard(
           onTap: () => context.push('/goals/${goal.id}'),
           borderRadius: BorderRadius.circular(AppTokens.radiusXl),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppTokens.radiusXl),
-            // 浅色强调底：brand 7% 叠白（深色 26% 叠 surface），
-            // 随当前色系（绿色/蓝色主题各自变化）。
-            color: Color.alphaBlend(
-              accent.brandDeep.withValues(alpha: isDark ? 0.26 : 0.07),
-              isDark ? scheme.surface : Colors.white,
-            ),
-            border: Border.all(color: onHero.withValues(alpha: 0.12)),
-          ),
-          hoverBorderColor: onHero.withValues(alpha: 0.38),
-          hoverShadowOpacity: 0.08,
+          decoration: _clashCardDecoration(context),
+          hoverBorderColor: ClashTones.tint(warm.ink, alpha: 0.50),
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(AppTokens.spaceLg),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1443,18 +1300,18 @@ class _CountdownCard extends ConsumerWidget {
                           Text(
                             '进行中目标',
                             style: TextStyle(
-                              color: onHeroSoft,
+                              color: scheme.onSurfaceVariant,
                               fontSize: 11,
                               letterSpacing: 1.2,
                             ),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: AppTokens.spaceSm),
                           Text(
                             goal.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: onHero,
+                              color: warm.ink,
                               fontWeight: FontWeight.w600,
                               fontSize: 18,
                               height: 1.4,
@@ -1463,85 +1320,66 @@ class _CountdownCard extends ConsumerWidget {
                           const SizedBox(height: 2),
                           Text(
                             '截止 ${formatLocalDate(parseLocalDate(goal.deadlineDate))}',
-                            style: TextStyle(color: onHeroSoft, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // 紧凑倒计时徽标：与标题同行，字号收敛，避免「剩余 493 天」
-                    // 独占大块面积导致视觉失衡。
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: onHero.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                          color: onHero.withValues(alpha: 0.20),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(phaseIcon, size: 14, color: onHero),
-                          const SizedBox(width: 5),
-                          Text(
-                            CountdownService.label(phase, days),
                             style: TextStyle(
-                              color: onHero,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                              // 等宽数字：倒计时天数逐日变化时数字列对齐不抖动。
-                              fontFeatures: const [
-                                FontFeature.tabularFigures(),
-                              ],
+                              color: scheme.onSurfaceVariant,
+                              fontSize: 12,
                             ),
                           ),
                         ],
                       ),
                     ),
+                    const SizedBox(width: AppTokens.spaceSm),
+                    // 紧凑倒计时徽标：与标题同行，字号收敛，避免「剩余 493 天」
+                    // 独占大块面积导致视觉失衡；撞色药丸按阶段取色，
+                    // 阶段语义同时由图标与文案承载（不只依赖颜色）。
+                    ClashChip(
+                      label: CountdownService.label(phase, days),
+                      tone: badgeTone,
+                      variant: ClashChipVariant.filled,
+                      icon: phaseIcon,
+                    ),
                   ],
                 ),
                 // 时间进度条：已走过时长占比（创建日→截止日），每天打开首页
                 // 直观感受「这段旅程走了多少」。
-                const SizedBox(height: 12),
+                const SizedBox(height: AppTokens.spaceMd),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
                     value: progress,
                     minHeight: 5,
                     borderRadius: BorderRadius.circular(4),
-                    backgroundColor: onHero.withValues(alpha: 0.14),
-                    valueColor: AlwaysStoppedAnimation(onHero),
+                    backgroundColor: ClashTones.tint(warm.ink, alpha: 0.14),
+                    valueColor: AlwaysStoppedAnimation(warm.fill),
                   ),
                 ),
-                const SizedBox(height: 8),
-                // 学习日 + 下一里程碑：同一行浅色信息，降低视觉重量。
+                const SizedBox(height: AppTokens.spaceSm),
+                // 学习日 + 下一里程碑：同一行浅色信息，降低视觉重量；
+                // 里程碑＝点缀撞色（citrus）。
                 Row(
                   children: [
                     Icon(
                       Icons.calendar_today_outlined,
                       size: 12,
-                      color: onHeroSoft,
+                      color: scheme.onSurfaceVariant,
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: AppTokens.spaceXs),
                     Text(
                       '约 $studyDays 个学习日',
-                      style: TextStyle(color: onHeroSoft, fontSize: 12),
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
                     ),
                     if (nextMilestone.valueOrNull case final milestone?) ...[
-                      const SizedBox(width: 12),
-                      Icon(Icons.flag_outlined, size: 12, color: onHeroSoft),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: AppTokens.spaceMd),
                       Flexible(
-                        child: Text(
-                          '${milestone.title} · ${milestone.date}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: onHeroSoft, fontSize: 12),
+                        child: ClashChip(
+                          label: '${milestone.title} · ${milestone.date}',
+                          tone: ClashTone.citrus,
+                          variant: ClashChipVariant.soft,
+                          icon: Icons.flag_outlined,
+                          dense: true,
                         ),
                       ),
                     ],
@@ -1556,6 +1394,9 @@ class _CountdownCard extends ConsumerWidget {
   }
 }
 
+/// 全页空态（无进行中目标 / 今日无任务 / 无逾期任务）：用共享
+/// [ClashEmptyState] 的撞色空态语言（撞色圆底图标 + 标题 + 说明 + 动作），
+/// 文案与动作条件与改造前一致。
 class _EmptyView extends StatelessWidget {
   const _EmptyView({required this.hasAnyGoal, required this.onCreateGoal});
 
@@ -1564,40 +1405,53 @@ class _EmptyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 主色通明圆底图标（与 ChartEmptyState 同一空态语言）。
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              color: scheme.primary.withValues(alpha: 0.08),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(Icons.today_outlined, size: 32, color: scheme.primary),
-          ),
-          const SizedBox(height: 16),
-          Text('今天没有安排', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 4),
-          Text(
-            hasAnyGoal ? '所有目标已结束或归档' : '创建一个目标，开始倒计时',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          const SizedBox(height: 16),
-          if (!hasAnyGoal)
-            FilledButton.icon(
-              onPressed: onCreateGoal,
-              icon: const Icon(Icons.add),
-              label: const Text('创建目标'),
-            ),
-        ],
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: ClashEmptyState(
+          icon: Icons.today_outlined,
+          title: '今天没有安排',
+          message: hasAnyGoal ? '所有目标已结束或归档' : '创建一个目标，开始倒计时',
+          tone: ClashTone.cool,
+          action: hasAnyGoal
+              ? null
+              : FilledButton.icon(
+                  onPressed: onCreateGoal,
+                  icon: const Icon(Icons.add),
+                  label: const Text('创建目标'),
+                ),
+        ),
       ),
     );
   }
 }
+
+/// 撞色卡片装饰（白卡 + 暖调细边框 + 暖投影）：今天页内所有卡片/行容器
+/// 统一用它，保证「白卡浮于暖奶油底、撞色块浮于白卡上」的一致卡片语言
+/// （契约 §5）；hover 抬升由 [HoverableCard] 的 shadowCardHover 提供。
+BoxDecoration _clashCardDecoration(BuildContext context) {
+  final scheme = Theme.of(context).colorScheme;
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  return BoxDecoration(
+    color: scheme.surfaceContainerLow,
+    borderRadius: BorderRadius.circular(AppTokens.radiusXl),
+    border: Border.all(
+      color: isDark
+          ? AppTokens.neutralBorderDark
+          : AppTokens.neutralBorderLight,
+    ),
+    boxShadow: AppTokens.shadowCard(isDark),
+  );
+}
+
+/// 倒计时阶段 → 图标（hero 与倒计时卡共用）：阶段语义由图标 + 文案承载，
+/// 不只依赖颜色（NFR-4）。
+IconData _countdownPhaseIcon(CountdownPhase phase) => switch (phase) {
+  CountdownPhase.upcoming => Icons.schedule,
+  CountdownPhase.today => Icons.today,
+  CountdownPhase.overdue => Icons.error_outline,
+  CountdownPhase.terminated => Icons.flag_outlined,
+};
 
 /// 任务逾期天数：计划日期距今经过的整天数（计划日期必早于 [today]）。
 int _overdueDays(DateTime today, String plannedDate) {

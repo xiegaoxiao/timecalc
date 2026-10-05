@@ -72,7 +72,6 @@ void main() {
     final result = await service().run(now: DateTime.utc(2026, 8, 6, 1));
     expect(result.skipped, isFalse);
     expect(result.succeeded, isTrue);
-    expect(result.uploadedTargets, 1);
 
     // 文件已落盘且带自动备份前缀。
     final files = Directory(tempDir.path).listSync().whereType<File>().toList();

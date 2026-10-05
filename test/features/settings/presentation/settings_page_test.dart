@@ -118,10 +118,11 @@ void main() {
   });
 }
 
-/// 假文件选择器：记录调用，返回空（取消），避免触碰平台对话框。
+/// 假文件/目录选择器：记录调用，全部返回取消，避免触碰平台对话框。
 class FakeBackupFilePicker implements BackupFilePicker {
   int saveCalls = 0;
   int openCalls = 0;
+  int folderCalls = 0;
 
   @override
   Future<File?> saveBackupFile() async {
@@ -132,6 +133,12 @@ class FakeBackupFilePicker implements BackupFilePicker {
   @override
   Future<File?> openBackupFile() async {
     openCalls++;
+    return null;
+  }
+
+  @override
+  Future<String?> pickFolder() async {
+    folderCalls++;
     return null;
   }
 }

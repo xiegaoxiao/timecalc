@@ -1,15 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/desktop/window_chrome.dart';
 import '../../core/providers/motion_provider.dart';
-import '../../core/theme/accent_palette.dart';
 import '../../core/theme/app_tokens.dart';
+import 'clash_tones.dart';
 
-/// 统一卡片式对话框组件。
+/// 统一卡片式对话框组件（**v2.0 撞色语言**）。
 ///
-/// 使用品牌色渐变标题区域 + 白底内容 + 底部操作按钮，
-/// 替代默认 AlertDialog 以保持 UI 一致性。
+/// 使用「撞色渐变顶条 + 撞色图标底标题区 + 自适应滚动内容 + 底部操作按钮」，
+/// 替代默认 AlertDialog 以保持 UI 一致性：
+/// - 标题图标底走 `ClashTones.of(context, ClashTone.warm).soft / onSoft`；
+/// - 对话框圆角走 [AppTokens.radiusDialog]；
+/// - 分隔线走 `scheme.outlineVariant`（暖调细边框）；
+/// - 底部主行动按钮交给主题 `filledButton`（暖实心）、取消交给中性 textButton。
+///
+/// **公开签名向后兼容**：字段与 [show] 的全部参数名/类型保持不变，
+/// 入场动效（[motionControllerProvider]，「减少动画」开关）依旧生效。
 class AppDialog extends StatelessWidget {
   const AppDialog({
     super.key,
@@ -21,6 +27,7 @@ class AppDialog extends StatelessWidget {
     this.onClose,
     this.maxWidth = 480,
     this.contentPadding,
+    this.tone = ClashTone.warm,
   });
 
   final String title;
@@ -31,6 +38,13 @@ class AppDialog extends StatelessWidget {
   final VoidCallback? onClose;
   final double maxWidth;
   final EdgeInsetsGeometry? contentPadding;
+
+  /// 标题区撞色归属（默认暖色）。
+  ///
+  /// 用于让「新增/编辑」类对话框标明自己的语义色（如里程碑表单用
+  /// [ClashTone.citrus]、危险操作确认用 [ClashTone.danger]）；
+  /// 不传则保持暖色，**向后兼容**。
+  final ClashTone tone;
 
   /// 显示对话框的便捷方法。
   static Future<T?> show<T>(
@@ -44,6 +58,7 @@ class AppDialog extends StatelessWidget {
     double maxWidth = 480,
     EdgeInsetsGeometry? contentPadding,
     bool barrierDismissible = true,
+    ClashTone tone = ClashTone.warm,
   }) {
     // 入场时长随「减少动画」开关归零（开启时瞬时呈现，交互仍即时）。
     final motion = ProviderScope.containerOf(
@@ -54,7 +69,7 @@ class AppDialog extends StatelessWidget {
       context: context,
       barrierDismissible: barrierDismissible,
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-      barrierColor: Colors.black54,
+      barrierColor: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.32),
       transitionDuration: motion.duration(AppTokens.motionNormal),
       transitionBuilder: (context, animation, secondaryAnimation, child) {
         // 入场动效（2026-08-20 动效改造）：淡入 + 0.96→1.0 轻微放大，
@@ -82,6 +97,7 @@ class AppDialog extends StatelessWidget {
           onClose: onClose,
           maxWidth: maxWidth,
           contentPadding: contentPadding,
+          tone: tone,
         );
       },
     );
@@ -89,153 +105,131 @@ class AppDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final accent = Theme.of(context).extension<AccentPalette>();
-    final motion = ProviderScope.containerOf(
-      context,
-      listen: false,
-    ).read(motionControllerProvider);
-
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     return Dialog(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      insetPadding: EdgeInsets.symmetric(
-        horizontal: AppTokens.spaceLg,
-        vertical: AppTokens.spaceXl,
+      // 与 dialogTheme 同源取值（浅色纯白卡 / 深色暖黑卡），不写死颜色。
+      backgroundColor: theme.brightness == Brightness.light
+          ? scheme.surfaceContainerLowest
+          : scheme.surfaceContainerLow,
+      surfaceTintColor: Colors.transparent,
+      elevation: 12,
+      shadowColor: scheme.shadow.withValues(alpha: 0.16),
+      clipBehavior: Clip.antiAlias,
+      // 更大的对话框圆角（AppTokens.radiusDialog），与卡片语言区分层级。
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppTokens.radiusDialog),
       ),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: maxWidth),
-        child: AnimatedSize(
-          duration: motion.duration(AppTokens.motionNormal),
-          curve: motion.curve,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // 标题区域 - 品牌色渐变
-              _DialogTitle(
-                title: title,
-                icon: titleIcon,
-                showCloseButton: showCloseButton,
-                onClose: onClose,
-                accent: accent,
-                scheme: scheme,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _DialogTitle(
+              title: title,
+              icon: titleIcon,
+              showCloseButton: showCloseButton,
+              onClose: onClose,
+              tone: tone,
+            ),
+            Divider(height: 1, color: scheme.outlineVariant),
+            Flexible(
+              child: SingleChildScrollView(
+                padding:
+                    contentPadding ?? const EdgeInsets.all(AppTokens.spaceXl),
+                child: content,
               ),
-              // 内容区域：Material 承载表面色（内部 ListTile/RadioListTile
-              // 的水波纹才能正确渲染，Container 背景会触发框架断言）+ 限高 +
-              // 可滚动，避免小窗口高度/系统字号放大时溢出。
-              Material(
-                color: scheme.surface,
-                borderRadius: const BorderRadius.vertical(
-                  bottom: Radius.circular(AppTokens.radiusDialog),
+            ),
+            if (actions.isNotEmpty) ...[
+              Divider(height: 1, color: scheme.outlineVariant),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppTokens.spaceXl,
+                  vertical: AppTokens.spaceLg,
                 ),
-                clipBehavior: Clip.antiAlias,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    // 可用高度先减去自定义标题栏（48px），再取 78%：
-                    // 对话框在窗口高度下始终留出标题栏空间，小窗口/系统
-                    // 字号放大时内容可滚动而不溢出（无边框窗口回归）。
-                    maxHeight: (MediaQuery.sizeOf(context).height -
-                            kTitleBarHeight) *
-                        0.78,
-                  ),
-                  child: SingleChildScrollView(
-                    padding: contentPadding ??
-                        const EdgeInsets.fromLTRB(
-                          AppTokens.spaceLg,
-                          AppTokens.spaceLg,
-                          AppTokens.spaceLg,
-                          AppTokens.spaceMd,
-                        ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        content,
-                        if (actions.isNotEmpty) ...[
-                          const SizedBox(height: AppTokens.spaceLg),
-                          _DialogActions(actions: actions),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
+                child: _DialogActions(actions: actions),
               ),
             ],
-          ),
+          ],
         ),
       ),
     );
   }
 }
 
-/// 对话框标题区域组件。
+/// 对话框标题区域组件（撞色渐变顶条 + 撞色图标底 + 标题 + 可选关闭）。
 class _DialogTitle extends StatelessWidget {
   const _DialogTitle({
     required this.title,
-    required this.scheme,
     this.icon,
     this.showCloseButton = false,
     this.onClose,
-    this.accent,
+    this.tone = ClashTone.warm,
   });
 
   final String title;
   final IconData? icon;
   final bool showCloseButton;
   final VoidCallback? onClose;
-  final AccentPalette? accent;
-  final ColorScheme scheme;
+
+  /// 标题区撞色归属（图标底与图标前景皆取该撞色的 soft/onSoft 配对，
+  /// 保证深浅两模式下都 ≥4.5:1；不再直接用 `scheme.primary` 作图标色 ——
+  /// 深色模式下 primary 是「实心填充色」，当图标色对比不足）。
+  final ClashTone tone;
 
   @override
   Widget build(BuildContext context) {
-    // 使用主题 primary 色的渐变
-    final gradientColors = [
-      scheme.primary,
-      scheme.primary.withValues(alpha: 0.85),
-    ];
-
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppTokens.spaceLg,
-        vertical: AppTokens.spaceMd + 2,
-      ),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: gradientColors,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+    final theme = Theme.of(context);
+    final t = ClashTones.of(context, tone);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // 细撞色渐变顶条：让对话框「属于哪个撞色」在扫视时即可判定。
+        Container(
+          height: 4,
+          decoration: BoxDecoration(gradient: ClashGradient.clash(context)),
         ),
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(AppTokens.radiusDialog),
-        ),
-      ),
-      child: Row(
-        children: [
-          if (icon != null) ...[
-            Icon(icon, color: Colors.white, size: 22),
-            const SizedBox(width: AppTokens.spaceSm),
-          ],
-          Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+        Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppTokens.spaceXl,
+            vertical: 18,
           ),
-          if (showCloseButton)
-            IconButton(
-              onPressed: onClose ?? () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.close, color: Colors.white, size: 20),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              splashRadius: 18,
-            ),
-        ],
-      ),
+          child: Row(
+            children: [
+              if (icon != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: t.soft,
+                    borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                  ),
+                  child: Icon(icon, color: t.onSoft, size: 20),
+                ),
+                const SizedBox(width: AppTokens.spaceSm),
+              ],
+              Expanded(
+                child: Text(
+                  title,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    color: theme.colorScheme.onSurface,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (showCloseButton)
+                IconButton(
+                  onPressed: onClose ?? () => Navigator.of(context).pop(),
+                  tooltip: MaterialLocalizations.of(
+                    context,
+                  ).closeButtonTooltip,
+                  icon: const Icon(Icons.close, size: 20),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -248,14 +242,12 @@ class _DialogActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        for (int i = 0; i < actions.length; i++) ...[
-          if (i > 0) const SizedBox(width: AppTokens.spaceSm),
-          actions[i],
-        ],
-      ],
+    return OverflowBar(
+      alignment: MainAxisAlignment.end,
+      overflowAlignment: OverflowBarAlignment.end,
+      spacing: AppTokens.spaceSm,
+      overflowSpacing: AppTokens.spaceSm,
+      children: actions,
     );
   }
 }

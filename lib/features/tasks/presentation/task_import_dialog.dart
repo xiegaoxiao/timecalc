@@ -9,6 +9,8 @@ import '../../../core/errors/db_error_dialog.dart';
 import '../../../core/providers/clock_provider.dart';
 import '../../../core/providers/app_refresh.dart';
 import '../../../services/duration_format.dart';
+import '../../../shared/widgets/app_dialog.dart';
+import '../../../shared/widgets/clash_tones.dart';
 import '../../goals/data/subject_repository_provider.dart';
 import '../data/task_repository_provider.dart';
 import '../domain/task_import_parser.dart';
@@ -159,11 +161,10 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
         replaceExisting: _replaceMode,
       );
       // 跨页刷新（FR-3 验收）：导入会增删任务/新建科目/归档旧任务，影响
-      // 今日页（任务列表与「目标剩余」概览）、进度页（燃尽/热力图/耗时图）、
+      // 今日页（任务列表与「目标剩余」概览）、进度页（燃尽/热力图）、
       // 日历与目标详情，统一走 invalidateAppData 全量集合。
       invalidateAppData(ref.invalidate);
       ref.invalidate(archivedCountProvider);
-      ref.invalidate(archivedTaskListProvider(widget.goalId));
       ref.invalidate(allArchivedTasksProvider);
       // 导入会按 JSON 自动新建科目，科目列表缓存必须同步失效。
       ref.invalidate(subjectListProvider(widget.goalId));
@@ -197,11 +198,11 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
     final scheme = Theme.of(context).colorScheme;
     final result = _result;
 
-    return AlertDialog(
-      title: const Text('JSON 导入任务'),
-      constraints: const BoxConstraints(maxWidth: 640, maxHeight: 620),
-      content: SingleChildScrollView(
-        child: Column(
+    return AppDialog(
+      title: 'JSON 导入任务',
+      titleIcon: Icons.file_upload_outlined,
+      maxWidth: 640,
+      content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -273,8 +274,12 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
                     result.isValid
                         ? '校验通过：${result.plan!.items.length} 个任务'
                         : '发现 ${result.issues.length} 个问题',
+                    // 撞色 v2：通过＝点缀（citrus）成就语义，失败＝危险色；
+                    // 文案本身已承载通过/失败（不只靠颜色，NFR-4）。
                     style: TextStyle(
-                      color: result.isValid ? scheme.primary : scheme.error,
+                      color: result.isValid
+                          ? ClashTones.of(context, ClashTone.citrus).ink
+                          : ClashTones.of(context, ClashTone.danger).ink,
                     ),
                   ),
                 ],
@@ -292,7 +297,13 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
                           padding: const EdgeInsets.only(bottom: 4),
                           child: Text(
                             '• ${issue.location != null ? '${issue.location}：' : ''}${issue.message}',
-                            style: TextStyle(color: scheme.error, fontSize: 12),
+                            style: TextStyle(
+                              color: ClashTones.of(
+                                context,
+                                ClashTone.danger,
+                              ).ink,
+                              fontSize: 12,
+                            ),
                           ),
                         ),
                     ],
@@ -330,7 +341,6 @@ class _TaskImportDialogState extends ConsumerState<TaskImportDialog> {
             ],
           ],
         ),
-      ),
       actions: [
         TextButton(
           onPressed: _importing ? null : () => Navigator.of(context).pop(),
@@ -354,9 +364,10 @@ class _ImportPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final existingNames = existingSubjects.map((s) => s.name).toSet();
     final unclassified = plan.items.where((i) => i.subjectName == null).toList();
+    // 撞色 v2：「将新建」科目＝暖色（主动作/新增语义），已有科目用默认文字色。
+    final warmInk = ClashTones.of(context, ClashTone.warm).ink;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -367,7 +378,7 @@ class _ImportPreview extends StatelessWidget {
             '科目「$name」${existingNames.contains(name) ? '' : '（将新建）'}',
             style: TextStyle(
               fontWeight: FontWeight.w600,
-              color: existingNames.contains(name) ? null : scheme.primary,
+              color: existingNames.contains(name) ? null : warmInk,
             ),
           ),
           for (final item in plan.items.where((i) => i.subjectName == name))

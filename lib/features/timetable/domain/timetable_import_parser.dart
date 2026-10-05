@@ -440,22 +440,21 @@ class TimetableImportParser {
       );
     }
 
-    final rawCourses = root['courses'] ?? root['课程'];
+    final rawCourses = root['courses'];
     if (rawCourses is! List) {
       return const TimetableImportResult(
         issues: [ImportIssue('课表 JSON 缺少 courses 数组')],
       );
     }
 
-    final rawTimetable = root['timetable'] ?? root['课表'];
+    final rawTimetable = root['timetable'];
     final timetable = rawTimetable is Map<String, Object?>
         ? rawTimetable
         : const <String, Object?>{};
     final semesterStart = _stringOf(
       timetable['semester_start'] ?? timetable['semesterStart'],
     );
-    final name = _stringOf(timetable['name'] ?? timetable['日历名']) ??
-        fallbackName;
+    final name = _stringOf(timetable['name']) ?? fallbackName;
 
     final issues = <ImportIssue>[];
     final courses = <CourseDraft>[];
@@ -489,7 +488,7 @@ class TimetableImportParser {
     String location,
     List<ImportIssue> issues,
   ) {
-    final title = _stringOf(json['title'] ?? json['name'] ?? json['课程名称']);
+    final title = _stringOf(json['title'] ?? json['name']);
     if (title == null || title.isEmpty) {
       issues.add(ImportIssue('缺少课程名（title）', location: location));
       return null;
@@ -501,10 +500,10 @@ class TimetableImportParser {
       return null;
     }
 
-    final weekday = _weekdayOf(json['weekday'] ?? json['星期']);
+    final weekday = _weekdayOf(json['weekday']);
     if (weekday == null) {
       issues.add(
-        ImportIssue('星期几不合法（weekday 应为 1~7 或「周三」）', location: location),
+        ImportIssue('星期几不合法（weekday 应为 1~7）', location: location),
       );
       return null;
     }
@@ -533,50 +532,40 @@ class TimetableImportParser {
       return null;
     }
 
-    final parity = _parityOf(
-      json['week_parity'] ?? json['weekParity'] ?? json['单双周'],
-    );
+    final parity = _parityOf(json['week_parity'] ?? json['weekParity']);
     if (parity == null) {
       issues.add(
-        ImportIssue('单双周取值不合法（应为 all/odd/even 或 每周/单周/双周）',
-            location: location),
+        ImportIssue('单双周取值不合法（应为 all/odd/even）', location: location),
       );
       return null;
     }
 
     return CourseDraft(
       title: title,
-      teacher: _stringOf(json['teacher'] ?? json['教师']),
-      location: _stringOf(json['location'] ?? json['上课地点'] ?? json['地点']),
+      teacher: _stringOf(json['teacher']),
+      location: _stringOf(json['location']),
       weekday: weekday,
       startPeriod: startPeriod,
       endPeriod: endPeriod,
       startWeek: startWeek!,
       endWeek: endWeek!,
       weekParity: parity,
-      category: _stringOf(json['category'] ?? json['类别'] ?? json['课程类别']),
-      note: _stringOf(json['note'] ?? json['备注']),
+      category: _stringOf(json['category']),
+      note: _stringOf(json['note']),
       color: _normalizeColor(_stringOf(json['color'])),
     );
   }
 
-  /// 星期几：接受 1~7 整数或 `周三` / `星期三` 文本。
+  /// 星期几：接受 1~7 整数。
   static int? _weekdayOf(Object? raw) {
     if (raw is num) {
       final value = raw.toInt();
       return value >= 1 && value <= 7 ? value : null;
     }
-    if (raw is String) {
-      final text = raw.trim();
-      final index = kWeekdayLabels.indexOf(
-        text.replaceFirst('星期', '').replaceFirst('周', ''),
-      );
-      return index < 0 ? null : index + 1;
-    }
     return null;
   }
 
-  /// 单双周：接受常量值或中文标签；缺失默认「每周」。
+  /// 单双周：接受常量值或 `weekly`；缺失默认「每周」（[WeekParity.all]）。
   static String? _parityOf(Object? raw) {
     if (raw == null) return WeekParity.all;
     if (raw is! String) return null;
@@ -584,13 +573,10 @@ class TimetableImportParser {
     switch (text) {
       case WeekParity.all:
       case 'weekly':
-      case '每周':
         return WeekParity.all;
       case WeekParity.odd:
-      case '单周':
         return WeekParity.odd;
       case WeekParity.even:
-      case '双周':
         return WeekParity.even;
       default:
         return null;

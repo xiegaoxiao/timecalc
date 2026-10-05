@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../../../shared/widgets/clash_tones.dart';
+import '../../../shared/widgets/clash_widgets.dart';
+
 /// 快捷键页占位（P1 功能，后续迭代提供）。
 ///
-/// 由设置页「快捷键」菜单项 push 进入；当前不提供可配置项，以预告卡说明
-/// 后续计划，避免纯空页给用户「功能异常/预期落空」的观感。
+/// 由设置页「快捷键」菜单项 push 进入；当前不提供可配置项，以撞色空态
+/// （[ClashEmptyState]，点缀色）说明后续计划，避免纯空页给用户
+/// 「功能异常/预期落空」的观感。
 class ShortcutsPage extends StatelessWidget {
   const ShortcutsPage({super.key});
 
@@ -12,35 +16,25 @@ class ShortcutsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('快捷键')),
       body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.keyboard_outlined, size: 48, color: scheme.outline),
-              const SizedBox(height: 12),
-              Text('全局快捷键', style: theme.textTheme.titleMedium),
-              const SizedBox(height: 8),
-              Chip(
-                avatar: const Icon(Icons.construction, size: 16),
-                label: const Text('即将上线'),
-                visualDensity: VisualDensity.compact,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '后续版本将支持全局呼出窗口、快捷标记完成等快捷键操作',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClashEmptyState(
+              icon: Icons.keyboard_outlined,
+              title: '全局快捷键',
+              message: '后续版本将支持全局呼出窗口、快捷标记完成等快捷键操作',
+              tone: ClashTone.citrus,
+              compact: true,
+            ),
+            const Chip(
+              avatar: Icon(Icons.construction, size: 16),
+              label: Text('即将上线'),
+              visualDensity: VisualDensity.compact,
+            ),
+          ],
         ),
       ),
     );

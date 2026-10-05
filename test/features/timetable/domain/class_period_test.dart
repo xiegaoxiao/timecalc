@@ -15,10 +15,20 @@ void main() {
         for (var i = 1; i <= 12; i++) i,
       ]);
       final timePattern = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
+      int minutesOf(String hhmm) {
+        final parts = hhmm.split(':');
+        return int.parse(parts[0]) * 60 + int.parse(parts[1]);
+      }
+
       for (final period in ClassPeriods.all) {
         expect(timePattern.hasMatch(period.start), isTrue, reason: period.start);
         expect(timePattern.hasMatch(period.end), isTrue, reason: period.end);
-        expect(period.minutes, greaterThan(0));
+        // 单节时长为正（下课钟点晚于上课钟点）。
+        expect(
+          minutesOf(period.end),
+          greaterThan(minutesOf(period.start)),
+          reason: '${period.start}-${period.end}',
+        );
       }
     });
 

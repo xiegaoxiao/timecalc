@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import '../../../core/database/database.dart';
 import '../../settings/data/settings_repository.dart';
 import 'backup_service.dart';
 import 'backup_target.dart';
@@ -14,7 +13,6 @@ class AutoBackupResult {
     required this.skipped,
     required this.succeeded,
     this.skipReason,
-    this.uploadedTargets = 0,
     this.errors = const [],
   });
 
@@ -24,13 +22,10 @@ class AutoBackupResult {
   /// 跳过原因（skipped 为 true 时给用户可读文案）。
   final String? skipReason;
 
-  /// 是否全部目的地成功。
+  /// 是否成功（目的地只有本地目录一个，成功即全部成功）。
   final bool succeeded;
 
-  /// 成功上传的目的地数量。
-  final int uploadedTargets;
-
-  /// 失败原因列表（每个失败目的地一条）。
+  /// 失败原因列表（导出失败或本地目录上传失败，最多一条）。
   final List<String> errors;
 
   bool get hasError => !skipped && !succeeded;
@@ -44,9 +39,9 @@ abstract interface class AutoBackupRunner {
 
 /// 自动备份服务（FR-9.4，M8）。
 ///
-/// 负责：按配置构建目的地 → 导出全量备份 zip → 上传到各目的地 →
-/// 各自剪枝（只保留最近 [autoBackupRetentionCount] 份自动备份）→
-/// 全部成功才更新 last_auto_backup_at。失败不推进时间戳，避免静默跳过。
+/// 负责：导出全量备份 zip → 上传到本地目录 → 剪枝（只保留最近
+/// [autoBackupRetentionCount] 份自动备份）→ 成功才更新 last_auto_backup_at。
+/// 失败不推进时间戳，避免静默跳过。
 ///
 /// 纯 Dart（不依赖 UI）：调度器与「立即备份」按钮共用同一实例逻辑。
 ///
@@ -86,7 +81,7 @@ class AutoBackupService implements AutoBackupRunner {
         skipReason: '未配置备份目的地（本地目录）',
       );
     }
-    final targets = <BackupTarget>[LocalBackupTarget(Directory(localFolder))];
+    final target = LocalBackupTarget(Directory(localFolder));
 
     // 「每日」语义（FR-9.4）：距上次成功不足 24 小时跳过（force 例外）。
     final last = settings.lastAutoBackupAt;
@@ -100,7 +95,7 @@ class AutoBackupService implements AutoBackupRunner {
       );
     }
 
-    // 先导出到临时文件，再逐目的地上传。
+    // 先导出到临时文件，再上传到本地目录。
     final tempDir = await Directory.systemTemp.createTemp('timecalc-auto');
     final tempFile = File(
       '${tempDir.path}${Platform.pathSeparator}${autoBackupFileName(nowUtc.toLocal())}',
@@ -115,56 +110,29 @@ class AutoBackupService implements AutoBackupRunner {
         return AutoBackupResult(
           skipped: false,
           succeeded: false,
-          uploadedTargets: 0,
           errors: ['导出失败：$error'],
         );
       }
       final bytes = await tempFile.readAsBytes();
 
-      var uploaded = 0;
-      final errors = <String>[];
-      for (final target in targets) {
-        try {
-          await target.upload(tempFile.uri.pathSegments.last, bytes);
-          await _prune(target);
-          uploaded++;
-        } on Exception catch (error) {
-          errors.add('${target.label}：$error');
-        }
-      }
-
-      if (errors.isNotEmpty) {
-        // 部分或全部失败：不推进时间戳，下次调度仍会尝试。
+      try {
+        await target.upload(tempFile.uri.pathSegments.last, bytes);
+        await _prune(target);
+      } on Exception catch (error) {
+        // 上传/剪枝失败：不推进时间戳，下次调度仍会尝试。
         return AutoBackupResult(
           skipped: false,
           succeeded: false,
-          uploadedTargets: uploaded,
-          errors: errors,
+          errors: ['${target.label}：$error'],
         );
       }
     } finally {
       if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
     }
 
-    // 全部成功才推进上次备份时间。
+    // 成功才推进上次备份时间。
     await settingsRepository.updateLastAutoBackupAt(nowUtc);
-    return AutoBackupResult(
-      skipped: false,
-      succeeded: true,
-      uploadedTargets: targets.length,
-    );
-  }
-
-  /// 根据当前设置构建启用的目的地列表（2026-08 起仅本地目录）。
-  Future<List<BackupTarget>> buildEnabledTargets(Setting settings) async {
-    final targets = <BackupTarget>[];
-
-    final localFolder = settings.localBackupFolder;
-    if (localFolder != null && localFolder.trim().isNotEmpty) {
-      targets.add(LocalBackupTarget(Directory(localFolder)));
-    }
-
-    return targets;
+    return const AutoBackupResult(skipped: false, succeeded: true);
   }
 
   /// 保留策略：目的地只保留最近 [autoBackupRetentionCount] 份自动备份。

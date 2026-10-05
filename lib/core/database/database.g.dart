@@ -3420,7 +3420,7 @@ class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: false,
-    defaultValue: const Constant('green'),
+    defaultValue: const Constant('clash'),
   );
   static const VerificationMeta _reduceMotionMeta = const VerificationMeta(
     'reduceMotion',
@@ -3717,9 +3717,15 @@ class Setting extends DataClass implements Insertable<Setting> {
 
   /// 主题色系（2026-08-16 色系解耦，schema v14 引入）。
   ///
-  /// 取值见 [AccentPalette.id]：`green`（默认）或 `blue`。设备级外观配置
-  /// （同 theme_mode），不进入业务数据备份（FR-9.5），覆盖恢复时保留
-  /// 本设备选择。
+  /// 取值见 [AccentPalette.id]：v2.0 撞色重构后默认为 `clash`
+  /// （暖橙 × 冷藏青），另有 `electric` / `violet` 两套撞色方案；
+  /// `green` / `blue` 为 v1 legacy 取值，仅为已持久化该值的老数据保留
+  /// 渲染路径，不再出现在设置页。设备级外观配置（同 theme_mode），
+  /// 不进入业务数据备份（FR-9.5），覆盖恢复时保留本设备选择。
+  ///
+  /// 注：2026-08-16 起该列默认值由 `green` 改为 `clash`——只是**新装/
+  /// 新增行的列默认值**，不涉及 schema 结构变更（schemaVersion 不变），
+  /// 也不会改写老用户已保存的值。
   final String accentColor;
 
   /// 减少动画开关（2026-08-20 动效改造，schema v15 引入）。

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
-import 'section_header.dart';
+import '../../core/theme/app_tokens.dart';
+import 'clash_tones.dart';
+import 'clash_widgets.dart';
 
 /// 可折叠区块（2026-08-18）：区块头整行可点展开/收起，供目标详情页
 /// 里程碑/科目/任务等长列表区块统一收纳——内容多时收起区块即可避免
-/// 整页无限滚动。头部复用 SectionHeader，trailing 结构为「折叠摘要（如
+/// 整页无限滚动。头部复用 ClashSectionHeader，trailing 结构为「折叠摘要（如
 /// N 个）+ 展开/收起 chevron + 外部操作按钮」；内容用 AnimatedSize 平滑
 /// 展开收起（与进度页 _StatNote 同款动画）。
 ///
@@ -27,6 +29,7 @@ class CollapsibleSection extends StatefulWidget {
     this.expanded,
     this.onChanged,
     this.initialExpanded = true,
+    this.tone = ClashTone.warm,
   });
 
   final IconData icon;
@@ -50,6 +53,11 @@ class CollapsibleSection extends StatefulWidget {
   /// 非受控模式下的初始状态（默认展开，保持区块内容默认可见）。
   final bool initialExpanded;
 
+  /// 本区块的撞色归属（默认暖色；数据类区块建议 [ClashTone.cool]）。
+  ///
+  /// 新增的**可选**参数：旧调用点不传即得到暖色区块头，签名向后兼容。
+  final ClashTone tone;
+
   @override
   State<CollapsibleSection> createState() => _CollapsibleSectionState();
 }
@@ -71,6 +79,7 @@ class _CollapsibleSectionState extends State<CollapsibleSection> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final t = ClashTones.of(context, widget.tone);
     final expanded = _isExpanded;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -79,10 +88,11 @@ class _CollapsibleSectionState extends State<CollapsibleSection> {
         // （嵌套手势内层优先）。
         InkWell(
           onTap: _toggle,
-          borderRadius: BorderRadius.circular(8),
-          child: SectionHeader(
+          borderRadius: BorderRadius.circular(AppTokens.radiusSm),
+          child: ClashSectionHeader(
             icon: widget.icon,
             title: widget.title,
+            tone: widget.tone,
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -91,14 +101,14 @@ class _CollapsibleSectionState extends State<CollapsibleSection> {
                     widget.summary!,
                     style: Theme.of(
                       context,
-                    ).textTheme.bodySmall?.copyWith(color: scheme.outline),
+                    ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppTokens.spaceSm),
                 ],
                 Icon(
                   expanded ? Icons.expand_less : Icons.expand_more,
                   size: 20,
-                  color: scheme.outline,
+                  color: t.ink,
                 ),
                 if (widget.trailing != null) widget.trailing!,
               ],
@@ -106,7 +116,7 @@ class _CollapsibleSectionState extends State<CollapsibleSection> {
           ),
         ),
         AnimatedSize(
-          duration: const Duration(milliseconds: 200),
+          duration: AppTokens.motionNormal,
           curve: Curves.easeOut,
           alignment: Alignment.topCenter,
           child: expanded && widget.body != null

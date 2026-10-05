@@ -8,6 +8,8 @@ import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/time_text.dart';
 import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/app_form_field.dart';
+import '../../../shared/widgets/app_time_picker.dart';
+import '../../../shared/widgets/clash_tones.dart';
 import '../../../shared/widgets/duration_step_input.dart';
 import '../data/task_repository_provider.dart';
 
@@ -35,7 +37,7 @@ class QuickTaskFormDialog extends ConsumerStatefulWidget {
       context,
       title: '快速添加任务',
       titleIcon: Icons.bolt_outlined,
-      maxWidth: 440,
+      maxWidth: 520,
       content: QuickTaskFormDialog(date: date, goals: goals),
       barrierDismissible: false,
     );
@@ -75,7 +77,7 @@ class _QuickTaskFormDialogState extends ConsumerState<QuickTaskFormDialog> {
   /// 选择计划时刻（可选）——快速录入也支持小时级排程。
   Future<void> _pickTime() async {
     final current = tryTimeOfDayMinutes(_startTime) ?? 9 * 60;
-    final picked = await showTimePicker(
+    final picked = await showAppTimePicker(
       context: context,
       helpText: '选择计划时刻（可选）',
       initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
@@ -129,20 +131,30 @@ class _QuickTaskFormDialogState extends ConsumerState<QuickTaskFormDialog> {
           // 目标选择
           DropdownButtonFormField<int?>(
             initialValue: _goalId,
+            isExpanded: true,
             decoration: AppFormField.defaultDecoration(
               label: '目标 *',
               prefixIcon: Icon(
                 Icons.flag_outlined,
                 size: 20,
+                // 撞色 v2：已选目标走暖色 ink（目标/品牌语义），未选用主题
+                // 次级文字色——不再写死浅色模式 token。
                 color: _goalId != null
-                    ? Theme.of(context).colorScheme.primary
-                    : AppTokens.neutralTextSecondaryLight,
+                    ? ClashTones.of(context, ClashTone.warm).ink
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
               scheme: Theme.of(context).colorScheme,
             ),
             items: [
               for (final g in widget.goals)
-                DropdownMenuItem<int?>(value: g.id, child: Text(g.title)),
+                DropdownMenuItem<int?>(
+                  value: g.id,
+                  child: Text(
+                    g.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
             ],
             onChanged: (value) => setState(() => _goalId = value),
           ),
@@ -177,6 +189,7 @@ class _QuickTaskFormDialogState extends ConsumerState<QuickTaskFormDialog> {
           // 预估时长
           DurationStepInput(
             label: '预估时长',
+            showQuickButtons: true,
             value: _estimatedMinutes,
             allowEmpty: true,
             onChanged: (minutes) => setState(() => _estimatedMinutes = minutes),
@@ -191,7 +204,7 @@ class _QuickTaskFormDialogState extends ConsumerState<QuickTaskFormDialog> {
             label: '备注（可选）',
             maxLines: 2,
           ),
-          const SizedBox(height: AppTokens.spaceSm),
+          const SizedBox(height: AppTokens.spaceXl),
 
           // 底部按钮
           Row(
@@ -204,7 +217,7 @@ class _QuickTaskFormDialogState extends ConsumerState<QuickTaskFormDialog> {
               const SizedBox(width: AppTokens.spaceSm),
               FilledButton(
                 onPressed: _saving ? null : _save,
-                child: const Text('创建'),
+                child: Text(_saving ? '正在创建…' : '创建任务'),
               ),
             ],
           ),

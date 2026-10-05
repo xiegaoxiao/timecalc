@@ -7,10 +7,13 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/app_refresh.dart';
+import '../../../core/theme/app_semantic_colors.dart';
+import '../../../core/theme/app_tokens.dart';
+import '../../../shared/widgets/clash_tones.dart';
+import '../../../shared/widgets/clash_widgets.dart';
 import '../../settings/data/settings_repository_provider.dart';
 import '../data/auto_backup_service_provider.dart';
 import '../data/backup_file_picker.dart';
-import '../data/backup_folder_picker.dart';
 import '../data/backup_manifest.dart';
 import '../data/backup_service.dart';
 import '../data/backup_service_provider.dart';
@@ -49,35 +52,43 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('备份与恢复')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTokens.pagePadding),
         children: [
-          const SizedBox(height: 16),
           Text(
             '导出/恢复全部业务数据。覆盖恢复前会自动创建当前数据的安全副本（FR-9.3）。'
             '替换导入时归档保留的已完成旧任务请在「已归档任务」页查看。',
             style: Theme.of(context).textTheme.bodySmall,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppTokens.spaceLg),
           _buildAutoBackupSection(),
-          const SizedBox(height: 24),
-          Text('手动备份 / 恢复',
-              style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            children: [
-              FilledButton.tonalIcon(
-                onPressed: () => _exportBackup(context, picker, backup),
-                icon: const Icon(Icons.file_download_outlined, size: 18),
-                label: const Text('导出备份'),
+          const SizedBox(height: AppTokens.spaceXl),
+          const ClashSectionHeader(
+            icon: Icons.file_download_outlined,
+            title: '手动备份 / 恢复',
+            tone: ClashTone.warm,
+          ),
+          const SizedBox(height: AppTokens.spaceSm),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: Padding(
+              padding: const EdgeInsets.all(AppTokens.spaceLg),
+              child: Wrap(
+                spacing: AppTokens.spaceMd,
+                runSpacing: AppTokens.spaceSm,
+                children: [
+                  FilledButton.tonalIcon(
+                    onPressed: () => _exportBackup(context, picker, backup),
+                    icon: const Icon(Icons.file_download_outlined, size: 18),
+                    label: const Text('导出备份'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: () => _restoreBackup(context, picker, backup),
+                    icon: const Icon(Icons.file_upload_outlined, size: 18),
+                    label: const Text('从备份恢复'),
+                  ),
+                ],
               ),
-              FilledButton.icon(
-                onPressed: () => _restoreBackup(context, picker, backup),
-                icon: const Icon(Icons.file_upload_outlined, size: 18),
-                label: const Text('从备份恢复'),
-              ),
-            ],
+            ),
           ),
         ],
       ),
@@ -91,13 +102,13 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     return settingsAsync.when(
       loading: () => const Card(
         child: Padding(
-          padding: EdgeInsets.all(16),
+          padding: EdgeInsets.all(AppTokens.spaceLg),
           child: Center(child: CircularProgressIndicator()),
         ),
       ),
       error: (error, _) => Card(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppTokens.spaceLg),
           child: Text('自动备份配置加载失败：$error'),
         ),
       ),
@@ -110,26 +121,24 @@ class _BackupPageState extends ConsumerState<BackupPage> {
         }
         return Card(
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppTokens.spaceLg),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Icon(Icons.backup_outlined,
-                        size: 20, color: Theme.of(context).colorScheme.primary),
-                    const SizedBox(width: 8),
-                    Text('自动备份',
-                        style: Theme.of(context).textTheme.titleMedium),
-                  ],
+                // 区块头走撞色冷色（数据/自动化的归属）。
+                const ClashSectionHeader(
+                  icon: Icons.backup_outlined,
+                  title: '自动备份',
+                  tone: ClashTone.cool,
+                  dense: true,
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: AppTokens.spaceXs),
                 Text(
                   '每日自动备份全部业务数据到本地目录（保留最近 7 份）。'
                   '应用运行期间生效：启动时检查一次、之后每小时复查。',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppTokens.spaceSm),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('启用每日自动备份'),
@@ -137,13 +146,16 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                   // 点击即写库并立即触发一次检查（review 修复）。
                   onChanged: toggleEnabled,
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: AppTokens.spaceXs),
                 Row(
                   children: [
                     Expanded(
                       child: ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.folder_outlined),
+                        leading: Icon(
+                          Icons.folder_outlined,
+                          color: ClashTones.of(context, ClashTone.cool).ink,
+                        ),
                         title: Text(
                           _localFolder == null ||
                                   _localFolder!.trim().isEmpty
@@ -160,7 +172,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppTokens.spaceSm),
                 Row(
                   children: [
                     Expanded(
@@ -189,7 +201,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
   }
 
   Future<void> _pickFolder() async {
-    final picked = await ref.read(backupFolderPickerProvider).pickFolder();
+    final picked = await ref.read(backupFilePickerProvider).pickFolder();
     if (picked == null || picked.trim().isEmpty) return;
     if (!mounted) return;
     final folder = picked.trim();
@@ -243,39 +255,45 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     messenger.hideCurrentSnackBar();
     if (!value) {
       messenger.showSnackBar(
-        const SnackBar(
-          content: Text('已关闭每日自动备份'),
-          duration: Duration(seconds: 2),
+        _feedbackSnackBar(
+          context,
+          '已关闭每日自动备份',
+          duration: const Duration(seconds: 2),
         ),
       );
       return;
     }
     messenger.showSnackBar(
-      const SnackBar(
-        content: Text('已启用每日自动备份，正在检查…'),
-        duration: Duration(seconds: 2),
+      _feedbackSnackBar(
+        context,
+        '已启用每日自动备份，正在检查…',
+        duration: const Duration(seconds: 2),
       ),
     );
     final result = await ref.read(autoBackupServiceProvider).run();
     if (!mounted) return;
     if (result.skipped) {
       messenger.showSnackBar(
-        SnackBar(
-          content: Text('已启用；${result.skipReason}'),
+        _feedbackSnackBar(
+          context,
+          '已启用；${result.skipReason}',
           duration: const Duration(seconds: 4),
         ),
       );
     } else if (result.succeeded) {
       messenger.showSnackBar(
-        SnackBar(
-          content:
-              Text('已启用，自动备份完成：${result.uploadedTargets} 个目的地'),
+        _feedbackSnackBar(
+          context,
+          '已启用，自动备份完成',
+          kind: _FeedbackKind.success,
         ),
       );
     } else {
       messenger.showSnackBar(
-        SnackBar(
-          content: Text('已启用；自动备份失败：${result.errors.join('；')}'),
+        _feedbackSnackBar(
+          context,
+          '已启用；自动备份失败：${result.errors.join('；')}',
+          kind: _FeedbackKind.error,
         ),
       );
     }
@@ -290,14 +308,24 @@ class _BackupPageState extends ConsumerState<BackupPage> {
       final messenger = ScaffoldMessenger.of(context);
       ref.invalidate(settingsProvider);
       if (result.skipped) {
-        messenger.showSnackBar(SnackBar(content: Text('未执行：${result.skipReason}')));
+        messenger.showSnackBar(
+          _feedbackSnackBar(context, '未执行：${result.skipReason}'),
+        );
       } else if (result.succeeded) {
         messenger.showSnackBar(
-          SnackBar(content: Text('自动备份完成：${result.uploadedTargets} 个目的地')),
+          _feedbackSnackBar(
+            context,
+            '自动备份完成',
+            kind: _FeedbackKind.success,
+          ),
         );
       } else {
         messenger.showSnackBar(
-          SnackBar(content: Text('自动备份失败：${result.errors.join('；')}')),
+          _feedbackSnackBar(
+            context,
+            '自动备份失败：${result.errors.join('；')}',
+            kind: _FeedbackKind.error,
+          ),
         );
       }
     } finally {
@@ -315,11 +343,23 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     if (target == null) return; // 用户取消
     try {
       await backup.exportBackup(target);
+      if (!context.mounted) return;
       messenger.showSnackBar(
-        SnackBar(content: Text('备份已导出：${target.path}')),
+        _feedbackSnackBar(
+          context,
+          '备份已导出：${target.path}',
+          kind: _FeedbackKind.success,
+        ),
       );
     } on Exception catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('导出失败：$e')));
+      if (!context.mounted) return;
+      messenger.showSnackBar(
+        _feedbackSnackBar(
+          context,
+          '导出失败：$e',
+          kind: _FeedbackKind.error,
+        ),
+      );
     }
   }
 
@@ -345,7 +385,14 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     try {
       manifest = await backup.readBackupManifest(file);
     } on Exception catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('无法读取备份：$e')));
+      if (!context.mounted) return;
+      messenger.showSnackBar(
+        _feedbackSnackBar(
+          context,
+          '无法读取备份：$e',
+          kind: _FeedbackKind.error,
+        ),
+      );
       return;
     }
 
@@ -365,9 +412,19 @@ class _BackupPageState extends ConsumerState<BackupPage> {
         RestoreMode.overwrite =>
           '已恢复备份；当前数据安全副本保存在：\n${safety?.path ?? ''}',
       };
-      messenger.showSnackBar(SnackBar(content: Text(message)));
+      if (!context.mounted) return;
+      messenger.showSnackBar(
+        _feedbackSnackBar(context, message, kind: _FeedbackKind.success),
+      );
     } on Exception catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('恢复失败：$e')));
+      if (!context.mounted) return;
+      messenger.showSnackBar(
+        _feedbackSnackBar(
+          context,
+          '恢复失败：$e',
+          kind: _FeedbackKind.error,
+        ),
+      );
     }
   }
 
@@ -376,4 +433,42 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     if (last == null) return '尚未执行过自动备份';
     return '上次成功：${DateFormat('yyyy-MM-dd HH:mm').format(last.toLocal())}';
   }
+}
+
+/// 反馈语义：正向（成功）/ 负向（失败）/ 中性提示。
+enum _FeedbackKind { success, error, neutral }
+
+/// 语义化反馈条：正向走 [AppSemanticColors.success] 容器色，失败走
+/// `scheme.error` 容器色，中性提示保持主题默认（SnackBar 不再只有一种灰）。
+///
+/// 语义色扩展缺失时（如测试里手工构造的无扩展 ThemeData）自动退化为
+/// 中性样式，绝不因为取色失败而让反馈消失。
+SnackBar _feedbackSnackBar(
+  BuildContext context,
+  String message, {
+  _FeedbackKind kind = _FeedbackKind.neutral,
+  Duration? duration,
+}) {
+  final theme = Theme.of(context);
+  final scheme = theme.colorScheme;
+  final semantic = theme.extension<AppSemanticColors>();
+  Color? background;
+  TextStyle? textStyle;
+  switch (kind) {
+    case _FeedbackKind.success:
+      if (semantic != null) {
+        background = semantic.successContainer;
+        textStyle = TextStyle(color: semantic.onSuccessContainer);
+      }
+    case _FeedbackKind.error:
+      background = scheme.errorContainer;
+      textStyle = TextStyle(color: scheme.onErrorContainer);
+    case _FeedbackKind.neutral:
+      break;
+  }
+  return SnackBar(
+    content: Text(message, style: textStyle),
+    duration: duration ?? const Duration(seconds: 4),
+    backgroundColor: background,
+  );
 }

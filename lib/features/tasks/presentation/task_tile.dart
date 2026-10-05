@@ -5,10 +5,13 @@ import '../../../core/database/database.dart';
 import '../../../core/database/tables.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/providers/clock_provider.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/utils/date_text.dart';
 import '../../../core/utils/time_text.dart';
 import '../../../services/defer_service.dart';
 import '../../../services/duration_format.dart';
+import '../../../shared/widgets/clash_tones.dart';
+import '../../../shared/widgets/clash_widgets.dart';
 import '../../../shared/widgets/completion_checkbox.dart';
 import '../../goals/data/subject_repository_provider.dart';
 import '../../settings/data/settings_repository.dart';
@@ -74,6 +77,10 @@ class _TaskTileState extends ConsumerState<TaskTile> {
   /// 数据库写入 + Provider 刷新往返——避免「点了没反应 → 数据回来后整行
   /// 猛然划线」的掉帧/延迟感。数据刷新确认后由 [didUpdateWidget] 清除。
   bool? _optimisticDone;
+
+  /// 桌面端行 hover 态（撞色 v2）：hover 时行底铺撞色淡底 + 抬升投影。
+  /// 只影响本行的 [AnimatedContainer]，不重建父级列表。
+  bool _hovered = false;
 
   /// 真实/乐观完成态（不含「5 秒撤回」待定稿批次：后者在 build 中单独并入，
   /// [_toggle] 里按批次成员单独判断，避免在非 build 上下文里 watch）。
@@ -160,7 +167,8 @@ class _TaskTileState extends ConsumerState<TaskTile> {
     // watch 用 select 收窄到「本任务是否在批次内」（2026-08-16 性能优化）：
     // 批次集合变化时只有成员关系变化的任务行重建，而不是全部行。
     final statusDone = widget.task.status == TaskStatus.done;
-    final pendingThis = widget.enableCompleteUndo &&
+    final pendingThis =
+        widget.enableCompleteUndo &&
         ref.watch(
           taskCompletionControllerProvider.select(
             (s) => s.contains(widget.task.id),
@@ -168,7 +176,8 @@ class _TaskTileState extends ConsumerState<TaskTile> {
         );
     // 定稿显示态：5 秒到期后（写库 → 数据落地之间）保持勾选，消除
     // 「闪回未勾选 → 重新划线」的双段动画。
-    final finalizingThis = widget.enableCompleteUndo &&
+    final finalizingThis =
+        widget.enableCompleteUndo &&
         ref.watch(
           taskFinalizingProvider.select((s) => s.contains(widget.task.id)),
         );
@@ -180,15 +189,15 @@ class _TaskTileState extends ConsumerState<TaskTile> {
         ? (widget.task.subjectId == null
               ? null
               : widget.subjects!
-                  .where((s) => s.id == widget.task.subjectId)
-                  .map((s) => s.name)
-                  .firstOrNull)
+                    .where((s) => s.id == widget.task.subjectId)
+                    .map((s) => s.name)
+                    .firstOrNull)
         : ref
-            .watch(subjectListProvider(widget.task.goalId))
-            .valueOrNull
-            ?.where((s) => s.id == widget.task.subjectId)
-            .map((s) => s.name)
-            .firstOrNull;
+              .watch(subjectListProvider(widget.task.goalId))
+              .valueOrNull
+              ?.where((s) => s.id == widget.task.subjectId)
+              .map((s) => s.name)
+              .firstOrNull;
 
     // 副标题元信息 chips（2026-08-16 视觉升级）：目标/科目/计划日期/时长
     // 由「· 拼接长文本」改为小 chip，替代 Material 默认的密集文字感；
@@ -199,17 +208,57 @@ class _TaskTileState extends ConsumerState<TaskTile> {
     final plannedDateText = widget.showPlannedDate
         ? formatLocalDate(parseLocalDate(widget.task.plannedDate))
         : null;
+    // 行状态（撞色 v2）：待办=暖、已完成=点缀（citrus）、逾期=危险（danger）。
+    // 逾期按「未完成且计划日期早于今天」判定（注入时钟，测试可固定日期）。
+    final planned = parseLocalDate(widget.task.plannedDate);
+    final today = DateUtils.dateOnly(ref.watch(clockProvider)());
+    final overdue = !done && planned.isBefore(today);
+    final tone = done
+        ? ClashTone.citrus
+        : (overdue ? ClashTone.danger : ClashTone.warm);
+    final t = ClashTones.of(context, tone);
+
+    // 元信息药丸（撞色 v2）：目标=暖、日期/时刻/科目=冷、时长=点缀，
+    // 逾期额外给一枚危险药丸——状态在颜色之外仍有文字/图标承载（NFR-4）。
     final metaChips = <Widget>[
-      if (widget.goalTitle != null) _MetaChip(label: widget.goalTitle!),
+      if (widget.goalTitle != null)
+        _metaChip(label: widget.goalTitle!, tone: ClashTone.warm),
       if (plannedDateText != null && startTime != null)
-        _MetaChip(label: '$plannedDateText $startTime')
+        _metaChip(
+          label: '$plannedDateText $startTime',
+          tone: ClashTone.cool,
+          icon: Icons.event_outlined,
+        )
       else if (plannedDateText != null)
-        _MetaChip(label: plannedDateText)
+        _metaChip(
+          label: plannedDateText,
+          tone: ClashTone.cool,
+          icon: Icons.event_outlined,
+        )
       else if (startTime != null)
-        _MetaChip(label: startTime),
-      if (subjectName != null) _MetaChip(label: subjectName),
+        _metaChip(
+          label: startTime,
+          tone: ClashTone.cool,
+          icon: Icons.schedule_outlined,
+        ),
+      if (subjectName != null)
+        _metaChip(
+          label: subjectName,
+          tone: ClashTone.cool,
+          icon: Icons.book_outlined,
+        ),
       if (widget.task.estimatedMinutes != null)
-        _MetaChip(label: DurationFormat.minutes(widget.task.estimatedMinutes!)),
+        _metaChip(
+          label: DurationFormat.minutes(widget.task.estimatedMinutes!),
+          tone: ClashTone.citrus,
+          icon: Icons.timer_outlined,
+        ),
+      if (overdue)
+        _metaChip(
+          label: '逾期',
+          tone: ClashTone.danger,
+          icon: Icons.error_outline,
+        ),
     ];
     final hasNote = widget.task.note?.isNotEmpty ?? false;
 
@@ -219,80 +268,167 @@ class _TaskTileState extends ConsumerState<TaskTile> {
       opacity: done ? 0.72 : 1.0,
       // 单卡列表行（2026-08-16 视觉升级）：TaskTile 自身不再包 Card，
       // 由外层列表容器提供统一卡片 + 行间分隔线（今天页/计划页/目标页）。
-      child: ListTile(
-        leading: CompletionCheckbox(
-          value: done,
-          // 读屏可读的名称（NFR-4）：任务完成复选框不依赖相邻文本推断。
-          semanticLabel: done ? '标记未完成' : '标记完成',
-          onChanged: _toggle,
-        ),
-        title: Row(
-          children: [
-            Flexible(
-              child: AnimatedDefaultTextStyle(
-                // 完成划线 + 颜色过渡：勾选后平滑地划掉，而非跳变。
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-                style: done
-                    ? TextStyle(
-                        decoration: TextDecoration.lineThrough,
-                        color: Theme.of(context).colorScheme.outline,
-                      )
-                    : TextStyle(
-                        color: Theme.of(context).colorScheme.onSurface,
-                      ),
-                child: Text(
-                  widget.task.title,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
+      // 撞色 v2：行内左侧为撞色状态竖条，hover 时行底铺撞色淡底 + 抬升投影
+      // （ClashTones.tint + AppTokens.shadowCardHover）。
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: AnimatedContainer(
+          duration: AppTokens.motionNormal,
+          curve: AppTokens.motionCurve,
+          decoration: BoxDecoration(
+            color: _hovered
+                ? ClashTones.tint(t.ink, alpha: 0.06)
+                : Colors.transparent,
+            boxShadow: _hovered
+                ? AppTokens.shadowCardHover(
+                    Theme.of(context).brightness == Brightness.dark,
+                  )
+                : null,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppTokens.spaceSm,
+              AppTokens.spaceSm,
+              AppTokens.spaceXs,
+              AppTokens.spaceSm,
             ),
-            if (widget.task.recurrenceTemplateId != null) ...[
-              const SizedBox(width: 6),
-              const Tooltip(
-                message: '重复任务',
-                child: Icon(Icons.autorenew, size: 16),
-              ),
-            ],
-          ],
-        ),
-        subtitle: (metaChips.isNotEmpty || hasNote)
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (metaChips.isNotEmpty)
-                    Wrap(spacing: 4, runSpacing: 4, children: metaChips),
-                  if (hasNote)
-                    Text(
-                      widget.task.note!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // 撞色状态竖条（行色标）：待办=暖 / 已完成=点缀 / 逾期=危险。
+                AnimatedContainer(
+                  duration: AppTokens.motionNormal,
+                  curve: AppTokens.motionCurve,
+                  width: 3.5,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: t.ink,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: AppTokens.spaceXs),
+                CompletionCheckbox(
+                  value: done,
+                  // 读屏可读的名称（NFR-4）：任务完成复选框不依赖相邻文本推断。
+                  semanticLabel: done ? '标记未完成' : '标记完成',
+                  onChanged: _toggle,
+                ),
+                const SizedBox(width: AppTokens.spaceXs),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: AnimatedDefaultTextStyle(
+                              // 完成划线 + 颜色过渡：勾选后平滑地划掉，而非跳变。
+                              duration: AppTokens.motionNormal,
+                              curve: AppTokens.motionCurve,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                decoration: done
+                                    ? TextDecoration.lineThrough
+                                    : TextDecoration.none,
+                                color: done
+                                    ? Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant
+                                    : Theme.of(context).colorScheme.onSurface,
+                              ),
+                              child: Text(
+                                widget.task.title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                          // 重复任务徽标（fr-4）：撞色药丸 + 原 tooltip 语义保留。
+                          if (widget.task.recurrenceTemplateId != null) ...[
+                            const SizedBox(width: AppTokens.spaceXs),
+                            const Tooltip(
+                              message: '重复任务',
+                              child: ClashChip(
+                                label: '重复',
+                                icon: Icons.autorenew,
+                                tone: ClashTone.citrus,
+                                variant: ClashChipVariant.soft,
+                                dense: true,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (metaChips.isNotEmpty || hasNote) ...[
+                        const SizedBox(height: AppTokens.spaceXs),
+                        if (metaChips.isNotEmpty)
+                          Wrap(
+                            spacing: AppTokens.spaceXs,
+                            runSpacing: AppTokens.spaceXs,
+                            children: metaChips,
+                          ),
+                        if (hasNote)
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              top: AppTokens.spaceXs,
+                            ),
+                            child: Text(
+                              widget.task.note!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ),
+                      ],
+                    ],
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  tooltip: '任务操作',
+                  iconColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                  onSelected: (action) => _handleAction(context, ref, action),
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(value: 'edit', child: Text('编辑')),
+                    const PopupMenuItem(
+                      value: 'checklist',
+                      child: Text('检查项…'),
                     ),
-                ],
-              )
-            : null,
-        trailing: PopupMenuButton<String>(
-          tooltip: '任务操作',
-          onSelected: (action) => _handleAction(context, ref, action),
-          itemBuilder: (_) => [
-            const PopupMenuItem(value: 'edit', child: Text('编辑')),
-            const PopupMenuItem(value: 'checklist', child: Text('检查项…')),
-            const PopupMenuItem(value: 'deferNext', child: Text('延期至下一可用日')),
-            const PopupMenuItem(value: 'deferPick', child: Text('延期…')),
-            if (widget.task.recurrenceTemplateId != null) ...[
-              const PopupMenuItem(value: 'editRecurrence', child: Text('编辑重复规则')),
-              const PopupMenuItem(value: 'stopRecurrence', child: Text('停止重复')),
-            ],
-            const PopupMenuItem(value: 'delete', child: Text('删除')),
-          ],
+                    const PopupMenuItem(
+                      value: 'deferNext',
+                      child: Text('延期至下一可用日'),
+                    ),
+                    const PopupMenuItem(
+                      value: 'deferPick',
+                      child: Text('延期…'),
+                    ),
+                    if (widget.task.recurrenceTemplateId != null) ...[
+                      const PopupMenuItem(
+                        value: 'editRecurrence',
+                        child: Text('编辑重复规则'),
+                      ),
+                      const PopupMenuItem(
+                        value: 'stopRecurrence',
+                        child: Text('停止重复'),
+                      ),
+                    ],
+                    const PopupMenuItem(value: 'delete', child: Text('删除')),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 
   Future<void> _handleAction(
-      BuildContext context, WidgetRef ref, String action) async {
+    BuildContext context,
+    WidgetRef ref,
+    String action,
+  ) async {
     switch (action) {
       case 'edit':
         await _edit(context, ref);
@@ -322,9 +458,12 @@ class _TaskTileState extends ConsumerState<TaskTile> {
   Future<void> _editRecurrence(BuildContext context, WidgetRef ref) async {
     final templateId = widget.task.recurrenceTemplateId;
     if (templateId == null) return;
-    final template = await ref.read(recurrenceTemplateProvider(templateId).future);
+    final template = await ref.read(
+      recurrenceTemplateProvider(templateId).future,
+    );
     if (template == null || !context.mounted) return;
-    final subjects = widget.subjects ??
+    final subjects =
+        widget.subjects ??
         ref.read(subjectListProvider(widget.task.goalId)).valueOrNull ??
         const <Subject>[];
     final saved = await RecurrenceTaskDialog.show(
@@ -344,10 +483,7 @@ class _TaskTileState extends ConsumerState<TaskTile> {
     if (confirmed != true) return;
     if (!context.mounted) return;
     final repo = ref.read(recurrenceRepositoryProvider);
-    final ok = await runDbAction(
-      context,
-      action: () => repo.stop(templateId),
-    );
+    final ok = await runDbAction(context, action: () => repo.stop(templateId));
     if (!ok) return;
     ref.invalidate(recurrenceTemplatesProvider(widget.task.goalId));
     widget.onChanged();
@@ -355,7 +491,8 @@ class _TaskTileState extends ConsumerState<TaskTile> {
 
   Future<void> _edit(BuildContext context, WidgetRef ref) async {
     // 编辑对话框需要该目标下的科目列表（含无科目选项）。
-    final subjects = widget.subjects ??
+    final subjects =
+        widget.subjects ??
         await ref.read(subjectListProvider(widget.task.goalId).future);
     final subjectList = subjects ?? const <Subject>[];
     if (!context.mounted) return;
@@ -368,7 +505,10 @@ class _TaskTileState extends ConsumerState<TaskTile> {
     if (saved) widget.onChanged();
   }
 
-  Future<void> _deferToNextAvailable(BuildContext context, WidgetRef ref) async {
+  Future<void> _deferToNextAvailable(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
     final settings = await ref.read(settingsProvider.future);
     if (!context.mounted) return;
     final today = ref.read(clockProvider)();
@@ -428,30 +568,32 @@ class _TaskTileState extends ConsumerState<TaskTile> {
   }
 }
 
-/// 任务行元信息小 chip：目标/科目/计划日期/时长（2026-08-16 视觉升级）。
+/// 任务行元信息药丸（撞色 v2）：目标/科目/计划日期/计划时刻/时长/逾期。
 ///
-/// 替代此前副标题的「· 拼接长文本」：小字号 + 浅底 + 4px 圆角，
-/// 信息密度不变但视觉更轻、更有层次。
-class _MetaChip extends StatelessWidget {
-  const _MetaChip({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
-      ),
-    );
-  }
+/// 替代此前自绘的浅灰小 chip——统一走 [ClashChip]（soft 浅底 + 撞色文字），
+/// 信息密度不变但每枚药丸带自己的撞色语义（目标=暖、日期/科目=冷、
+/// 时长=点缀、逾期=危险），列表整体形成撞色节奏。
+///
+/// **长度保护**：目标名可能很长（如「28考研数学全程计划（零基础冲140+）」），
+/// 而任务行会出现在窄容器里（日历日面板仅约 330px）。`Wrap` 给子项的横向
+/// 约束是无界的，药丸按内容自适应就会直接抛 `RenderFlex overflow`。
+/// 因此这里给每枚药丸一个宽度上限并允许省略（`flexible`），保证任何父级
+/// 宽度下都不溢出；[maxWidth] 由各调用点按信息重要性给出。
+Widget _metaChip({
+  required String label,
+  required ClashTone tone,
+  IconData? icon,
+  double maxWidth = 220,
+}) {
+  return ClashChip(
+    label: label,
+    tone: tone,
+    icon: icon,
+    variant: ClashChipVariant.soft,
+    dense: true,
+    flexible: true,
+    maxWidth: maxWidth,
+  );
 }
 
 /// 删除任务二次确认（P3.4 收敛：TaskTile 与重复任务父卡片共用）。
@@ -466,7 +608,13 @@ Future<bool?> confirmDeleteTask(BuildContext context, String title) {
           onPressed: () => Navigator.of(context).pop(false),
           child: const Text('取消'),
         ),
+        // 危险动作（撞色 v2）：删除按钮走 ClashTone.danger，而非主色实心——
+        // 与「取消」形成明确的语义分离（颜色之外仍有「删除」文案承载）。
         FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: ClashTones.of(context, ClashTone.danger).fill,
+            foregroundColor: ClashTones.of(context, ClashTone.danger).onFill,
+          ),
           onPressed: () => Navigator.of(context).pop(true),
           child: const Text('删除'),
         ),

@@ -144,8 +144,11 @@ void main() {
         title: '已归档',
         plannedDate: '2026-08-05',
       );
-      await tasks.archiveAllActive(goal.id);
-      // 归档全部后手工恢复一条，构造「一条归档 + 一条活跃」。
+      // 归档全部任务（模拟导入替换的归档语义）后手工恢复一条，构造
+      // 「一条归档 + 一条活跃」；归档生产路径在 importPlan 内按完成状态
+      // 分流，测试直接写库造数。
+      await (db.update(db.tasks)..where((t) => t.goalId.equals(goal.id)))
+          .write(TasksCompanion(archivedAt: Value(DateTime.utc(2026, 8, 5))));
       await tasks.restoreArchived(active.id);
       expect((await tasks.byId(archived.id))!.archivedAt, isNotNull);
 

@@ -4,10 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/database.dart';
 import '../../../core/providers/app_refresh.dart';
 import '../../../shared/widgets/app_error_view.dart';
-import '../../../shared/widgets/chart_empty_state.dart';
-import '../../../shared/widgets/collapsible_section.dart';
+import '../../../shared/widgets/clash_tones.dart';
+import '../../../shared/widgets/clash_widgets.dart';
 import '../../goals/data/goal_repository_provider.dart';
 import '../../goals/data/subject_repository_provider.dart';
+import '../../goals/presentation/goal_section.dart';
 import '../data/task_repository_provider.dart';
 import 'task_list_section.dart';
 
@@ -75,9 +76,10 @@ class _GoalTasksPageState extends ConsumerState<GoalTasksPage> {
     final doneCount = tasks.where((t) => t.status == 'done').length;
     if (tasks.isEmpty) {
       return const Center(
-        child: ChartEmptyState(
+        child: ClashEmptyState(
           icon: Icons.checklist,
           title: '这个目标还没有任务，去目标详情页添加',
+          tone: ClashTone.warm,
         ),
       );
     }
@@ -139,12 +141,14 @@ class _GoalTasksPageState extends ConsumerState<GoalTasksPage> {
       SliverPadding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         sliver: SliverToBoxAdapter(
-          child: CollapsibleSection(
+          child: GoalCollapsibleSection(
             icon: Icons.checklist,
             title: title,
             summary: '${groupTasks.length} 个',
             expanded: !_isCollapsed(key),
             onChanged: (_) => _toggle(key),
+            // 科目分组 = 分类/数据区，取冷色撞色；任务区整体归暖色。
+            tone: ClashTone.cool,
             // 无 body：列表本身是 sliver，由外部按状态渲染。
           ),
         ),
@@ -166,7 +170,7 @@ class _GoalTasksPageState extends ConsumerState<GoalTasksPage> {
   }
 }
 
-/// 页面顶部概况：目标名 + 任务总数/完成数。
+/// 页面顶部概况：目标名 + 任务总数/完成数（暖色撞色区块头——任务 = 行动区）。
 class _Summary extends StatelessWidget {
   const _Summary({
     required this.goal,
@@ -180,23 +184,11 @@ class _Summary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          goal.title,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '共 ${tasks.length} 个任务 · $doneCount 个已完成',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.outline,
-          ),
-        ),
-      ],
+    return ClashSectionHeader(
+      icon: Icons.playlist_add_check,
+      title: goal.title,
+      tone: ClashTone.warm,
+      subtitle: '共 ${tasks.length} 个任务 · $doneCount 个已完成',
     );
   }
 }

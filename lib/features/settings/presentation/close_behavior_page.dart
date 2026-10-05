@@ -4,7 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/tables.dart';
 import '../../../core/desktop/desktop_providers.dart';
 import '../../../core/errors/app_guard.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../shared/widgets/app_error_view.dart';
+import '../../../shared/widgets/clash_tones.dart';
+import '../../../shared/widgets/clash_widgets.dart';
 import '../data/settings_repository_provider.dart';
 
 /// 关闭行为页（FR-8.1）：退出 / 最小化到托盘。
@@ -93,28 +96,41 @@ class _CloseBehaviorPageState extends ConsumerState<CloseBehaviorPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('关闭行为')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTokens.pagePadding),
         children: [
+          const ClashSectionHeader(
+            icon: Icons.close_fullscreen_outlined,
+            title: '关闭行为',
+            tone: ClashTone.warm,
+          ),
+          const SizedBox(height: AppTokens.spaceSm),
           Text(
             '点击窗口关闭按钮时的行为，点击即生效；最小化到托盘后可随时从托盘菜单恢复（FR-8.1/8.2）。',
             style: Theme.of(context).textTheme.bodySmall,
           ),
-          const SizedBox(height: 16),
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(
-                value: CloseBehavior.exit,
-                label: Text('直接退出'),
-                icon: Icon(Icons.close),
+          const SizedBox(height: AppTokens.spaceMd),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: Padding(
+              padding: const EdgeInsets.all(AppTokens.spaceLg),
+              child: SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(
+                    value: CloseBehavior.exit,
+                    label: Text('直接退出'),
+                    icon: Icon(Icons.close),
+                  ),
+                  ButtonSegment(
+                    value: CloseBehavior.minimizeToTray,
+                    label: Text('最小化到托盘'),
+                    icon: Icon(Icons.minimize),
+                  ),
+                ],
+                selected: {_behavior},
+                onSelectionChanged: (selection) =>
+                    _selectBehavior(selection.first),
               ),
-              ButtonSegment(
-                value: CloseBehavior.minimizeToTray,
-                label: Text('最小化到托盘'),
-                icon: Icon(Icons.minimize),
-              ),
-            ],
-            selected: {_behavior},
-            onSelectionChanged: (selection) => _selectBehavior(selection.first),
+            ),
           ),
         ],
       ),

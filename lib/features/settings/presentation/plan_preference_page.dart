@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/errors/app_guard.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../shared/widgets/app_error_view.dart';
+import '../../../shared/widgets/clash_tones.dart';
+import '../../../shared/widgets/clash_widgets.dart';
 import '../../../shared/widgets/duration_step_input.dart';
 import '../data/settings_repository.dart';
 import '../data/settings_repository_provider.dart';
@@ -46,9 +49,17 @@ class _PlanPreferencePageState extends ConsumerState<PlanPreferencePage> {
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Divider(height: 1),
+          Divider(
+            height: 1,
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            padding: const EdgeInsets.fromLTRB(
+              AppTokens.spaceLg,
+              AppTokens.spaceMd,
+              AppTokens.spaceLg,
+              AppTokens.spaceMd,
+            ),
             child: Row(
               children: [
                 const Spacer(),
@@ -73,31 +84,49 @@ class _PlanPreferencePageState extends ConsumerState<PlanPreferencePage> {
       settings.availableWeekdays,
     );
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppTokens.pagePadding),
       children: [
+        const ClashSectionHeader(
+          icon: Icons.schedule_outlined,
+          title: '可用时长',
+          tone: ClashTone.warm,
+        ),
+        const SizedBox(height: AppTokens.spaceSm),
         Text(
           '用于计算每日负载与「超出」提示。默认为每天 2 小时、每周 7 天。',
           style: Theme.of(context).textTheme.bodySmall,
         ),
-        const SizedBox(height: 16),
-        DurationStepInput(
-          label: '每日可用时长',
-          value: _dailyMinutes,
-          onChanged: (minutes) {
-            if (minutes != null) {
-              setState(() => _dailyMinutes = minutes);
-            }
-          },
-          hourFieldKey: const Key('hourStepField'),
-          minuteFieldKey: const Key('minuteStepField'),
+        const SizedBox(height: AppTokens.spaceMd),
+        Card(
+          clipBehavior: Clip.antiAlias,
+          child: Padding(
+            padding: const EdgeInsets.all(AppTokens.spaceLg),
+            child: DurationStepInput(
+              label: '每日可用时长',
+              value: _dailyMinutes,
+              onChanged: (minutes) {
+                if (minutes != null) {
+                  setState(() => _dailyMinutes = minutes);
+                }
+              },
+              hourFieldKey: const Key('hourStepField'),
+              minuteFieldKey: const Key('minuteStepField'),
+            ),
+          ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppTokens.spaceXl),
+        const ClashSectionHeader(
+          icon: Icons.event_available_outlined,
+          title: '每周可用日',
+          tone: ClashTone.cool,
+        ),
+        const SizedBox(height: AppTokens.spaceSm),
         Row(
           children: [
             Expanded(
               child: Text(
-                '每周可用日',
-                style: Theme.of(context).textTheme.bodyMedium,
+                '点选每周可用于学习的日子（用于日历可用性与负载计算）',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
             // 快捷操作：一次点按全选/全取消，免去逐个切换（如只休
@@ -119,7 +148,7 @@ class _PlanPreferencePageState extends ConsumerState<PlanPreferencePage> {
             ),
           ],
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: AppTokens.spaceXs),
         Wrap(
           spacing: 8,
           children: [

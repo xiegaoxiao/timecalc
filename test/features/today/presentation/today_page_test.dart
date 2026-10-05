@@ -311,7 +311,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextFormField).first, '新背单词');
-    await tester.tap(find.text('创建'));
+    await tester.tap(find.text('创建任务'));
     await tester.pumpAndSettle();
 
     expect(find.text('新背单词'), findsOneWidget);
@@ -489,7 +489,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextFormField).first, '空态新增任务');
-    await tester.tap(find.text('创建'));
+    await tester.tap(find.text('创建任务'));
     await tester.pumpAndSettle();
 
     // 修复前：invalidate 早于数据写入，新任务不会出现在列表中。

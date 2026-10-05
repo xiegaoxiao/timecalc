@@ -96,7 +96,7 @@ void main() {
       );
       expect(course.color, CoursePalette.defaultHex);
       expect(course.weekParity, WeekParity.all); // 未传时按每周
-      expect(await courses.count(), 1);
+      expect(await courses.all(), hasLength(1));
     });
 
     test('创建时夹取越界范围（脏输入不落库为非法区间）', () async {
@@ -234,7 +234,7 @@ void main() {
       ], replace: true);
 
       expect(second.removed, 2);
-      expect(await courses.count(), 2);
+      expect(await courses.all(), hasLength(2));
     });
 
     test('替换模式失败时整体回滚（不出现「清了旧的又没有新的」）', () async {

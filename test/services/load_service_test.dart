@@ -22,7 +22,7 @@ void main() {
       createdAt: DateTime.utc(2026, 1, 1),
       updatedAt: DateTime.utc(2026, 1, 1),
       originalPlannedDate: null,
-    );
+  );
   }
 
   Task done(String date, {int? minutes, int id = 0}) {
@@ -40,7 +40,7 @@ void main() {
       createdAt: DateTime.utc(2026, 1, 1),
       updatedAt: DateTime.utc(2026, 1, 1),
       originalPlannedDate: null,
-    );
+  );
   }
 
   group('dayLoad（FR-5.2：当日未完成任务预估时长之和）', () {

@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/database/tables.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../shared/widgets/app_error_view.dart';
-import '../../../shared/widgets/chart_empty_state.dart';
+import '../../../shared/widgets/clash_tones.dart';
+import '../../../shared/widgets/clash_widgets.dart';
 import '../../../shared/widgets/progressive_rows.dart';
 import '../data/milestone_repository_provider.dart';
 import '../data/goal_repository_provider.dart';
@@ -53,9 +55,10 @@ class GoalMilestonesPage extends ConsumerWidget {
           }
           if (milestones.isEmpty) {
             return const Center(
-              child: ChartEmptyState(
+              child: ClashEmptyState(
                 icon: Icons.flag_outlined,
                 title: '还没有里程碑，点击「添加里程碑」设定阶段性节点',
+                tone: ClashTone.citrus,
               ),
             );
           }
@@ -65,7 +68,12 @@ class GoalMilestonesPage extends ConsumerWidget {
           return CustomScrollView(
             slivers: [
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                padding: const EdgeInsets.fromLTRB(
+                  AppTokens.spaceLg,
+                  AppTokens.spaceLg,
+                  AppTokens.spaceLg,
+                  AppTokens.spaceSm,
+                ),
                 sliver: SliverToBoxAdapter(
                   child: _Summary(
                     goal: goal,
@@ -108,7 +116,7 @@ class GoalMilestonesPage extends ConsumerWidget {
                   ),
                 ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+              const SliverToBoxAdapter(child: SizedBox(height: AppTokens.spaceXl)),
             ],
           );
         },
@@ -125,7 +133,8 @@ class GoalMilestonesPage extends ConsumerWidget {
   }
 }
 
-/// 页面顶部概况：目标名 + 里程碑总数/完成数。
+/// 页面顶部概况：目标名 + 里程碑总数/完成数（点缀色区块头——本页整体属于
+/// 里程碑（citrus）语义，与详情页里程碑区同一撞色归属）。
 class _Summary extends StatelessWidget {
   const _Summary({
     required this.goal,
@@ -139,23 +148,12 @@ class _Summary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          goal.title,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '共 ${milestones.length} 个里程碑 · $doneCount 个已完成',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.outline,
-          ),
-        ),
-      ],
+    return ClashSectionHeader(
+      icon: Icons.emoji_events_outlined,
+      title: goal.title,
+      tone: ClashTone.citrus,
+      subtitle: '共 ${milestones.length} 个里程碑 · $doneCount 个已完成',
+      count: milestones.length,
     );
   }
 }

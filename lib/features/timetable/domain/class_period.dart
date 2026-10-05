@@ -25,12 +25,6 @@ class ClassPeriod {
   /// 结束钟点 `HH:mm`。
   final String end;
 
-  /// 单节时长（分钟）。
-  int get minutes => _minutesOf(end) - _minutesOf(start);
-
-  /// `14:00-14:40` 形式的展示文本。
-  String get label => '$start-$end';
-
   static int _minutesOf(String hhmm) {
     final parts = hhmm.split(':');
     return int.parse(parts[0]) * 60 + int.parse(parts[1]);

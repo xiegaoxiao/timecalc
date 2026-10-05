@@ -3,17 +3,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/database/tables.dart';
 import '../../../core/errors/app_guard.dart';
 import '../../../core/theme/accent_palette.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/app_form_field.dart';
 import '../../../shared/widgets/app_error_view.dart';
-import '../../../shared/widgets/chart_empty_state.dart';
-import '../../../shared/widgets/collapsible_section.dart';
+import '../../../shared/widgets/clash_tones.dart';
+import '../../../shared/widgets/clash_widgets.dart';
 import '../../../shared/widgets/progressive_rows.dart';
 import '../data/subject_repository_provider.dart';
 import '../../tasks/data/task_repository_provider.dart';
+import 'goal_section.dart';
 
 /// 科目管理组件（FR-1.5）：目标下的科目列表。
 ///
@@ -38,9 +40,11 @@ class _SubjectManagerState extends ConsumerState<SubjectManager> {
     final subjectsAsync = ref.watch(subjectListProvider(widget.goalId));
     final tasksAsync = ref.watch(taskListProvider(widget.goalId));
 
-    return CollapsibleSection(
+    return GoalCollapsibleSection(
       icon: Icons.label_outline,
       title: '科目',
+      // 科目 = 分类/数据区，取冷藏青撞色（与里程碑的点缀色区分开）。
+      tone: ClashTone.cool,
       summary: subjectsAsync.valueOrNull == null
           ? null
           : '${subjectsAsync.valueOrNull!.length} 个',
@@ -65,34 +69,74 @@ class _SubjectManagerState extends ConsumerState<SubjectManager> {
             // 空态内容横向居中：本列 start 对齐，需给全宽内部才能居中。
             return const SizedBox(
               width: double.infinity,
-              child: ChartEmptyState(
+              // 空态＝冷色撞色（tone 默认 cool）+ compact 布局，原 ChartEmptyState 口径。
+              child: ClashEmptyState(
                 icon: Icons.label_outline,
                 title: '还没有科目，点击「添加科目」按科目组织任务',
+                compact: true,
               ),
             );
           }
-          return ProgressiveRows(
-            // 懒加载（2026-08-17）：科目列表按视口驱动渐进构建（同上
-            // 里程碑区），详情页中大科目数量不一次性全建。
-            itemCount: subjects.length,
-            itemBuilder: (context, i) {
-              final subject = subjects[i];
-              return _SubjectCard(
-                goalId: widget.goalId,
-                subject: subject,
-                taskCount: taskCounts[subject.id]?.length ?? 0,
-                doneCount:
-                    taskCounts[subject.id]
-                        ?.where((t) => t.status == 'done')
-                        .length ??
-                    0,
-                onTap: () => context.push(
-                  '/goals/${widget.goalId}/subjects/${subject.id}',
+          // 科目区统计（冷色撞色统计小块）：科目规模 + 已归属任务完成进度。
+          final allTaskCount = taskCounts.values.fold<int>(
+            0,
+            (sum, list) => sum + list.length,
+          );
+          final allDoneCount = taskCounts.values.fold<int>(
+            0,
+            (sum, list) =>
+                sum + list.where((t) => t.status == TaskStatus.done).length,
+          );
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppTokens.spaceMd),
+                child: Wrap(
+                  spacing: AppTokens.spaceMd,
+                  runSpacing: AppTokens.spaceSm,
+                  children: [
+                    ClashStatTile(
+                      value: '${subjects.length}',
+                      label: '科目',
+                      tone: ClashTone.cool,
+                      icon: Icons.label_outline,
+                      filled: false,
+                    ),
+                    ClashStatTile(
+                      value: '$allDoneCount/$allTaskCount',
+                      label: '任务完成',
+                      tone: ClashTone.cool,
+                      icon: Icons.task_alt,
+                      filled: false,
+                    ),
+                  ],
                 ),
-                onRename: () => _renameSubject(context, ref, subject),
-                onDelete: () => _deleteSubject(context, ref, subject),
-              );
-            },
+              ),
+              ProgressiveRows(
+                // 懒加载（2026-08-17）：科目列表按视口驱动渐进构建（同上
+                // 里程碑区），详情页中大科目数量不一次性全建。
+                itemCount: subjects.length,
+                itemBuilder: (context, i) {
+                  final subject = subjects[i];
+                  return _SubjectCard(
+                    goalId: widget.goalId,
+                    subject: subject,
+                    taskCount: taskCounts[subject.id]?.length ?? 0,
+                    doneCount:
+                        taskCounts[subject.id]
+                            ?.where((t) => t.status == TaskStatus.done)
+                            .length ??
+                        0,
+                    onTap: () => context.push(
+                      '/goals/${widget.goalId}/subjects/${subject.id}',
+                    ),
+                    onRename: () => _renameSubject(context, ref, subject),
+                    onDelete: () => _deleteSubject(context, ref, subject),
+                  );
+                },
+              ),
+            ],
           );
         },
       ),
@@ -223,19 +267,56 @@ class _SubjectCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cool = ClashTones.of(context, ClashTone.cool);
+    // 科目进度状态（文字承载，颜色只是分类提示；NFR-4）。
+    final (statusLabel, statusIcon) = switch ((taskCount, doneCount)) {
+      (0, _) => ('未开始', Icons.bookmark_add_outlined),
+      (final total, final done) when total == done => (
+        '已完成',
+        Icons.task_alt,
+      ),
+      _ => ('进行中', Icons.timelapse),
+    };
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: AppTokens.spaceSm),
       child: ListTile(
-        leading: CircleAvatar(
+        // 科目图标底：冷色 soft 圆底（分类/数据语义），首字用 onSoft 保证对比。
+        leading: Container(
+          width: 40,
+          height: 40,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: cool.soft, shape: BoxShape.circle),
           child: Text(
             // L11：空科目名（计划导入/备份恢复可引入）会令 characters.first
             // 抛 StateError，兜底显示占位符。
             subject.name.isEmpty ? '?' : subject.name.characters.first,
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: cool.onSoft,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
         title: Text(subject.name),
-        subtitle: Text(
-          taskCount == 0 ? '还没有任务，点击进入添加' : '$doneCount/$taskCount 个任务完成',
+        // 科目行用冷色撞色药丸标注进度状态（文字 + 图标承载，不只依赖颜色）。
+        subtitle: Row(
+          children: [
+            Flexible(
+              child: Text(
+                taskCount == 0 ? '还没有任务，点击进入添加' : '$doneCount/$taskCount 个任务完成',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: AppTokens.spaceSm),
+            ClashChip(
+              label: statusLabel,
+              tone: ClashTone.cool,
+              icon: statusIcon,
+              variant: ClashChipVariant.soft,
+              dense: true,
+            ),
+          ],
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,

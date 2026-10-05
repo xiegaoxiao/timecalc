@@ -35,7 +35,6 @@ void invalidateAppData(void Function(ProviderOrFamily provider) invalidate) {
   invalidate(tasksByDateProvider);
   invalidate(tasksByMonthProvider);
   invalidate(tasksByWeekProvider);
-  invalidate(tasksByYearProvider);
   invalidate(unfinishedBeforeProvider);
   invalidate(goalListProvider);
   invalidate(completedTasksProvider);
@@ -47,8 +46,9 @@ void invalidateAppData(void Function(ProviderOrFamily provider) invalidate) {
 /// 与 [invalidateAppData] 的区别：
 /// - **不失效 goalListProvider**：勾选/改期任务不改变目标本身，避免计划页
 ///   每次勾选都重查目标列表并触发整页连带重建；
-/// - **补上 tasksByWeekProvider / tasksByYearProvider**：此前两份失效清单都
-///   漏掉它们，周/年视图在勾选任务后保持陈旧（2026-08-15 审查 #4）；
+/// - **补上 tasksByWeekProvider**：此前两份失效清单都漏掉它，周视图在勾选
+///   任务后保持陈旧（2026-08-15 审查 #4）；年视图已于 2026-10 删除，其
+///   provider 失效项一并移除；
 /// - 跨页统计（completedTasksProvider / allTodoTasksProvider）仍一并失效，
 ///   保证今日页「目标剩余工作量」与进度页图表口径一致——它们不被计划页
 ///   watch，只在后台重查，不造成计划页可见重建。
@@ -59,7 +59,6 @@ void invalidatePlanData(void Function(ProviderOrFamily provider) invalidate) {
   invalidate(tasksByDateProvider);
   invalidate(tasksByMonthProvider);
   invalidate(tasksByWeekProvider);
-  invalidate(tasksByYearProvider);
   invalidate(taskListProvider);
   invalidate(unfinishedBeforeProvider);
   invalidate(completedTasksProvider);
@@ -80,7 +79,6 @@ void invalidateAllAppData(void Function(ProviderOrFamily provider) invalidate) {
   invalidate(goalDetailProvider); // family 无参失效整族（详情页缓存）
   invalidate(subjectListProvider); // family 整族（科目页/表单缓存）
   invalidate(archivedCountProvider);
-  invalidate(archivedTaskListProvider);
   invalidate(allArchivedTasksProvider);
   invalidate(recurrenceTemplatesProvider); // family 整族（重复任务入口）
   invalidate(recurrenceTemplateProvider); // family 整族（任务条目标注）
