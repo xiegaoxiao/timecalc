@@ -4,9 +4,73 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循
 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-当前状态：v1.0.0（M3 里程碑：进度与数据保障）已发布；v1.1.0（M4 MVP 发布候选 + 迭代增强）为本发布候选，尚未发布正式版本；v1.2.0（M5 首个增强迭代：里程碑 FR-2）为本发布候选的迭代增强，尚未发布正式版本；v1.3.0（M6 迭代：任务检查项 FR-4.1）为本发布候选的迭代增强，尚未发布正式版本；v1.4.0（M7 迭代：燃尽趋势 FR-7.3）为本发布候选的迭代增强，尚未发布正式版本；v1.5.0（M8 迭代：自动备份 FR-9.4）为本发布候选的迭代增强，尚未发布正式版本；v1.6.0（M9 迭代：WebDAV 整库文件同步）为本发布候选的迭代增强，尚未发布正式版本；v1.7.0（M10 迭代：明暗主题切换）已发布；v1.8.0（已归档任务批量删除 + AI 功能回退 + M11~M13 迭代）已发布；v1.9.0（全链路 UI 交互打磨）已发布；v1.10.0（热力图全灰网格与点击查看 + 完整导入预估时长 + 全量刷新收敛）已发布；v1.11.0（UI 设计语言升级：design token 层 + 桌面响应式导航 + 动效与空态统一）已发布；v1.12.0（目标独立导航 + 进度环卡片重构）已发布；v1.15.0（目标详情长列表收纳 + 今天页勾选 5 秒撤回 + WebDAV 下线）已发布（v1.13.0/v1.14.0 代码审查整改随本版一并交付）；v1.16.0（视觉升级：目标卡片/今日页/复选框动画/表单弹窗统一 + 代码审查整改）已发布；v1.17.0（现代桌面外壳：无边框窗口 + 自绘标题栏 + 200px 自定义侧栏 + 今天页动画与对齐精修 + 统一主色）已发布；v1.18.0（课表 FR-10 + 小时级排程与日历互通 .ics + 今天页改版）已发布。
+当前状态：v1.0.0（M3 里程碑：进度与数据保障）已发布；v1.1.0（M4 MVP 发布候选 + 迭代增强）为本发布候选，尚未发布正式版本；v1.2.0（M5 首个增强迭代：里程碑 FR-2）为本发布候选的迭代增强，尚未发布正式版本；v1.3.0（M6 迭代：任务检查项 FR-4.1）为本发布候选的迭代增强，尚未发布正式版本；v1.4.0（M7 迭代：燃尽趋势 FR-7.3）为本发布候选的迭代增强，尚未发布正式版本；v1.5.0（M8 迭代：自动备份 FR-9.4）为本发布候选的迭代增强，尚未发布正式版本；v1.6.0（M9 迭代：WebDAV 整库文件同步）为本发布候选的迭代增强，尚未发布正式版本；v1.7.0（M10 迭代：明暗主题切换）已发布；v1.8.0（已归档任务批量删除 + AI 功能回退 + M11~M13 迭代）已发布；v1.9.0（全链路 UI 交互打磨）已发布；v1.10.0（热力图全灰网格与点击查看 + 完整导入预估时长 + 全量刷新收敛）已发布；v1.11.0（UI 设计语言升级：design token 层 + 桌面响应式导航 + 动效与空态统一）已发布；v1.12.0（目标独立导航 + 进度环卡片重构）已发布；v1.15.0（目标详情长列表收纳 + 今天页勾选 5 秒撤回 + WebDAV 下线）已发布（v1.13.0/v1.14.0 代码审查整改随本版一并交付）；v1.16.0（视觉升级：目标卡片/今日页/复选框动画/表单弹窗统一 + 代码审查整改）已发布；v1.17.0（现代桌面外壳：无边框窗口 + 自绘标题栏 + 200px 自定义侧栏 + 今天页动画与对齐精修 + 统一主色）已发布；v1.18.0（课表 FR-10 + 小时级排程与日历互通 .ics + 今天页改版）已发布；v2.0.0（撞色 UI/UX 重构 + 镀金功能裁剪 + schema 回退 v17）已发布。
 
-## [1.18.0] — 2026-09-14
+## [2.0.0] — 2026-10-05
+
+> 本版本由两部分组成：**撞色 UI/UX 重构**（`docs/ui-refactor-contract.md` v2.0 设计契约）
+> 与一次严格的**「镀金功能」裁剪**。裁剪依据是 96 条目的只读审计，逐条证据与判定见
+> `docs/gold-plating/`（总清单 + A/B/C/D 四份分区报告）。
+
+### 变更：撞色 UI/UX 重构（v2.0 设计语言）
+
+- **设计语言换代**：由「单一主色深浅」改为**「暖橙 × 冷藏青」互补撞色**——暖＝品牌/主动作/今天，
+  冷＝数据/统计/课表，点缀＝里程碑/成就，危险＝逾期/删除。底色由冷灰改为**暖奶油** `#FDF6F0`，
+  白卡浮于暖底，撞色块浮于白卡。
+- **色彩角色拆分**：`app_theme.dart` 由 `ColorScheme.fromSeed` 改为**显式构造 ColorScheme**，
+  把「主色填充」与「主色图标/文字」拆成两个角色，修复深色模式下实心按钮白字仅 2.27:1 的真实缺陷。
+- **新增撞色组件层**：`clash_tones.dart`（唯一取色入口 + `tint`/`blend`/`fillHover`/`chartSeries`/渐变）、
+  `clash_hero.dart`、`clash_widgets.dart`（`ClashSectionHeader`/`ClashStatTile`/`ClashChip`/`ClashEmptyState`）。
+- **落地范围**：6 大主页面 + 共享组件/对话框/设置/备份/任务组件逐页改造；`app_tokens.dart` 补齐
+  撞色三主色、中性暖色阶、暖调投影与圆角/间距/动效档位。
+- **验收**：`flutter analyze lib` 无 issue；对比度 `contrast_test` **160 条断言全绿**（5 套方案 × 明暗，
+  最紧 4.66:1）；真机截图 7 张见 `docs/ui-refactor-shots/`；完整报告见 `docs/ui-refactor-verification.md`。
+
+### 移除：镀金功能裁剪（净删 7382 行，13 个文件）
+
+- **智能重排（v1.19 在途草稿，未发布即移除）**：`planning_service.dart`(1324)、`plan_draft_dialog.dart`(1134)、
+  `planning_repository.dart`、`planning_repository_provider.dart`、`plan_draft_undo_controller.dart`
+  及其 3 个测试文件（约 2.9k 行生产 + 1.46k 行测试）。它相对核心闭环（倒计时 → 今天做什么 →
+  完成/延期 → 进度反馈）零依赖，却把 schema 与备份格式一起拖进 v18；PRD §5.3-3 只把它定位为 P1。
+- **schema v18 回退到 v17**：删除 `tasks.schedule_locked`（排期锁定）列、v17→v18 迁移与
+  `drift_schema_v18.json`；`downgradeCleanup` 补上该列的降级清理（对齐 v1.8 移除 AI、v1.15 移除 WebDAV 的既有先例）。
+  已升级到 v18 的本地库打开时自动清理该列，业务数据完整保留，可重复打开（幂等）。
+- **进度页「任务耗时图」**：即 PRD §6 FR-7 明确列为 **P2** 的甘特图（类名原为 `_GanttSection`），
+  约 516 行生产代码 + 13 个测试用例，连同 `progressGanttProvider`/`goalGanttData`/`ganttWeekStarts` 一并删除。
+- **计划页年视图**：`_YearGrid`（161 行）与 `tasksByYearProvider`——展示的是按完成月份的计数，
+  与进度页热力图（FR-7.2 P0）语义重复；FR-3.4 只要求日历展示每日粒度。
+- **课表「当前时间」指示线**（约 60 行，PRD 未要求）、**JSON 侧中文别名兼容**（约 45 行）、
+  **导入对话框 256KB isolate 分支**；`_periodCount` 改为引用 `ClassPeriods.count`（消除双真相源）。
+- **死代码与空壳**：快捷键占位页（FR-8.5 从未实现 = 纯空壳）+ 入口 + 路由；
+  `DesktopController.onQuit`（M9 WebDAV 遗留扩展点，两处生产构造都没传）；
+  `StatisticsService.minutesLevel`、`CourseRepository.count()`、`ClassPeriod.minutes/.label`、
+  `isBeforeSemester`、`lastDayOfWeek`、`completedCountsByMonth`（全部零引用）。
+- **其余**：归档任务页批量删除（约 110 行）+ 死 Provider；备份域抽象壳（`RemoteBackupFile`/`download`、
+  `buildEnabledTargets`、两个 picker 抽象）收敛；彩纸屑庆祝（confetti）；备份空态/文案随之收敛。
+- **移除 3 个依赖**：`confetti`、`flutter_animate`、`skeletonizer`（全为无传递依赖的叶子包）。
+  `fl_chart` 保留（燃尽图仍在使用）。
+
+### 修复：重复实现收敛
+
+- 两份近似分叉的区块级错误条 `_SectionError`（今日页 / 日历）收敛为共享
+  `shared/widgets/section_error_view.dart`（统一走 `AppTokens` 间距与危险撞色描边）。
+- `SectionHeader` → `ClashSectionHeader`、`ChartEmptyState` → `ClashEmptyState`（两套旧组件删除）。
+- `ClashTones` 与 `app_theme.dart` 的 5 处重复硬编码色值改为单一真相源（取值逐位相同，观感无变化）。
+- 删除从未被读取的 `HoverableCard.hoverShadowOpacity` 参数（两个调用点以为它生效）。
+
+### 修复
+
+- 快速添加任务对话框的提交按钮文案由「创建」改为「创建任务」（撞色重构期间改动）后，
+  3 处测试断言未同步（`today_page_test` ×2、`progress_page_test` ×1）—— 本版一并修正。
+  这 3 条在裁剪开始前即为红色，属既有失败，非本次回归。
+
+### 测试
+
+- `flutter analyze`：**0 error / 0 warning**（仅 `tool/` 下 10 条既有 info）。
+- 全量 `flutter test`：**848 项全部通过**（裁剪前基线 851 项 / 3 项既有失败）。
+- 迁移与备份专项：`migration_test` + `backup_service_test` + `persistence_test` 共 77 项全绿，
+  含新增「v18 库降级到 v17：清理 `schedule_locked`、业务数据保留、可重复打开（幂等）」用例。
+
 
 ### 课表（FR-10，schema v17）
 
